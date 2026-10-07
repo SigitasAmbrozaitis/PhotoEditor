@@ -1,0 +1,16 @@
+# Copy to config.local.toml (git-ignored) and adjust for this machine.
+# Relative paths resolve against the project root. Environment variables PHOTOEDIT_<NAME> override this file.
+
+# Sample RAW photos used for development and tests. Always treated as read-only.
+sample_photos_dir = "C:/Users/ambro/Pictures/2026/2026-08-11"
+
+# Tool-owned folders (defaults shown).
+# workspace_dir = "workspace"
+# styles_dir = "styles"
+# presets_dir = "export-presets"
+# output_dir = "output"
+# cache_dir = "cache"
+
+# Local web server.
+# host = "127.0.0.1"
+# port = 8765

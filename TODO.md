@@ -29,14 +29,14 @@ Derived from [PLAN.md](PLAN.md) v0.3. This checklist is written for an AI to fol
 Goal: an empty but complete project. The Python package, CLI, API server, web UI scaffold, tests and AI rules all work together.
 
 ### Python project
-- [ ] **P0.1** `uv init` as a src-layout package `photoedit`. `.python-version` = 3.12. Fill in the `pyproject.toml` metadata
+- [x] **P0.1** `uv init` as a src-layout package `photoedit`. `.python-version` = 3.12. Fill in the `pyproject.toml` metadata
   (name, version 0.1.0, MIT, author).
-- [ ] **P0.2** Add dependencies:
+- [x] **P0.2** Add dependencies:
   - runtime: `typer`, `fastapi`, `uvicorn[standard]`, `pydantic`, `pydantic-settings`
-  - dev group: `pytest`, `pytest-cov`, `hypothesis`, `httpx`, `ruff`, `mypy`
+  - dev group: `pytest`, `pytest-cov`, `hypothesis`, `httpx2`, `ruff`, `mypy`
 
   Image libraries (rawpy, numpy, opencv…) come later in Phase 2. Commit `uv.lock`.
-- [ ] **P0.3** Package skeleton:
+- [x] **P0.3** Package skeleton:
   ```
   src/photoedit/
     __init__.py        (__version__)
@@ -48,13 +48,13 @@ Goal: an empty but complete project. The Python package, CLI, API server, web UI
     mcp/__init__.py    (empty, Phase 7)
   tests/
   ```
-- [ ] **P0.4** Tool config in `pyproject.toml`:
+- [x] **P0.4** Tool config in `pyproject.toml`:
   - ruff (lint + format, line length 110)
   - mypy (strict on `src/`)
   - pytest (testpaths, `--strict-markers`), plus markers `slow` and `golden` registered for later
 
 ### Core foundations
-- [ ] **P0.5** `config.py`: a Pydantic-settings `Settings` with:
+- [x] **P0.5** `config.py`: a Pydantic-settings `Settings` with:
   - `project_root`, `workspace_dir`, `styles_dir`, `presets_dir`, `output_dir` (all default under the project root)
   - `sample_photos_dir` (optional)
   - `host` / `port` (127.0.0.1:8765)
@@ -62,18 +62,18 @@ Goal: an empty but complete project. The Python package, CLI, API server, web UI
   Values are loaded from defaults, then `config.local.toml` (git-ignored), then env vars `PHOTOEDIT_*`. Commit
   `config.example.toml` with `sample_photos_dir = "C:/Users/ambro/Pictures/2026/2026-08-11"`.
   Tests: defaults, local override, env override.
-- [ ] **P0.6** `safety.py`: the path guard. `assert_writable(path)` allows writes only inside the allowed roots (project
-  folders, plus export destinations registered at runtime). `assert_readonly_source(path)` marks photo folders as never-write.
+- [x] **P0.6** `safety.py`: the path guard. `assert_writable(path)` allows writes only inside the allowed roots (project
+  folders, plus export destinations registered at runtime). `protect(root)` marks photo folders as never-write (protected roots win over writable ones).
   Tests: inside/outside a root, `..` traversal, symlinks, case-insensitive Windows paths, UNC paths.
 
 ### CLI + API
-- [ ] **P0.7** CLI:
+- [x] **P0.7** CLI:
   - `photoedit --version`
   - `photoedit config show` (prints the effective settings)
   - `photoedit ui [--no-browser]` (starts uvicorn and opens the browser)
 
   Register the `photoedit` script entry point. Tests use Typer's `CliRunner`.
-- [ ] **P0.8** FastAPI app factory:
+- [x] **P0.8** FastAPI app factory:
   - `GET /api/health` returns `{status, version}`
   - serves the built UI from `ui/dist` when it exists, otherwise a plain "UI not built" page
 
