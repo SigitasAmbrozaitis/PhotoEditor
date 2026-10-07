@@ -125,7 +125,7 @@ The API **contract** (Pydantic models + OpenAPI) is defined here and kept in the
   - Component library: none / Radix primitives (default) / MUI.
 
 ### API contract + mock backend
-- [ ] **P1.1** Pydantic models in `photoedit/models/`:
+- [x] **P1.1** Pydantic models in `photoedit/models/`:
   - `Photo` (id, path, filename, capture date, camera, lens, ISO/shutter/aperture, size, rating, assigned style)
   - `PhotoEdit` (style ref + overrides), `AdjustmentParams` (all groups from PLAN 4.2, with ranges)
   - `Style` (id, name, description, best_for, avoid_on, params, samples)
