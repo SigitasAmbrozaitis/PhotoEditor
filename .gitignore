@@ -1,0 +1,115 @@
+# ---------------------------------------------------------------
+# PhotoEditor .gitignore
+# ---------------------------------------------------------------
+
+# ----- Project data (local, generated, or private) -----
+# Catalog, per-photo edits and preview cache: machine-specific
+/workspace/
+/cache/
+# Test / dev exports
+/output/
+/exports/
+# Local config (photo paths, machine-specific settings)
+config.local.*
+*.local.json
+*.local.toml
+
+# ----- Photos: never commit originals -----
+# Camera RAW formats
+*.raf
+*.RAF
+*.cr2
+*.CR2
+*.cr3
+*.CR3
+*.nef
+*.NEF
+*.arw
+*.ARW
+*.orf
+*.ORF
+*.rw2
+*.RW2
+*.pef
+*.PEF
+*.srw
+*.SRW
+*.dng
+*.DNG
+*.x3f
+*.X3F
+*.3fr
+*.iiq
+# Video that sometimes sits next to photos
+*.mov
+*.MOV
+*.mp4
+*.MP4
+# Ad-hoc sample folder (real sample photos stay in their own folder, read-only)
+/samples/
+# Note: JPEG/PNG are NOT ignored globally. Style sample images
+# (styles/<name>/samples/) and small test fixtures are committed on purpose.
+
+# ----- Python -----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+.venv/
+venv/
+env/
+.python-version.local
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+.ipynb_checkpoints/
+
+# ----- Node / frontend -----
+node_modules/
+ui/dist/
+ui/.vite/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tsbuildinfo
+playwright-report/
+test-results/
+
+# ----- Secrets / environment -----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ----- Tools / IDE -----
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.code-workspace
+.claude/settings.local.json
+
+# ----- OS -----
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+*.lnk
