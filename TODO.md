@@ -145,7 +145,7 @@ The API **contract** (Pydantic models + OpenAPI) is defined here and kept in the
   - `POST` apply-style / export: these return a fake job that progresses over time
 
   Tests for each endpoint, including that responses match the schema.
-- [ ] **P1.4** Generate TypeScript types from OpenAPI (`openapi-typescript`) into `ui/src/api/types.ts`, plus an npm script.
+- [x] **P1.4** Generate TypeScript types from OpenAPI (`openapi-typescript`) into `ui/src/api/schema.d.ts` via `npm run gen:api` (exports `ui/openapi.json` with `photoedit openapi`).
   A test fails if the generated types are out of date.
 
 ### Screens

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import threading
 import webbrowser
 from pathlib import Path
@@ -68,6 +69,18 @@ def ui(
     if not no_browser:
         threading.Timer(1.0, webbrowser.open, args=(url,)).start()
     uvicorn.run(create_app(settings), host=settings.host, port=settings.port, log_level="info")
+
+
+@app.command()
+def openapi() -> None:
+    """Print the HTTP API's OpenAPI schema (UTF-8 JSON). Used to generate the UI's TypeScript types."""
+    from photoedit.api import create_app
+
+    schema = create_app().openapi()
+    text = json.dumps(schema, indent=2, ensure_ascii=False) + "\n"
+    # Write bytes: a redirected Windows console would otherwise use a legacy code page and mangle "×".
+    sys.stdout.buffer.write(text.encode("utf-8"))
+    sys.stdout.flush()
 
 
 def main() -> None:

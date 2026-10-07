@@ -56,3 +56,11 @@ def test_ui_starts_server_without_browser(tmp_path: Path, monkeypatch: pytest.Mo
     assert calls["host"] == "127.0.0.1"
     assert calls["port"] == 9123
     assert "http://127.0.0.1:9123/" in result.stdout
+
+
+def test_openapi_prints_schema() -> None:
+    result = runner.invoke(cli.app, ["openapi"])
+    assert result.exit_code == 0, result.output
+    schema = json.loads(result.stdout)
+    assert "/api/health" in schema["paths"]
+    assert "/api/jobs" in schema["paths"]

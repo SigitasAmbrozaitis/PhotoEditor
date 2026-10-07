@@ -1,0 +1,2575 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "PhotoEditor",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Health",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Library",
+        "operationId": "library_api_library_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/photos": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "List Photos",
+        "operationId": "list_photos_api_photos_get",
+        "parameters": [
+          {
+            "name": "style_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by style id; 'none' = photos without a style.",
+              "title": "Style Id"
+            },
+            "description": "Filter by style id; 'none' = photos without a style."
+          },
+          {
+            "name": "min_rating",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 5,
+              "minimum": 0,
+              "default": 0,
+              "title": "Min Rating"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/PhotoSort",
+              "default": "date"
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SortOrder",
+              "default": "asc"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_Photo_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/photos/{photo_id}": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Photo Detail",
+        "operationId": "photo_detail_api_photos__photo_id__get",
+        "parameters": [
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/photos/{photo_id}/thumbnail": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Photo Thumbnail",
+        "operationId": "photo_thumbnail_api_photos__photo_id__thumbnail_get",
+        "parameters": [
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "JPEG image",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/photos/{photo_id}/preview": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Photo Preview",
+        "operationId": "photo_preview_api_photos__photo_id__preview_get",
+        "parameters": [
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Show the unedited photo.",
+              "default": false,
+              "title": "Before"
+            },
+            "description": "Show the unedited photo."
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 4096,
+              "minimum": 256,
+              "description": "Long edge in pixels.",
+              "default": 1600,
+              "title": "Size"
+            },
+            "description": "Long edge in pixels."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "JPEG image",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/styles": {
+      "get": {
+        "tags": [
+          "styles"
+        ],
+        "summary": "List Styles",
+        "operationId": "list_styles_api_styles_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StyleSummary"
+                  },
+                  "type": "array",
+                  "title": "Response List Styles Api Styles Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/styles/{style_id}": {
+      "get": {
+        "tags": [
+          "styles"
+        ],
+        "summary": "Style",
+        "operationId": "style_api_styles__style_id__get",
+        "parameters": [
+          {
+            "name": "style_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Style Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Style"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/styles/{style_id}/samples/{n}/{which}.jpg": {
+      "get": {
+        "tags": [
+          "styles"
+        ],
+        "summary": "Style Sample",
+        "operationId": "style_sample_api_styles__style_id__samples__n___which__jpg_get",
+        "parameters": [
+          {
+            "name": "style_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Style Id"
+            }
+          },
+          {
+            "name": "n",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "N"
+            }
+          },
+          {
+            "name": "which",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "before",
+                "after"
+              ],
+              "type": "string",
+              "title": "Which"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "JPEG image",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/export-presets": {
+      "get": {
+        "tags": [
+          "export"
+        ],
+        "summary": "List Presets",
+        "operationId": "list_presets_api_export_presets_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExportPreset"
+                  },
+                  "type": "array",
+                  "title": "Response List Presets Api Export Presets Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/export-presets/{preset_id}": {
+      "get": {
+        "tags": [
+          "export"
+        ],
+        "summary": "Preset",
+        "operationId": "preset_api_export_presets__preset_id__get",
+        "parameters": [
+          {
+            "name": "preset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Preset Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportPreset"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "List Jobs",
+        "operationId": "list_jobs_api_jobs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Job"
+                  },
+                  "type": "array",
+                  "title": "Response List Jobs Api Jobs Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Create Job",
+        "operationId": "create_job_api_jobs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ApplyStyleRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ExportRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ApplyAndExportRequest"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Job",
+        "operationId": "job_api_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}/cancel": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Cancel Job",
+        "operationId": "cancel_job_api_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AdjustmentParams": {
+        "properties": {
+          "white_balance": {
+            "$ref": "#/components/schemas/WhiteBalance"
+          },
+          "tone": {
+            "$ref": "#/components/schemas/Tone"
+          },
+          "presence": {
+            "$ref": "#/components/schemas/Presence"
+          },
+          "tone_curve": {
+            "$ref": "#/components/schemas/ToneCurve"
+          },
+          "hsl": {
+            "$ref": "#/components/schemas/Hsl"
+          },
+          "color_grading": {
+            "$ref": "#/components/schemas/ColorGrading"
+          },
+          "detail": {
+            "$ref": "#/components/schemas/Detail"
+          },
+          "effects": {
+            "$ref": "#/components/schemas/Effects"
+          },
+          "geometry": {
+            "$ref": "#/components/schemas/Geometry"
+          },
+          "lens": {
+            "$ref": "#/components/schemas/Lens"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AdjustmentParams",
+        "description": "Complete set of global adjustments. All defaults = identity (no change)."
+      },
+      "ApplyAndExportRequest": {
+        "properties": {
+          "photo_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10000,
+            "minItems": 1,
+            "title": "Photo Ids"
+          },
+          "kind": {
+            "type": "string",
+            "const": "apply_and_export",
+            "title": "Kind",
+            "default": "apply_and_export"
+          },
+          "style_id": {
+            "type": "string",
+            "title": "Style Id"
+          },
+          "preset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset Id"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ExportSettings"
+          },
+          "destination": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Destination"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "photo_ids",
+          "style_id",
+          "settings",
+          "destination"
+        ],
+        "title": "ApplyAndExportRequest"
+      },
+      "ApplyStyleRequest": {
+        "properties": {
+          "photo_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10000,
+            "minItems": 1,
+            "title": "Photo Ids"
+          },
+          "kind": {
+            "type": "string",
+            "const": "apply_style",
+            "title": "Kind",
+            "default": "apply_style"
+          },
+          "style_id": {
+            "type": "string",
+            "title": "Style Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "photo_ids",
+          "style_id"
+        ],
+        "title": "ApplyStyleRequest"
+      },
+      "AspectSettings": {
+        "properties": {
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\d+(\\.\\d+)?:\\d+(\\.\\d+)?$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratio",
+            "description": "Crop to this aspect ratio, e.g. '4:5'. None = keep the photo's own aspect."
+          },
+          "orientation": {
+            "$ref": "#/components/schemas/Orientation",
+            "description": "auto = follow the photo; otherwise force the ratio's orientation.",
+            "default": "auto"
+          },
+          "anchor": {
+            "$ref": "#/components/schemas/CropAnchor",
+            "description": "What the aspect crop is centered on.",
+            "default": "subject"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AspectSettings"
+      },
+      "CollisionPolicy": {
+        "type": "string",
+        "enum": [
+          "suffix",
+          "overwrite",
+          "skip"
+        ],
+        "title": "CollisionPolicy"
+      },
+      "ColorGrading": {
+        "properties": {
+          "shadows": {
+            "$ref": "#/components/schemas/GradeWheel"
+          },
+          "midtones": {
+            "$ref": "#/components/schemas/GradeWheel"
+          },
+          "highlights": {
+            "$ref": "#/components/schemas/GradeWheel"
+          },
+          "global": {
+            "$ref": "#/components/schemas/GradeWheel"
+          },
+          "blending": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Blending",
+            "description": "Overlap between the tonal ranges.",
+            "default": 50
+          },
+          "balance": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Balance",
+            "description": "Shift the shadows/highlights split point.",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ColorGrading"
+      },
+      "ColorSpace": {
+        "type": "string",
+        "enum": [
+          "srgb",
+          "display_p3",
+          "adobe_rgb"
+        ],
+        "title": "ColorSpace"
+      },
+      "CropAnchor": {
+        "type": "string",
+        "enum": [
+          "subject",
+          "center"
+        ],
+        "title": "CropAnchor"
+      },
+      "CropRect": {
+        "properties": {
+          "left": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Left",
+            "default": 0
+          },
+          "top": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Top",
+            "default": 0
+          },
+          "right": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Right",
+            "default": 1
+          },
+          "bottom": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Bottom",
+            "default": 1
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CropRect",
+        "description": "Crop rectangle in normalized image coordinates (0..1), applied after rotation."
+      },
+      "CurvePoint": {
+        "properties": {
+          "x": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "X",
+            "description": "Input level 0..1."
+          },
+          "y": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Y",
+            "description": "Output level 0..1."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "x",
+          "y"
+        ],
+        "title": "CurvePoint"
+      },
+      "Detail": {
+        "properties": {
+          "sharpening": {
+            "$ref": "#/components/schemas/Sharpening"
+          },
+          "noise_reduction": {
+            "$ref": "#/components/schemas/NoiseReduction"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Detail"
+      },
+      "Effects": {
+        "properties": {
+          "vignette": {
+            "$ref": "#/components/schemas/Vignette"
+          },
+          "grain": {
+            "$ref": "#/components/schemas/Grain"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Effects"
+      },
+      "ExportPreset": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "target": {
+            "$ref": "#/components/schemas/ExportTarget",
+            "default": "custom"
+          },
+          "builtin": {
+            "type": "boolean",
+            "title": "Builtin",
+            "description": "Built-in presets can't be edited, only duplicated.",
+            "default": false
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ExportSettings"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "ExportPreset"
+      },
+      "ExportRequest": {
+        "properties": {
+          "photo_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10000,
+            "minItems": 1,
+            "title": "Photo Ids"
+          },
+          "kind": {
+            "type": "string",
+            "const": "export",
+            "title": "Kind",
+            "default": "export"
+          },
+          "preset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset Id",
+            "description": "Preset the settings started from (for display)."
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ExportSettings"
+          },
+          "destination": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Destination"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "photo_ids",
+          "settings",
+          "destination"
+        ],
+        "title": "ExportRequest"
+      },
+      "ExportSettings": {
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/FileSettings"
+          },
+          "color_space": {
+            "$ref": "#/components/schemas/ColorSpace",
+            "default": "srgb"
+          },
+          "size": {
+            "$ref": "#/components/schemas/SizeSettings"
+          },
+          "aspect": {
+            "$ref": "#/components/schemas/AspectSettings"
+          },
+          "sharpening": {
+            "$ref": "#/components/schemas/OutputSharpening"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/MetadataSettings"
+          },
+          "naming": {
+            "$ref": "#/components/schemas/NamingSettings"
+          },
+          "destination": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination",
+            "description": "Default output folder. None = ask every time."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ExportSettings",
+        "description": "Everything needed to turn an edited photo into an output file."
+      },
+      "ExportTarget": {
+        "type": "string",
+        "enum": [
+          "instagram",
+          "print",
+          "web",
+          "custom"
+        ],
+        "title": "ExportTarget"
+      },
+      "FileFormat": {
+        "type": "string",
+        "enum": [
+          "jpeg",
+          "tiff",
+          "png"
+        ],
+        "title": "FileFormat"
+      },
+      "FileSettings": {
+        "properties": {
+          "format": {
+            "$ref": "#/components/schemas/FileFormat",
+            "default": "jpeg"
+          },
+          "jpeg_quality": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Jpeg Quality",
+            "default": 90
+          },
+          "max_file_size_kb": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 50.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max File Size Kb",
+            "description": "JPEG only: shrink quality to fit."
+          },
+          "bit_depth": {
+            "type": "integer",
+            "title": "Bit Depth",
+            "description": "8 or 16 (16 only for TIFF/PNG).",
+            "default": 8
+          },
+          "tiff_compression": {
+            "$ref": "#/components/schemas/TiffCompression",
+            "default": "lzw"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "FileSettings"
+      },
+      "Geometry": {
+        "properties": {
+          "crop": {
+            "$ref": "#/components/schemas/CropRect"
+          },
+          "aspect": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\d+(\\.\\d+)?:\\d+(\\.\\d+)?$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aspect",
+            "description": "Locked aspect ratio such as '4:5'. None = free."
+          },
+          "angle": {
+            "type": "number",
+            "maximum": 45.0,
+            "minimum": -45.0,
+            "title": "Angle",
+            "description": "Straighten / rotate angle in degrees.",
+            "default": 0
+          },
+          "flip_horizontal": {
+            "type": "boolean",
+            "title": "Flip Horizontal",
+            "default": false
+          },
+          "flip_vertical": {
+            "type": "boolean",
+            "title": "Flip Vertical",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Geometry"
+      },
+      "GradeWheel": {
+        "properties": {
+          "hue": {
+            "type": "number",
+            "exclusiveMaximum": 360.0,
+            "minimum": 0.0,
+            "title": "Hue",
+            "description": "Tint hue in degrees.",
+            "default": 0
+          },
+          "saturation": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Saturation",
+            "description": "Tint strength.",
+            "default": 0
+          },
+          "luminance": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Luminance",
+            "description": "Brightness of this tonal range.",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "GradeWheel"
+      },
+      "Grain": {
+        "properties": {
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Amount",
+            "description": "Film grain strength (planned for Phase 9).",
+            "default": 0
+          },
+          "size": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Size",
+            "description": "Grain size.",
+            "default": 25
+          },
+          "roughness": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Roughness",
+            "description": "Grain irregularity.",
+            "default": 50
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Grain"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "Health": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "version"
+        ],
+        "title": "Health"
+      },
+      "Hsl": {
+        "properties": {
+          "red": {
+            "$ref": "#/components/schemas/HslBand"
+          },
+          "orange": {
+            "$ref": "#/components/schemas/HslBand"
+          },
+          "yellow": {
+            "$ref": "#/components/schemas/HslBand"
+          },
+          "green": {
+            "$ref": "#/components/schemas/HslBand"
+          },
+          "aqua": {
+            "$ref": "#/components/schemas/HslBand"
+          },
+          "blue": {
+            "$ref": "#/components/schemas/HslBand"
+          },
+          "purple": {
+            "$ref": "#/components/schemas/HslBand"
+          },
+          "magenta": {
+            "$ref": "#/components/schemas/HslBand"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Hsl"
+      },
+      "HslBand": {
+        "properties": {
+          "hue": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Hue",
+            "description": "Shift hue of this color band.",
+            "default": 0
+          },
+          "saturation": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Saturation",
+            "description": "Saturation of this color band.",
+            "default": 0
+          },
+          "luminance": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Luminance",
+            "description": "Brightness of this color band.",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "HslBand"
+      },
+      "Job": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/JobKind"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Human-readable summary, e.g. 'Apply Moody Forest to 12 photos'."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "progress": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Progress"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total"
+          },
+          "completed": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Completed"
+          },
+          "failed": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Failed",
+            "default": 0
+          },
+          "style_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style Id"
+          },
+          "preset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset Id"
+          },
+          "destination": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/JobItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "title",
+          "created_at",
+          "progress",
+          "total",
+          "completed"
+        ],
+        "title": "Job"
+      },
+      "JobItem": {
+        "properties": {
+          "photo_id": {
+            "type": "string",
+            "title": "Photo Id"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "output_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Path"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "photo_id",
+          "filename",
+          "status"
+        ],
+        "title": "JobItem"
+      },
+      "JobKind": {
+        "type": "string",
+        "enum": [
+          "apply_style",
+          "export",
+          "apply_and_export"
+        ],
+        "title": "JobKind"
+      },
+      "JobStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "done",
+          "failed",
+          "cancelled"
+        ],
+        "title": "JobStatus"
+      },
+      "Lens": {
+        "properties": {
+          "profile_corrections": {
+            "type": "boolean",
+            "title": "Profile Corrections",
+            "description": "Apply lens distortion/vignetting profile.",
+            "default": false
+          },
+          "remove_chromatic_aberration": {
+            "type": "boolean",
+            "title": "Remove Chromatic Aberration",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Lens"
+      },
+      "LibraryInfo": {
+        "properties": {
+          "folder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder",
+            "description": "Currently opened photo folder."
+          },
+          "photo_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Photo Count"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "folder",
+          "photo_count"
+        ],
+        "title": "LibraryInfo"
+      },
+      "MetadataPolicy": {
+        "type": "string",
+        "enum": [
+          "all",
+          "copyright_only",
+          "copyright_and_contact",
+          "all_except_camera_and_gps"
+        ],
+        "title": "MetadataPolicy"
+      },
+      "MetadataSettings": {
+        "properties": {
+          "policy": {
+            "$ref": "#/components/schemas/MetadataPolicy",
+            "default": "all_except_camera_and_gps"
+          },
+          "strip_gps": {
+            "type": "boolean",
+            "title": "Strip Gps",
+            "default": true
+          },
+          "copyright": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Copyright"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Keywords"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "MetadataSettings"
+      },
+      "NamingSettings": {
+        "properties": {
+          "template": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Template",
+            "description": "Tokens: {original} {date} {time} {seq} {seq:03} {style} {preset}.",
+            "default": "{original}"
+          },
+          "on_collision": {
+            "$ref": "#/components/schemas/CollisionPolicy",
+            "default": "suffix"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "NamingSettings"
+      },
+      "NoiseReduction": {
+        "properties": {
+          "luminance": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Luminance",
+            "description": "Luminance noise reduction (planned for Phase 9).",
+            "default": 0
+          },
+          "color": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Color",
+            "description": "Color noise reduction (planned for Phase 9).",
+            "default": 25
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "NoiseReduction"
+      },
+      "Orientation": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "portrait",
+          "landscape"
+        ],
+        "title": "Orientation"
+      },
+      "OutputSharpening": {
+        "properties": {
+          "target": {
+            "$ref": "#/components/schemas/SharpenFor",
+            "default": "screen"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/SharpenAmount",
+            "default": "standard"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "OutputSharpening"
+      },
+      "Page_Photo_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Photo"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Offset"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Limit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "offset",
+          "limit"
+        ],
+        "title": "Page[Photo]"
+      },
+      "Photo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable catalog id."
+          },
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "description": "Absolute path of the original file (read-only)."
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "folder": {
+            "type": "string",
+            "title": "Folder"
+          },
+          "file_size": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "File Size",
+            "description": "Bytes."
+          },
+          "captured_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
+          },
+          "camera": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera",
+            "description": "Camera make and model, e.g. 'FUJIFILM X-T3'."
+          },
+          "lens": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lens"
+          },
+          "iso": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iso"
+          },
+          "shutter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shutter",
+            "description": "Exposure time as displayed, e.g. '1/250'."
+          },
+          "aperture": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aperture",
+            "description": "f-number."
+          },
+          "focal_length": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focal Length",
+            "description": "Millimetres."
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Width",
+            "description": "Pixel width after orientation."
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Height",
+            "description": "Pixel height after orientation."
+          },
+          "rating": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Rating",
+            "default": 0
+          },
+          "style_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style Id",
+            "description": "Style assigned to this photo, if any."
+          },
+          "has_overrides": {
+            "type": "boolean",
+            "title": "Has Overrides",
+            "description": "Per-photo adjustments on top of the style.",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "path",
+          "filename",
+          "folder",
+          "file_size",
+          "width",
+          "height"
+        ],
+        "title": "Photo",
+        "description": "A source photo known to the catalog. The file itself is never modified."
+      },
+      "PhotoDetail": {
+        "properties": {
+          "photo": {
+            "$ref": "#/components/schemas/Photo"
+          },
+          "edit": {
+            "$ref": "#/components/schemas/PhotoEdit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "photo",
+          "edit"
+        ],
+        "title": "PhotoDetail"
+      },
+      "PhotoEdit": {
+        "properties": {
+          "photo_id": {
+            "type": "string",
+            "title": "Photo Id"
+          },
+          "style_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style Id"
+          },
+          "adjustments": {
+            "$ref": "#/components/schemas/AdjustmentParams",
+            "description": "Effective adjustments (style + overrides)."
+          },
+          "overridden": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Overridden",
+            "description": "Dotted parameter names that are overridden per photo, e.g. 'tone.exposure'."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "photo_id"
+        ],
+        "title": "PhotoEdit",
+        "description": "The edit of one photo: an optional style plus per-photo overrides. Overrides always win."
+      },
+      "PhotoSort": {
+        "type": "string",
+        "enum": [
+          "date",
+          "name",
+          "rating"
+        ],
+        "title": "PhotoSort"
+      },
+      "Presence": {
+        "properties": {
+          "vibrance": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Vibrance",
+            "description": "Saturation boost weighted toward muted colors.",
+            "default": 0
+          },
+          "saturation": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Saturation",
+            "description": "Uniform saturation.",
+            "default": 0
+          },
+          "clarity": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Clarity",
+            "description": "Midtone local contrast (planned for Phase 9).",
+            "default": 0
+          },
+          "texture": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Texture",
+            "description": "Fine-detail local contrast (planned for Phase 9).",
+            "default": 0
+          },
+          "dehaze": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Dehaze",
+            "description": "Remove (+) or add (-) atmospheric haze (planned for Phase 9).",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Presence"
+      },
+      "ResizeMode": {
+        "type": "string",
+        "enum": [
+          "original",
+          "long_edge",
+          "short_edge",
+          "width_height",
+          "megapixels",
+          "percentage"
+        ],
+        "title": "ResizeMode"
+      },
+      "SharpenAmount": {
+        "type": "string",
+        "enum": [
+          "low",
+          "standard",
+          "high"
+        ],
+        "title": "SharpenAmount"
+      },
+      "SharpenFor": {
+        "type": "string",
+        "enum": [
+          "none",
+          "screen",
+          "matte_paper",
+          "glossy_paper"
+        ],
+        "title": "SharpenFor"
+      },
+      "Sharpening": {
+        "properties": {
+          "amount": {
+            "type": "number",
+            "maximum": 150.0,
+            "minimum": 0.0,
+            "title": "Amount",
+            "description": "Sharpening strength.",
+            "default": 40
+          },
+          "radius": {
+            "type": "number",
+            "maximum": 3.0,
+            "minimum": 0.5,
+            "title": "Radius",
+            "description": "Edge width in pixels.",
+            "default": 1.0
+          },
+          "detail": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Detail",
+            "description": "How much fine detail is sharpened.",
+            "default": 25
+          },
+          "masking": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Masking",
+            "description": "Limit sharpening to edges (higher = fewer areas).",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Sharpening"
+      },
+      "SizeSettings": {
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/ResizeMode",
+            "default": "original"
+          },
+          "long_edge": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 65535.0,
+                "minimum": 16.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Long Edge",
+            "description": "Pixels (mode=long_edge)."
+          },
+          "short_edge": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 65535.0,
+                "minimum": 16.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Short Edge",
+            "description": "Pixels (mode=short_edge)."
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 65535.0,
+                "minimum": 16.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width",
+            "description": "Pixels (mode=width_height)."
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 65535.0,
+                "minimum": 16.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height",
+            "description": "Pixels (mode=width_height)."
+          },
+          "megapixels": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 500.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Megapixels"
+          },
+          "percentage": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percentage"
+          },
+          "dont_enlarge": {
+            "type": "boolean",
+            "title": "Dont Enlarge",
+            "default": true
+          },
+          "ppi": {
+            "type": "integer",
+            "maximum": 2400.0,
+            "minimum": 1.0,
+            "title": "Ppi",
+            "description": "Print resolution stored in the file.",
+            "default": 300
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SizeSettings"
+      },
+      "SortOrder": {
+        "type": "string",
+        "enum": [
+          "asc",
+          "desc"
+        ],
+        "title": "SortOrder"
+      },
+      "Style": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "title": "Id",
+            "description": "Slug, also the folder name under styles/."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Description",
+            "default": ""
+          },
+          "cover_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url",
+            "description": "Thumbnail of an 'after' sample."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "best_for": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Best For",
+            "description": "Scenes/subjects the style suits."
+          },
+          "avoid_on": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Avoid On",
+            "description": "Scenes/subjects the style handles badly."
+          },
+          "adjustments": {
+            "$ref": "#/components/schemas/AdjustmentParams"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/StyleSample"
+            },
+            "type": "array",
+            "title": "Samples"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "Incremented on every saved change.",
+            "default": 1
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "updated_at",
+          "created_at"
+        ],
+        "title": "Style"
+      },
+      "StyleSample": {
+        "properties": {
+          "caption": {
+            "type": "string",
+            "title": "Caption",
+            "default": ""
+          },
+          "before_url": {
+            "type": "string",
+            "title": "Before Url"
+          },
+          "after_url": {
+            "type": "string",
+            "title": "After Url"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "before_url",
+          "after_url"
+        ],
+        "title": "StyleSample",
+        "description": "A before/after example showing the expected result of a style."
+      },
+      "StyleSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "title": "Id",
+            "description": "Slug, also the folder name under styles/."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Description",
+            "default": ""
+          },
+          "cover_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url",
+            "description": "Thumbnail of an 'after' sample."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "updated_at"
+        ],
+        "title": "StyleSummary"
+      },
+      "TiffCompression": {
+        "type": "string",
+        "enum": [
+          "none",
+          "lzw",
+          "zip"
+        ],
+        "title": "TiffCompression"
+      },
+      "Tone": {
+        "properties": {
+          "exposure": {
+            "type": "number",
+            "maximum": 5.0,
+            "minimum": -5.0,
+            "title": "Exposure",
+            "description": "Exposure in EV stops.",
+            "default": 0
+          },
+          "contrast": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Contrast",
+            "description": "Global contrast.",
+            "default": 0
+          },
+          "highlights": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Highlights",
+            "description": "Recover (-) or boost (+) bright areas.",
+            "default": 0
+          },
+          "shadows": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Shadows",
+            "description": "Deepen (-) or lift (+) dark areas.",
+            "default": 0
+          },
+          "whites": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Whites",
+            "description": "White point.",
+            "default": 0
+          },
+          "blacks": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Blacks",
+            "description": "Black point.",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Tone"
+      },
+      "ToneCurve": {
+        "properties": {
+          "highlights": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Highlights",
+            "description": "Parametric curve: highlights region.",
+            "default": 0
+          },
+          "lights": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Lights",
+            "description": "Parametric curve: lights region.",
+            "default": 0
+          },
+          "darks": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Darks",
+            "description": "Parametric curve: darks region.",
+            "default": 0
+          },
+          "shadows": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Shadows",
+            "description": "Parametric curve: shadows region.",
+            "default": 0
+          },
+          "rgb": {
+            "items": {
+              "$ref": "#/components/schemas/CurvePoint"
+            },
+            "type": "array",
+            "maxItems": 16,
+            "minItems": 2,
+            "title": "Rgb"
+          },
+          "red": {
+            "items": {
+              "$ref": "#/components/schemas/CurvePoint"
+            },
+            "type": "array",
+            "maxItems": 16,
+            "minItems": 2,
+            "title": "Red"
+          },
+          "green": {
+            "items": {
+              "$ref": "#/components/schemas/CurvePoint"
+            },
+            "type": "array",
+            "maxItems": 16,
+            "minItems": 2,
+            "title": "Green"
+          },
+          "blue": {
+            "items": {
+              "$ref": "#/components/schemas/CurvePoint"
+            },
+            "type": "array",
+            "maxItems": 16,
+            "minItems": 2,
+            "title": "Blue"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ToneCurve"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "Vignette": {
+        "properties": {
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Amount",
+            "description": "Darken (-) or lighten (+) the corners.",
+            "default": 0
+          },
+          "midpoint": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Midpoint",
+            "description": "How far the vignette reaches toward the center.",
+            "default": 50
+          },
+          "roundness": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Roundness",
+            "description": "Shape: rectangular (-) to circular (+).",
+            "default": 0
+          },
+          "feather": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Feather",
+            "description": "Softness of the vignette edge.",
+            "default": 50
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Vignette"
+      },
+      "WhiteBalance": {
+        "properties": {
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 50000.0,
+                "minimum": 2000.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature",
+            "description": "Color temperature in Kelvin. None = as shot."
+          },
+          "tint": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 150.0,
+                "minimum": -150.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tint",
+            "description": "Green (-) / magenta (+) tint. None = as shot."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "WhiteBalance"
+      }
+    }
+  }
+}
