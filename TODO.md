@@ -119,13 +119,13 @@ Goal: every screen of the full use loop is clickable, so you can judge the look 
 The API **contract** (Pydantic models + OpenAPI) is defined here and kept in the later phases. Only the implementation behind it changes.
 
 ### Decisions to confirm at phase start (ask the user)
-- [ ] **P1.0** Confirm the UI basics:
+- [x] **P1.0** Confirm the UI basics (decided: dark neutral gray, Tailwind CSS, Radix primitives):
   - Visual style: dark neutral-gray theme (the standard for photo editors, because it doesn't bias color perception). Light theme optional.
   - Styling approach: Tailwind CSS (default) or plain CSS modules.
   - Component library: none / Radix primitives (default) / MUI.
 
 ### API contract + mock backend
-- [ ] **P1.1** Pydantic models in `photoedit/models/`:
+- [x] **P1.1** Pydantic models in `photoedit/models/`:
   - `Photo` (id, path, filename, capture date, camera, lens, ISO/shutter/aperture, size, rating, assigned style)
   - `PhotoEdit` (style ref + overrides), `AdjustmentParams` (all groups from PLAN 4.2, with ranges)
   - `Style` (id, name, description, best_for, avoid_on, params, samples)
@@ -133,10 +133,11 @@ The API **contract** (Pydantic models + OpenAPI) is defined here and kept in the
   - `Job` (id, kind, status, progress, items)
 
   Tests: validation, ranges, JSON round-trip.
-- [ ] **P1.2** Mock data provider: ~24 fake photos, 4 styles, the built-in export presets (Instagram portrait, square,
+- [x] **P1.2** Mock data provider: ~24 fake photos, 4 styles, the built-in export presets (Instagram portrait, square,
   landscape, story; Print 4×6, 5×7, 8×10, A4, A3; Web full size) and 2 jobs. Placeholder images are generated in code as
-  gradients/patterns with a label, and cached in `/cache` (no real photos).
-- [ ] **P1.3** Mock endpoints (`/api/...`):
+  gradients/patterns with a label, and cached in memory (no real photos, no disk writes). The built-in presets are
+  real data in `core/presets.py` and are kept for Phase 5.
+- [x] **P1.3** Mock endpoints (`/api/...`):
   - photos list (filter, paging), photo detail, thumbnail, preview (`?before=true`)
   - styles list/detail
   - export presets list/detail
@@ -144,41 +145,56 @@ The API **contract** (Pydantic models + OpenAPI) is defined here and kept in the
   - `POST` apply-style / export: these return a fake job that progresses over time
 
   Tests for each endpoint, including that responses match the schema.
-- [ ] **P1.4** Generate TypeScript types from OpenAPI (`openapi-typescript`) into `ui/src/api/types.ts`, plus an npm script.
+- [x] **P1.4** Generate TypeScript types from OpenAPI (`openapi-typescript`) into `ui/src/api/schema.d.ts` via `npm run gen:api` (exports `ui/openapi.json` with `photoedit openapi`).
   A test fails if the generated types are out of date.
 
 ### Screens
-- [ ] **P1.5** App layout:
+- [x] **P1.5** App layout:
   - left navigation: Library, Styles, Export presets, Jobs
   - top bar: current folder, job indicator
   - routing (react-router), with a URL for each screen
-- [ ] **P1.6** **Library**: folder picker field (shows the folder path), thumbnail grid, single/multi/range select,
+- [x] **P1.6** **Library**: folder picker field (shows the folder path), thumbnail grid, single/multi/range select,
   sort/filter (date, style, rating), style badge on each thumbnail, selection count. Actions bar: "Apply style…", "Export…".
-- [ ] **P1.7** **Photo view**:
+- [x] **P1.7** **Photo view**:
   - large preview, with before/after as a toggle *and* a split-slider mode, and a filmstrip
   - adjustment panel with every parameter group from PLAN 4.2, shown as **disabled** sliders with the current values
   - EXIF info panel
   - crop overlay placeholder
-- [ ] **P1.8** **Styles library**: a card grid (name, short description, after-sample thumbnail) and a "Create style…" button (it opens a "coming in Phase 8" dialog).
-- [ ] **P1.9** **Style detail**: description, best for / avoid on, before/after sample pairs, a parameter table, and an "Apply to selection" button.
-- [ ] **P1.10** **Export dialog**: preset dropdown plus every setting from PLAN 4.6 (file, color space, size, aspect/orientation,
+- [x] **P1.8** **Styles library**: a card grid (name, short description, after-sample thumbnail) and a "Create style…" button (it opens a "coming in Phase 8" dialog).
+- [x] **P1.9** **Style detail**: description, best for / avoid on, before/after sample pairs, a parameter table, and an "Apply to selection" button.
+- [x] **P1.10** **Export dialog**: preset dropdown plus every setting from PLAN 4.6 (file, color space, size, aspect/orientation,
   sharpening, metadata, naming, destination folder), and a live summary line ("1080×1350 JPEG q90 sRGB → C:\…").
-- [ ] **P1.11** **Apply + export flow** (the full use loop): select photos → pick a style → pick an export preset → pick a
+- [x] **P1.11** **Apply + export flow** (the full use loop): select photos → pick a style → pick an export preset → pick a
   destination → confirm. A mock job then starts, and progress shows in the **Jobs** panel.
-- [ ] **P1.12** **Jobs** screen: list with progress bars and status, plus per-item status in the job detail.
-- [ ] **P1.13** UI tests (Vitest + RTL): each screen renders with mock data, plus key interactions (select photos, open the
+- [x] **P1.12** **Jobs** screen: list with progress bars and status, plus per-item status in the job detail.
+- [x] **P1.13** UI tests (Vitest + RTL): each screen renders with mock data, plus key interactions (select photos, open the
   export dialog, change a preset → the summary updates, complete the apply flow → a job appears).
-- [ ] **P1.14** Playwright smoke test: start the backend and UI, click through the full use loop, and take screenshots into `/output/screenshots`.
-- [ ] **P1.15** Full check (as in P0.14) and update the README.
+- [x] **P1.14** Playwright smoke test: start the backend and UI, click through the full use loop, and take screenshots into `/output/screenshots`. (`npm run test:e2e`; uses the installed Google Chrome, so no browser download.)
+- [x] **P1.15** Full check (as in P0.14) and update the README.
 
 ### 🧑 Human test: Phase 1
-1. `uv run photoedit ui` → the browser opens on the Library with ~24 placeholder thumbnails.
-2. Select a few photos → the selection count updates. Open one → the Photo view shows the preview and the before/after toggle and split work.
-3. Styles → 4 cards → open one → the detail page shows samples and the parameter table.
-4. Library → select photos → "Apply style…" → choose a style → choose "Instagram portrait" → choose a destination → confirm →
-   Jobs shows a progressing job.
-5. Open the Export dialog → switch presets → the summary line updates.
-6. **Give feedback on layout, look and feel.** Changes are made before Phase 2.
+0. Stop any `photoedit ui` still running from Phase 0 (Ctrl+C in its terminal), because it holds files that `uv sync` must
+   update. Then, in a new terminal: `uv sync`, `npm --prefix ui install` and `npm --prefix ui run build`.
+1. `uv run photoedit ui` → the browser opens on the **Library**: 24 placeholder thumbnails, a yellow `DEMO DATA` tag and a
+   green backend badge.
+2. Selecting: click one photo, **Shift+click** another (range), **Ctrl+click** to add/remove → "N selected" updates.
+   Try sorting (date/name/rating, ↑↓), the Style filter and the Rating filter.
+3. **Double-click** a photo (or Enter) → the **Photo view**. Check the **After / Before / Split** buttons (drag across the
+   image in Split), the **Crop** overlay, the right panel (**Adjust**: read-only sliders per group; **Info**: EXIF), the
+   filmstrip, and ←/→ keys for prev/next and Esc to go back.
+4. **Styles** → 4 cards → open one → description, best for / avoid on, before/after samples and the parameter table.
+   "Create style…" explains Phase 8.
+5. Library → select several photos → **Apply style…** → pick a style → Next → keep "Instagram portrait (4:5)" → click a
+   *Recent* destination or type one → Next → review → **Apply & export** → you land on **Jobs**, and the job's progress
+   bar runs to 100%. The top bar shows "N running" while it runs.
+6. Library → select photos → **Export…** → switch presets and change settings → the summary line at the bottom updates
+   live, and the preset label says "(modified)".
+7. **Export presets** → browse the 10 built-in presets (read-only).
+8. **Give feedback on layout, look and feel** (colors, sizes, what's missing or in the wrong place). Changes are made on
+   this branch before Phase 2.
+
+Optional: `npm --prefix ui run test:e2e` clicks through the whole loop in Chrome and saves screenshots of every screen to
+`output/screenshots/`.
 
 ### ⛔ STOP: user approves the UI skeleton (with any change requests applied)
 

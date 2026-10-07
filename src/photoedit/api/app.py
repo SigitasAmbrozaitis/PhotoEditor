@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
 
 from photoedit import __version__
+from photoedit.api.routes import router
 from photoedit.config import Settings, load_settings
+from photoedit.mock import MockBackend, NotFoundError
 
 UI_NOT_BUILT_HTML = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>PhotoEditor</title></head>
@@ -27,14 +29,24 @@ class Health(BaseModel):
     version: str
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, backend: MockBackend | None = None) -> FastAPI:
     settings = settings if settings is not None else load_settings()
     app = FastAPI(title="PhotoEditor", version=__version__)
     app.state.settings = settings
+    if backend is None:
+        folder = settings.sample_photos_dir.as_posix() if settings.sample_photos_dir else "C:/Photos/Demo"
+        backend = MockBackend(folder=folder)
+    app.state.backend = backend
+
+    @app.exception_handler(NotFoundError)
+    async def not_found(_: Request, exc: NotFoundError) -> JSONResponse:
+        return JSONResponse(status_code=404, content={"detail": str(exc)})
 
     @app.get("/api/health", response_model=Health, tags=["system"])
     def health() -> Health:
         return Health(status="ok", version=__version__)
+
+    app.include_router(router)
 
     ui_dist = settings.ui_dist_dir
 

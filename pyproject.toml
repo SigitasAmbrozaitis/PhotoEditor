@@ -11,6 +11,7 @@ authors = [
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi>=0.142.2",
+    "pillow>=12.3.0",
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
     "typer>=0.27.3",
@@ -45,6 +46,9 @@ select = [
     "RUF",      # ruff-specific
     "PTH",      # use pathlib
 ]
+
+# "×" is intentional in user-facing sizes like "1080×1350".
+allowed-confusables = ["×"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["N802"]

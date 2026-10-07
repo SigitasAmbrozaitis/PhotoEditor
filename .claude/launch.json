@@ -4,14 +4,15 @@
     {
       "name": "backend",
       "runtimeExecutable": ".venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "photoedit", "ui", "--no-browser"],
-      "port": 8765
+      "runtimeArgs": ["-m", "photoedit", "ui", "--no-browser", "--port", "8766"],
+      "port": 8766
     },
     {
       "name": "ui-dev",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["ui/node_modules/vite/bin/vite.js", "ui", "--port", "5173", "--strictPort"],
-      "port": 5173
+      "runtimeArgs": ["ui/node_modules/vite/bin/vite.js", "ui", "--port", "5174", "--strictPort"],
+      "env": { "PHOTOEDIT_BACKEND": "http://127.0.0.1:8766" },
+      "port": 5174
     }
   ]
 }

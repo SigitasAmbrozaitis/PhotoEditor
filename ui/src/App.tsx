@@ -1,34 +1,45 @@
-import { useBackendHealth, type BackendState } from './hooks/useBackendHealth'
+import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
+import { Tooltip } from 'radix-ui'
+import { useState, type ReactNode } from 'react'
+import { Navigate, Route, Routes } from 'react-router'
+import { Layout } from './components/Layout'
+import { EmptyState } from './components/ui'
+import { JobsPage } from './features/jobs/JobsPage'
+import { LibraryPage } from './features/library/LibraryPage'
+import { PhotoPage } from './features/photo/PhotoPage'
+import { PresetsPage } from './features/presets/PresetsPage'
+import { StyleDetailPage } from './features/styles/StyleDetailPage'
+import { StylesPage } from './features/styles/StylesPage'
+import { createQueryClient } from './queryClient'
+import { SelectionProvider } from './state/SelectionProvider'
 
-function BackendBadge({ state }: { state: BackendState }) {
-  switch (state.kind) {
-    case 'checking':
-      return <span className="badge badge--checking">connecting…</span>
-    case 'online':
-      return <span className="badge badge--online">backend v{state.version}</span>
-    case 'offline':
-      return (
-        <span className="badge badge--offline" role="alert">
-          backend offline
-        </span>
-      )
-  }
+/** Data, selection and tooltip providers. The router is supplied by the caller (BrowserRouter or MemoryRouter). */
+export function Providers({ children, client }: { children: ReactNode; client?: QueryClient }) {
+  const [defaultClient] = useState(createQueryClient)
+  return (
+    <QueryClientProvider client={client ?? defaultClient}>
+      <Tooltip.Provider>
+        <SelectionProvider>{children}</SelectionProvider>
+      </Tooltip.Provider>
+    </QueryClientProvider>
+  )
 }
 
-export default function App() {
-  const backend = useBackendHealth()
-
+export function AppRoutes() {
   return (
-    <div className="app">
-      <header className="topbar">
-        <h1 className="brand">PhotoEditor</h1>
-        <BackendBadge state={backend} />
-      </header>
-      <main className="content">
-        <p className="placeholder">
-          Project scaffold is running. Screens arrive in Phase 1 (UI skeleton).
-        </p>
-      </main>
-    </div>
+    <Routes>
+      <Route element={<Layout />}>
+        <Route index element={<Navigate to="/library" replace />} />
+        <Route path="library" element={<LibraryPage />} />
+        <Route path="library/:photoId" element={<PhotoPage />} />
+        <Route path="styles" element={<StylesPage />} />
+        <Route path="styles/:styleId" element={<StyleDetailPage />} />
+        <Route path="presets" element={<PresetsPage />} />
+        <Route path="presets/:presetId" element={<PresetsPage />} />
+        <Route path="jobs" element={<JobsPage />} />
+        <Route path="jobs/:jobId" element={<JobsPage />} />
+        <Route path="*" element={<EmptyState title="Page not found." />} />
+      </Route>
+    </Routes>
   )
 }

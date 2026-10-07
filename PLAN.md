@@ -17,6 +17,7 @@
 | Style samples | **No style yet. At the style-creation phase, STOP and ask the user for style samples.** | 2026-10-07 |
 | Lightroom import | **Not needed** (fallback F4 dropped) | 2026-10-07 |
 | Folder layout | **Tool + its data (workspace, styles, presets) live in `C:\Work\PhotoEditing`. Photos and exports live in other folders.** During development, test exports go to `C:\Work\PhotoEditing\output\` (git-ignored). | 2026-10-07 |
+| UI look & build | **Dark neutral-gray theme, Tailwind CSS, Radix primitives** (plus react-router, TanStack Query, lucide icons) | 2026-10-07 |
 
 **Target machine**: i7-12700H (14 cores / 20 threads), 16 GB RAM, RTX 3060 Laptop (6 GB), Windows 11.
 .NET 9 SDK is installed. Python and uv are not installed yet.

@@ -51,13 +51,22 @@ npm test                      # Vitest
 npm run lint                  # oxlint
 npm run build                 # type-check + production build into ui/dist
 npm run dev                   # dev server http://localhost:5173 (proxies /api to :8765)
+npm run gen:api               # after any API/model change: regenerate openapi.json + src/api/schema.d.ts
+npm run test:e2e              # Playwright smoke test (installed Chrome; needs `npm run build` first);
+                              # screenshots of every screen go to output/screenshots/
 
 # Both at once with hot reload
 scripts\dev.cmd
 ```
 
 All of these must be green before an item is ticked: `pytest`, `ruff check`, `ruff format --check`, `mypy`, `npm test`,
-`npm run lint`, `npm run build`.
+`npm run lint`, `npm run build` (and `npm run test:e2e` at the end of a phase that touches the UI).
+
+API contract: Python models in `photoedit.models` are the source of truth. After changing them or any route, run
+`npm run gen:api`; tests fail if `ui/openapi.json` or `ui/src/api/schema.d.ts` are stale.
+
+Claude's browser previews (`.claude/launch.json`) use ports 8766/5174 so they never clash with the user's own
+`photoedit ui` on 8765.
 
 ## Layout
 
@@ -66,11 +75,14 @@ src/photoedit/
   cli.py        Typer CLI (thin)
   config.py     Settings: defaults < config.local.toml < PHOTOEDIT_* env < explicit overrides
   safety.py     PathGuard: write-boundary enforcement
-  api/          FastAPI app (thin); serves ui/dist
-  core/         all real logic (library, edits, render, styles, export)
+  models/       Pydantic data models = the API contract (photos, adjustments, styles, export, jobs)
+  api/          FastAPI app + routes (thin); serves ui/dist
+  core/         all real logic (library, edits, render, styles, export); core/presets.py = built-in presets
+  mock/         Phase 1 fake backend (replaced piece by piece from Phase 2)
   mcp/          MCP server for Claude (Phase 7)
 tests/          pytest; mirrors src/
-ui/             React + TypeScript web UI
+ui/             React + TypeScript web UI (src/features/<screen>/, src/api/ generated types + query hooks,
+                src/components/ shared UI, src/test/ fake API + fixtures, e2e/ Playwright)
 scripts/        dev helpers
 ```
 
