@@ -80,11 +80,11 @@ Goal: an empty but complete project. The Python package, CLI, API server, web UI
   Tests use `TestClient`.
 
 ### Web UI scaffold
-- [ ] **P0.9** `ui/`: Vite + React + TypeScript (strict). Dev server proxy `/api` → `127.0.0.1:8765`.
-  Add `npm run build`, `npm run dev`, `npm test` (Vitest + React Testing Library) and `npm run lint` (ESLint).
-- [ ] **P0.10** The UI shell shows "PhotoEditor" plus the backend version from `/api/health`. If the backend is down, it shows a red "backend offline" badge.
+- [x] **P0.9** `ui/`: Vite + React + TypeScript (strict). Dev server proxy `/api` → `127.0.0.1:8765`.
+  Add `npm run build`, `npm run dev`, `npm test` (Vitest + React Testing Library) and `npm run lint` (oxlint, the Vite template default).
+- [x] **P0.10** The UI shell shows "PhotoEditor" plus the backend version from `/api/health`. If the backend is down, it shows a red "backend offline" badge.
   Tests: renders the version, and shows the offline state (fetch mocked).
-- [ ] **P0.11** Dev launch:
+- [x] **P0.11** Dev launch:
   - `.claude/launch.json` (backend + UI dev server), so Claude can preview the UI
   - `scripts/dev.ps1`, which starts both processes for the user
 
@@ -103,7 +103,7 @@ Goal: an empty but complete project. The Python package, CLI, API server, web UI
 2. `uv run photoedit --version` → prints `0.1.0`.
 3. `uv run photoedit config show` → shows the paths under `C:\Work\PhotoEditing`.
 4. `cd ui; npm install; npm run build; cd ..` → the build succeeds.
-5. `uv run photoedit ui` → the browser opens and shows "PhotoEditor" with the version. Stop the server, and the page shows "backend offline" after a refresh.
+5. `uv run photoedit ui` → the browser opens and shows "PhotoEditor" with a green `backend v0.1.0` badge.
 6. `uv run pytest` → all tests pass.
 
 ### ⛔ STOP: user approves Phase 0

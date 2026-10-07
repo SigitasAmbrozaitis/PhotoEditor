@@ -38,7 +38,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     ui_dist = settings.ui_dist_dir
 
-    @app.get("/{full_path:path}", include_in_schema=False)
+    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     def ui(full_path: str) -> Response:
         # Unknown API routes must stay JSON 404s, not fall through to the UI.
         if full_path == "api" or full_path.startswith("api/"):

@@ -70,6 +70,10 @@ def test_path_traversal_does_not_escape_ui_dist(
         assert "SECRET" not in r.text, url
 
 
+def test_head_request_on_ui_is_allowed(client: TestClient, built_ui: Path) -> None:
+    assert client.head("/").status_code == 200
+
+
 def test_openapi_lists_health(client: TestClient) -> None:
     schema = client.get("/openapi.json").json()
     assert "/api/health" in schema["paths"]
