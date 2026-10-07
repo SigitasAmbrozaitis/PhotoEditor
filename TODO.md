@@ -119,7 +119,7 @@ Goal: every screen of the full use loop is clickable, so you can judge the look 
 The API **contract** (Pydantic models + OpenAPI) is defined here and kept in the later phases. Only the implementation behind it changes.
 
 ### Decisions to confirm at phase start (ask the user)
-- [ ] **P1.0** Confirm the UI basics:
+- [x] **P1.0** Confirm the UI basics (decided: dark neutral gray, Tailwind CSS, Radix primitives):
   - Visual style: dark neutral-gray theme (the standard for photo editors, because it doesn't bias color perception). Light theme optional.
   - Styling approach: Tailwind CSS (default) or plain CSS modules.
   - Component library: none / Radix primitives (default) / MUI.
