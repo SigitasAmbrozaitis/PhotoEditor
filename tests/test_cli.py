@@ -17,6 +17,14 @@ def test_version() -> None:
     assert result.stdout.strip() == __version__
 
 
+def test_version_command_lists_native_libraries() -> None:
+    result = runner.invoke(cli.app, ["version"])
+    assert result.exit_code == 0, result.output
+    assert f"photoedit {__version__}" in result.stdout
+    assert "LibRaw 0." in result.stdout
+    assert "numpy" in result.stdout
+
+
 def test_version_is_semver() -> None:
     assert __version__.count(".") == 2
 

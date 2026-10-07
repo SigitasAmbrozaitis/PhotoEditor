@@ -214,7 +214,7 @@ underexposes the RAW to protect highlights).
 - [x] **P2.0** Detail this phase into items. ⛔ STOP for the user to review it.
 
 ### Decisions to confirm at phase start (ask the user)
-- [ ] **P2.1** Confirm (defaults proposed; plan changes go into PLAN.md §0 once confirmed):
+- [x] **P2.1** Confirm (all defaults confirmed 2026-10-07 and recorded in PLAN.md §0):
   - **RAW + JPEG pairs** (`DSCF5437.RAF` + `DSCF5437.JPG`): one photo. The RAW is the master; the camera JPEG is
     remembered as a sidecar (test data for Phase 8). A JPEG/TIFF without a RAW is a photo of its own. Other files (`.MOV`…)
     are skipped and counted.
@@ -230,8 +230,8 @@ underexposes the RAW to protect highlights).
     in Phase 4.
 
 ### Dependencies
-- [ ] **P2.2** Add runtime deps `rawpy` and `numpy`, and `psutil` (for the benchmark's RAM measurement). Commit `uv.lock`.
-  Show the LibRaw version in `photoedit --version --verbose` (it is part of the render identity).
+- [x] **P2.2** Add runtime deps `rawpy` and `numpy`, and `psutil` (for the benchmark's RAM measurement). Commit `uv.lock`.
+  `photoedit version` prints the photoedit, Python, rawpy/LibRaw and numpy versions (LibRaw is part of the render identity).
 
 ### Reading files (read-only)
 - [ ] **P2.3** `core/scan.py`: list a folder's supported files (optionally recursive) and group RAW + JPEG pairs by

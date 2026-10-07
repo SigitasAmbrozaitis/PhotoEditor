@@ -44,6 +44,22 @@ def _root(
     """PhotoEditor command-line interface."""
 
 
+@app.command()
+def version() -> None:
+    """Print the versions of PhotoEditor and the native libraries that decide how photos render."""
+    import platform
+    from importlib.metadata import version as package_version
+
+    import numpy
+    from rawpy._rawpy import libraw_version  # rawpy re-exports it untyped
+
+    libraw = ".".join(str(part) for part in libraw_version)
+    typer.echo(f"photoedit {__version__}")
+    typer.echo(f"python    {platform.python_version()}")
+    typer.echo(f"rawpy     {package_version('rawpy')} (LibRaw {libraw})")
+    typer.echo(f"numpy     {numpy.__version__}")
+
+
 @config_app.command("show")
 def config_show(config: ConfigOption = None) -> None:
     """Print the effective settings as JSON."""
