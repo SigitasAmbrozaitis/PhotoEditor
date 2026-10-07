@@ -234,23 +234,25 @@ underexposes the RAW to protect highlights).
   `photoedit version` prints the photoedit, Python, rawpy/LibRaw and numpy versions (LibRaw is part of the render identity).
 
 ### Reading files (read-only)
-- [ ] **P2.3** `core/scan.py`: list a folder's supported files (optionally recursive) and group RAW + JPEG pairs by
+- [x] **P2.3** `core/scan.py`: list a folder's supported files (optionally recursive) and group RAW + JPEG pairs by
   file stem (case-insensitive). Supported: RAW extensions LibRaw handles (`.raf .cr2 .cr3 .nef .arw .orf .rw2 .dng .pef
   .srw`), plus `.jpg .jpeg .tif .tiff`. Result model: photos found + skipped files with a reason. Files are only ever
   opened `"rb"`.
   Tests (synthetic files in `tmp_path`): pairing, case variants, lone JPEG, lone RAW, skipped types, subfolders on/off,
   a missing folder and a file path instead of a folder → clear errors.
-- [ ] **P2.4** `core/metadata.py`: EXIF → a `PhotoMetadata` model. Strip NULs; camera `"FUJIFILM X-T3"` (no doubled
+- [x] **P2.4** `core/metadata.py`: EXIF → a `PhotoMetadata` model. Strip NULs; camera `"FUJIFILM X-T3"` (no doubled
   make); shutter as displayed (`0.00025` → `"1/4000"`, `0.5` → `"0.5s"`, `2` → `"2s"`); `captured_at` from
   `DateTimeOriginal` (+ `OffsetTimeOriginal` when present); width/height after orientation; rating from EXIF/XMP if
   present, else 0. Missing or broken EXIF gives `None` fields, never an exception.
   Tests: synthetic JPEGs with EXIF written by Pillow (every orientation 1–8, odd shutter values, missing tags, garbage EXIF).
-- [ ] **P2.5** `core/decode.py`: the only module that touches LibRaw.
+- [x] **P2.5** `core/decode.py`: the only module that touches LibRaw.
   - `embedded_jpeg(path)`: the RAW's embedded JPEG bytes (orientation applied when decoded to pixels).
   - `decode(path, size=PREVIEW|FULL)`: an RGB array, using fixed, explicit LibRaw options in a frozen `DecodeOptions`
     model (camera WB, sRGB, auto-bright on, half-size for previews). JPEG/TIFF originals decode via Pillow with EXIF
     orientation applied.
   - `DECODER_VERSION` + the LibRaw version form the **render identity** used in cache keys (determinism, golden rule 3).
+  - LibRaw is pinned to **one OpenMP thread** in every calling thread: its multithreaded X-Trans decode is not
+    deterministic (found while doing this item; see PLAN.md §0).
 
   Tests: JPEG/TIFF paths and options on synthetic files; real RAF decode is `@pytest.mark.golden` (a portrait shot comes
   out upright, output size, identical bytes on two decodes).

@@ -22,6 +22,7 @@
 | Opening folders | **In-app folder browser + paste a path + recent folders.** Catalog keeps all imported folders; Library shows one at a time | 2026-10-07 |
 | Photo identity | **Content hash (SHA-256).** Moved/renamed folders keep their edits; identical copies are one photo | 2026-10-07 |
 | Phase 2 preview | **LibRaw half-size, camera WB, sRGB, auto-brightness on** (temporary until the Phase 3 pipeline) | 2026-10-07 |
+| LibRaw threading | **Single-threaded LibRaw; parallelism via worker processes.** LibRaw's OpenMP decode of X-T3 RAFs is not deterministic (two decodes differed by up to 184 levels); 1 thread is bit-identical but ~5× slower per photo (full-size ≈ 13 s) | 2026-10-07 |
 | ExifTool / OpenCV timing | **ExifTool joins in Phase 5** (writing export metadata); Phase 2 reads EXIF with Pillow. **OpenCV joins in Phase 3** | 2026-10-07 |
 
 **Target machine**: i7-12700H (14 cores / 20 threads), 16 GB RAM, RTX 3060 Laptop (6 GB), Windows 11.
