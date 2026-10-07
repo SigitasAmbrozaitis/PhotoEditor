@@ -149,25 +149,25 @@ The API **contract** (Pydantic models + OpenAPI) is defined here and kept in the
   A test fails if the generated types are out of date.
 
 ### Screens
-- [ ] **P1.5** App layout:
+- [x] **P1.5** App layout:
   - left navigation: Library, Styles, Export presets, Jobs
   - top bar: current folder, job indicator
   - routing (react-router), with a URL for each screen
-- [ ] **P1.6** **Library**: folder picker field (shows the folder path), thumbnail grid, single/multi/range select,
+- [x] **P1.6** **Library**: folder picker field (shows the folder path), thumbnail grid, single/multi/range select,
   sort/filter (date, style, rating), style badge on each thumbnail, selection count. Actions bar: "Apply style…", "Export…".
-- [ ] **P1.7** **Photo view**:
+- [x] **P1.7** **Photo view**:
   - large preview, with before/after as a toggle *and* a split-slider mode, and a filmstrip
   - adjustment panel with every parameter group from PLAN 4.2, shown as **disabled** sliders with the current values
   - EXIF info panel
   - crop overlay placeholder
-- [ ] **P1.8** **Styles library**: a card grid (name, short description, after-sample thumbnail) and a "Create style…" button (it opens a "coming in Phase 8" dialog).
-- [ ] **P1.9** **Style detail**: description, best for / avoid on, before/after sample pairs, a parameter table, and an "Apply to selection" button.
-- [ ] **P1.10** **Export dialog**: preset dropdown plus every setting from PLAN 4.6 (file, color space, size, aspect/orientation,
+- [x] **P1.8** **Styles library**: a card grid (name, short description, after-sample thumbnail) and a "Create style…" button (it opens a "coming in Phase 8" dialog).
+- [x] **P1.9** **Style detail**: description, best for / avoid on, before/after sample pairs, a parameter table, and an "Apply to selection" button.
+- [x] **P1.10** **Export dialog**: preset dropdown plus every setting from PLAN 4.6 (file, color space, size, aspect/orientation,
   sharpening, metadata, naming, destination folder), and a live summary line ("1080×1350 JPEG q90 sRGB → C:\…").
-- [ ] **P1.11** **Apply + export flow** (the full use loop): select photos → pick a style → pick an export preset → pick a
+- [x] **P1.11** **Apply + export flow** (the full use loop): select photos → pick a style → pick an export preset → pick a
   destination → confirm. A mock job then starts, and progress shows in the **Jobs** panel.
-- [ ] **P1.12** **Jobs** screen: list with progress bars and status, plus per-item status in the job detail.
-- [ ] **P1.13** UI tests (Vitest + RTL): each screen renders with mock data, plus key interactions (select photos, open the
+- [x] **P1.12** **Jobs** screen: list with progress bars and status, plus per-item status in the job detail.
+- [x] **P1.13** UI tests (Vitest + RTL): each screen renders with mock data, plus key interactions (select photos, open the
   export dialog, change a preset → the summary updates, complete the apply flow → a job appears).
 - [ ] **P1.14** Playwright smoke test: start the backend and UI, click through the full use loop, and take screenshots into `/output/screenshots`.
 - [ ] **P1.15** Full check (as in P0.14) and update the README.
