@@ -12,7 +12,7 @@ Derived from [PLAN.md](PLAN.md) v0.3. This checklist is written for an AI to fol
 - ⛔ **STOP** = halt and wait for the user. Never continue past a STOP without the user's explicit go-ahead.
 - 🧑 **Human test** = steps the user runs by hand at the end of a phase, with the expected result for each step.
 - If something is ambiguous or the plan seems wrong, **ask**. Don't guess. Plan changes go into PLAN.md first.
-- **Phases 0–1 are detailed.** Later phases are an outline and get detailed at the start of each phase. Writing that detail is the first item in each phase.
+- **Phases 0–2 are detailed.** Later phases are an outline and get detailed at the start of each phase. Writing that detail is the first item in each phase.
 - Golden rules: originals are read-only; never write outside `C:\Work\PhotoEditing` (except export destinations the user
   chose); commit as `SigitasAmbrozaitis`.
 
@@ -200,16 +200,141 @@ Optional: `npm --prefix ui run test:e2e` clicks through the whole loop in Chrome
 
 ---
 
-## Phase 2: Import & decode + benchmark (outline)
-- [ ] **P2.0** Detail this phase into items. ⛔ STOP for the user to review it.
-- [ ] Add the image deps (rawpy, numpy, opencv-python-headless, pillow, PyExifTool + a bundled ExifTool).
-- [ ] Catalog (SQLite): import a folder read-only, store path + content hash + EXIF.
-- [ ] Thumbnails (from the RAF's embedded JPEG) and half-size previews (LibRaw), cached in `/cache`.
-- [ ] Safety test: hashes of the originals are unchanged after import/preview.
-- [ ] **Benchmark**: full-res decode + basic render of the X-T3 RAFs, sequential vs. parallel. Report the time per 100 photos and peak RAM.
-  ⛔ **Go/no-go**: more than 5 min per 100 → stop and discuss.
-- [ ] Replace the mock photo endpoints with real ones. The Library shows the real `2026-08-11` photos.
-- 🧑 Human test + ⛔ STOP.
+## Phase 2: Import & decode + benchmark
+
+Goal: the Library shows the **real** photos of a folder (thumbnails, EXIF, a neutral preview), backed by a SQLite catalog.
+The originals are provably untouched. A benchmark decides go/no-go for the Python engine **before** more is built on it.
+Styles, export presets and apply/export jobs stay mock until their phases.
+
+Facts from a probe of `DSCF5437.RAF` (read-only, hash unchanged): 6246×4170 X-Trans, embedded JPEG 4416×2944 with full
+EXIF (rotation via the EXIF `Orientation` tag; Fuji pads strings with NUL bytes); LibRaw 0.22 half-size decode ≈ 0.6 s,
+full-size ≈ 5.2 s single-threaded; without auto-brightness the render is ~1.3 EV darker than the camera JPEG (Fuji
+underexposes the RAW to protect highlights).
+
+- [x] **P2.0** Detail this phase into items. ⛔ STOP for the user to review it.
+
+### Decisions to confirm at phase start (ask the user)
+- [ ] **P2.1** Confirm (defaults proposed; plan changes go into PLAN.md §0 once confirmed):
+  - **RAW + JPEG pairs** (`DSCF5437.RAF` + `DSCF5437.JPG`): one photo. The RAW is the master; the camera JPEG is
+    remembered as a sidecar (test data for Phase 8). A JPEG/TIFF without a RAW is a photo of its own. Other files (`.MOV`…)
+    are skipped and counted.
+  - **Opening folders**: an in-app folder browser (read-only directory listing via the API), a paste-a-path field and a
+    list of recent folders. The catalog keeps every imported folder; the Library shows one folder at a time. Subfolders
+    are not included unless "Include subfolders" is ticked. Nothing is imported automatically on start.
+  - **Photo identity**: the id comes from the file's content hash (SHA-256). A moved or renamed folder is recognized on
+    re-import and keeps its edits; identical files in two places are one photo (the latest path wins).
+  - **EXIF reading with Pillow** (from the RAW's embedded JPEG, or the JPEG itself). **ExifTool moves to Phase 5**, where it
+    is first needed (copying metadata into exports). OpenCV moves to Phase 3 for the same reason.
+  - **Phase 2 preview look**: LibRaw half-size decode, camera white balance, sRGB, LibRaw auto-brightness **on** (closest to
+    the camera JPEG). It is temporary: Phase 3's pipeline replaces it, and exposure normalization becomes an adaptive rule
+    in Phase 4.
+
+### Dependencies
+- [ ] **P2.2** Add runtime deps `rawpy` and `numpy`, and `psutil` (for the benchmark's RAM measurement). Commit `uv.lock`.
+  Show the LibRaw version in `photoedit --version --verbose` (it is part of the render identity).
+
+### Reading files (read-only)
+- [ ] **P2.3** `core/scan.py`: list a folder's supported files (optionally recursive) and group RAW + JPEG pairs by
+  file stem (case-insensitive). Supported: RAW extensions LibRaw handles (`.raf .cr2 .cr3 .nef .arw .orf .rw2 .dng .pef
+  .srw`), plus `.jpg .jpeg .tif .tiff`. Result model: photos found + skipped files with a reason. Files are only ever
+  opened `"rb"`.
+  Tests (synthetic files in `tmp_path`): pairing, case variants, lone JPEG, lone RAW, skipped types, subfolders on/off,
+  a missing folder and a file path instead of a folder → clear errors.
+- [ ] **P2.4** `core/metadata.py`: EXIF → a `PhotoMetadata` model. Strip NULs; camera `"FUJIFILM X-T3"` (no doubled
+  make); shutter as displayed (`0.00025` → `"1/4000"`, `0.5` → `"0.5s"`, `2` → `"2s"`); `captured_at` from
+  `DateTimeOriginal` (+ `OffsetTimeOriginal` when present); width/height after orientation; rating from EXIF/XMP if
+  present, else 0. Missing or broken EXIF gives `None` fields, never an exception.
+  Tests: synthetic JPEGs with EXIF written by Pillow (every orientation 1–8, odd shutter values, missing tags, garbage EXIF).
+- [ ] **P2.5** `core/decode.py`: the only module that touches LibRaw.
+  - `embedded_jpeg(path)`: the RAW's embedded JPEG bytes (orientation applied when decoded to pixels).
+  - `decode(path, size=PREVIEW|FULL)`: an RGB array, using fixed, explicit LibRaw options in a frozen `DecodeOptions`
+    model (camera WB, sRGB, auto-bright on, half-size for previews). JPEG/TIFF originals decode via Pillow with EXIF
+    orientation applied.
+  - `DECODER_VERSION` + the LibRaw version form the **render identity** used in cache keys (determinism, golden rule 3).
+
+  Tests: JPEG/TIFF paths and options on synthetic files; real RAF decode is `@pytest.mark.golden` (a portrait shot comes
+  out upright, output size, identical bytes on two decodes).
+
+### Benchmark: go/no-go
+- [ ] **P2.6** `core/benchmark.py` + CLI `photoedit benchmark [FOLDER] [--count N] [--workers 1,2,4,6,8]` (FOLDER defaults to
+  `sample_photos_dir`). Per photo: full-res decode + a basic float32 render (exposure gain, a tone curve, a saturation
+  change, back to 8-bit) + JPEG q90 encode **in memory** (nothing is written near the photos). It runs sequentially and
+  with a process pool for each worker count, and reports seconds per photo, **minutes per 100 photos** and **peak RAM**
+  (sum over the process tree, sampled with psutil). The report goes to `output/benchmark/report-<timestamp>.md`.
+  Tests: report math and formatting on a fake decoder (non-golden); a 2-photo real run is `@pytest.mark.golden` + `slow`.
+- [ ] **P2.7** Run the benchmark on all 67 RAFs. Copy the summary table into `docs/benchmark.md` (committed).
+  ⛔ **Go/no-go**: if the best configuration takes more than 5 min per 100 photos, stop and discuss with the user.
+
+### Catalog + cache
+- [ ] **P2.8** `core/catalog.py`: SQLite at `workspace/catalog.sqlite` (stdlib `sqlite3`, no ORM). Tables `folders` and
+  `photos` (id from the content hash, path, folder, filename, size, mtime, sha256, kind raw/raster, sidecar JPEG path,
+  metadata fields, rating, missing flag). Schema version in `PRAGMA user_version` with a migration hook. Queries back the
+  existing filter/sort/paging contract. The DB file goes through `PathGuard.assert_writable`.
+  Tests: CRUD, upsert on re-import, a moved file keeps its id, filter/sort/paging, schema version mismatch → clear error.
+- [ ] **P2.9** `core/cache.py`: disk cache in `cache/`, keyed by photo id + render identity:
+  - thumbnails `cache/thumbs/…jpg` (400 px long edge, from the embedded JPEG for RAWs),
+  - previews `cache/previews/…jpg` (half-size render, JPEG q92), resized per request with a small in-memory LRU.
+
+  Atomic writes (temp file + rename), all through the path guard. CLI `photoedit cache clear`.
+  Tests: hit/miss, a render-identity change invalidates, atomic write, a cache dir configured inside a protected photo
+  folder is refused.
+
+### Import
+- [ ] **P2.10** `core/jobs.py`: a real in-process job manager (thread pool, progress, cancel) behind the existing `Job`
+  model; add `JobKind.IMPORT`. The mock apply/export jobs run on it too, so the Jobs screen shows both.
+  Tests: progress, cancel, a failing item doesn't stop the job, list order.
+- [ ] **P2.11** `core/library.py`: `import_folder(folder, include_subfolders)` as a job. It protects the folder in the path
+  guard **first**, then per photo: stat → hash (skipped when size + mtime are unchanged since the last import) → metadata →
+  thumbnail. Re-import is incremental; files that disappeared are flagged missing and hidden. Also: list folders, current
+  folder (remembered in the workspace), photo list/detail, thumbnail/preview bytes. CLI `photoedit import FOLDER`.
+  Tests on synthetic JPEG folders in `tmp_path`: first import, incremental re-import, deleted file, renamed folder, cancel.
+- [ ] **P2.12** **Safety tests**:
+  - synthetic (always runs): a protected folder in `tmp_path`; import + thumbnails + previews → every file's SHA-256, size,
+    mtime and the folder listing are unchanged;
+  - golden: the same check on the real `2026-08-11` folder, with workspace and cache in `tmp_path`.
+
+### API + UI
+- [ ] **P2.13** Real endpoints replace the mock photo endpoints (same contract for photos/detail/thumbnail/preview;
+  `before` returns the same image until Phase 3). New:
+  - `GET /api/library/folders`, `PUT /api/library/current` (switch folder), `POST /api/library/import` → `Job`
+  - `GET /api/fs/dirs?path=` for the folder browser: drives when `path` is empty, otherwise subfolders + the number of
+    supported photos in each (read-only listing)
+
+  Styles and export presets stay mock. Unknown folder / not a folder / unreadable → 4xx with a clear message.
+  Regenerate `openapi.json` + `schema.d.ts`. Tests for every new and changed endpoint.
+- [ ] **P2.14** UI:
+  - **Library**: empty state ("Open a folder", sample folder pre-filled); editable folder field + **Browse…** dialog +
+    recent folders + **Include subfolders**; **Open** starts the import, shows progress in the Library and in Jobs, and the
+    grid fills in as thumbnails arrive. The `DEMO DATA` tag leaves the Library (it stays on Styles/Presets).
+  - **Photo view**: the real preview with a loading state, real EXIF in **Info**, the sidecar camera JPEG named in Info.
+    Sliders stay disabled.
+
+  Vitest tests: empty state, folder browser navigation, import progress, the grid after import.
+- [ ] **P2.15** Playwright smoke test on generated photos: setup writes a few synthetic JPEGs into `output/e2e/photos` and
+  points workspace/cache at `output/e2e/` (tool-owned folders only); then open the folder → import → grid → photo view,
+  plus the existing apply/export loop. Screenshots go to `output/screenshots/`.
+- [ ] **P2.16** Full check (pytest incl. `-m golden` locally, ruff, format, mypy, npm test/lint/build, e2e) and update README.
+
+### 🧑 Human test: Phase 2
+0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`.
+1. `uv run photoedit ui` → the Library shows "Open a folder" with your `2026-08-11` path pre-filled. No `DEMO DATA` tag there.
+2. **Browse…** → go to `C:\Users\ambro\Pictures\2026\2026-08-11` (each folder shows its photo count) → choose it →
+   **Open** → an import job runs (progress in the Library and on Jobs) and thumbnails fill in. Expect **67 photos** (RAF +
+   JPG pairs merged; the `.MOV` reported as skipped), with portrait shots upright.
+3. Open `DSCF5437` → **Info** shows FUJIFILM X-T3, XF18-55mmF2.8-4 R LM OIS, ISO 6400, 1/4000, f/4.5, 55 mm,
+   2026-08-11 06:02:51, and the camera JPEG as sidecar.
+4. The preview shows within about 1–2 s the first time and instantly afterwards. Compare a few photos with their camera
+   JPEGs: similar brightness, natural colors, no color cast or pink highlights. Flatter and less saturated is expected (no
+   film simulation).
+5. Sort/filter still work. ←/→ in the Photo view walks through the real photos.
+6. Close and restart `photoedit ui` → the library is there at once. **Open** the folder again → it finishes quickly with
+   "0 new".
+7. In Explorer, the `2026-08-11` folder has no new or changed files (sort by Date modified). `uv run pytest -m golden` →
+   the real-folder safety test passes.
+8. `uv run photoedit benchmark` → prints the table (minutes per 100 photos, peak RAM) and the report path. Compare with
+   `docs/benchmark.md`.
+
+### ⛔ STOP: user approves Phase 2
 
 ## Phase 3: Edit engine, MVP parameters (outline)
 - [ ] **P3.0** Detail this phase. ⛔ STOP for review.
