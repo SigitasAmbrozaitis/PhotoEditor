@@ -99,12 +99,15 @@ Goal: an empty but complete project. The Python package, CLI, API server, web UI
 - [x] **P0.14** Full check: `uv run pytest`, `uv run ruff check`, `uv run mypy src`, `npm test` and `npm run build` are all green.
 
 ### 🧑 Human test: Phase 0
-1. In a new terminal: `cd C:\Work\PhotoEditing` → `uv sync` → expect no errors.
+1. Open a **new** terminal (so uv and node are on PATH): `cd C:\Work\PhotoEditing` → `uv sync` → expect no errors.
 2. `uv run photoedit --version` → prints `0.1.0`.
-3. `uv run photoedit config show` → shows the paths under `C:\Work\PhotoEditing`.
+3. `uv run photoedit config show` → the paths are under `C:\Work\PhotoEditing`, and `sample_photos_dir` is your
+   `2026-08-11` folder (from `config.local.toml`).
 4. `cd ui; npm install; npm run build; cd ..` → the build succeeds.
-5. `uv run photoedit ui` → the browser opens and shows "PhotoEditor" with a green `backend v0.1.0` badge.
-6. `uv run pytest` → all tests pass.
+5. `uv run photoedit ui` → the browser opens and shows "PhotoEditor" with a green `backend v0.1.0` badge. Ctrl+C stops it.
+6. `uv run pytest` → all tests pass (2 symlink tests are skipped unless Windows Developer Mode is on). `cd ui; npm test` → all pass.
+7. `scripts\dev.cmd` → a backend window opens, and the browser opens http://localhost:5173 with a green badge.
+   Close the backend window → within about 5 s the badge turns red "backend offline". Ctrl+C in the first terminal stops the dev server.
 
 ### ⛔ STOP: user approves Phase 0
 
