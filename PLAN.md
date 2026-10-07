@@ -312,9 +312,20 @@ Try these in order. Each is a self-contained addition, so we can switch to one w
   result) → you approve → next phase.
 - Never modify files outside `C:\Work\PhotoEditing`. Photo folders are read-only. Exports outside this folder only go to a
   destination the user explicitly chose.
-- Git commits use the user's identity, set in the repo-local config (not the global `cyam` identity).
 - Ask when requirements are ambiguous. Don't guess.
-- Small commits per TODO item, once you have set up git.
+
+### 8.1 Git workflow (per phase)
+
+1. At the start of each phase that writes code, create a branch from an up-to-date `main`: `phase-<N>-<short-name>`
+   (e.g. `phase-0-setup`, `phase-1-ui-skeleton`).
+2. Commit on that branch as often as is useful. Each commit message references the TODO item ID (e.g. `P0.3: ...`).
+3. At the end of the phase, the user runs the 🧑 human test. Requested tweaks are made **on the same branch**.
+4. Only after the user **confirms the phase**: merge the branch into `main` with `--no-ff` (so each phase stays one visible
+   unit in history), then create the next phase's branch from `main`.
+5. Never merge into `main` before the user's confirmation. Never commit phase code directly to `main`.
+6. Pushing: the phase branch is pushed as work progresses (as a backup). `main` is pushed right after each confirmed merge.
+7. Commits use the user's identity `SigitasAmbrozaitis <ambrozaitis.sigitas@gmail.com>`, set in the repo-local config. Never
+   use the global `cyam` identity.
 
 ---
 

@@ -16,16 +16,7 @@ Derived from [PLAN.md](PLAN.md) v0.3. This checklist is written for an AI to fol
 - Golden rules: originals are read-only; never write outside `C:\Work\PhotoEditing` (except export destinations the user
   chose); commit as `SigitasAmbrozaitis`.
 
-## Git workflow (per phase)
-
-1. At the start of each phase that writes code, create a branch from an up-to-date `main`: `phase-<N>-<short-name>`
-   (e.g. `phase-0-setup`, `phase-1-ui-skeleton`).
-2. Commit on that branch as often as is useful. Each commit message references the TODO item ID.
-3. At the end of the phase, the user runs the 🧑 human test. Requested tweaks are made **on the same branch**.
-4. Only after the user **confirms the phase**: merge the branch into `main` with `--no-ff` (so each phase stays one visible
-   unit in history), then create the next phase's branch from `main`.
-5. Never merge into `main` before the user's confirmation. Never commit phase code directly to `main`.
-6. Pushing: the phase branch is pushed as work progresses (as a backup). `main` is pushed right after each confirmed merge.
+- Git: follow the per-phase branch workflow in [PLAN.md §8.1](PLAN.md#81-git-workflow-per-phase).
 
 ---
 
@@ -103,7 +94,7 @@ Goal: an empty but complete project. The Python package, CLI, API server, web UI
   - workflow (PLAN → TODO → phase → STOP gates; ask when in doubt)
   - commands (test, lint, type-check, run)
   - code conventions (typing, Pydantic models for all data, no logic in front-ends)
-  - git rules (identity, commit message format with the item ID, the per-phase branch workflow from the section above)
+  - git rules (identity, commit message format with the item ID, the per-phase branch workflow from PLAN.md §8.1)
 - [ ] **P0.13** README "Getting started" section: clone, then `uv sync`, `cd ui && npm install`, `photoedit ui`, and how to run the tests.
 - [ ] **P0.14** Full check: `uv run pytest`, `uv run ruff check`, `uv run mypy src`, `npm test` and `npm run build` are all green.
 
