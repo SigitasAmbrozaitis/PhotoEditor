@@ -6,7 +6,8 @@ PhotoEditor is a non-destructive RAW photo editor meant to replace Lightroom for
 cropping, zooming and centering. An **AI agent** (Claude Code, through MCP) drives it. You describe the look you want, the AI
 applies it, and the tool's code enforces the rules. A small web UI lets you browse, compare and approve.
 
-> **Status: early development (Phase 0, project scaffold).** None of the editing features work yet.
+> **Status: early development (Phase 1, UI skeleton).** The web UI is clickable end to end, but runs on **demo data**:
+> no real photos are read or edited yet.
 > See [PLAN.md](PLAN.md) for the full plan and [TODO.md](TODO.md) for progress.
 
 ---
@@ -107,6 +108,13 @@ uv run pytest
 ```
 ```bash
 npm --prefix ui test
+```
+
+End-to-end smoke test in a real browser (uses your installed Google Chrome with a temporary profile; build the UI
+first). Screenshots of every screen are saved to `output/screenshots/`:
+
+```bash
+npm --prefix ui run test:e2e
 ```
 
 Lint and type checks: `uv run ruff check`, `uv run ruff format --check`, `uv run mypy`, `npm --prefix ui run lint`.

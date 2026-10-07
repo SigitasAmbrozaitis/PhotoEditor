@@ -169,17 +169,32 @@ The API **contract** (Pydantic models + OpenAPI) is defined here and kept in the
 - [x] **P1.12** **Jobs** screen: list with progress bars and status, plus per-item status in the job detail.
 - [x] **P1.13** UI tests (Vitest + RTL): each screen renders with mock data, plus key interactions (select photos, open the
   export dialog, change a preset → the summary updates, complete the apply flow → a job appears).
-- [ ] **P1.14** Playwright smoke test: start the backend and UI, click through the full use loop, and take screenshots into `/output/screenshots`.
-- [ ] **P1.15** Full check (as in P0.14) and update the README.
+- [x] **P1.14** Playwright smoke test: start the backend and UI, click through the full use loop, and take screenshots into `/output/screenshots`. (`npm run test:e2e`; uses the installed Google Chrome, so no browser download.)
+- [x] **P1.15** Full check (as in P0.14) and update the README.
 
 ### 🧑 Human test: Phase 1
-1. `uv run photoedit ui` → the browser opens on the Library with ~24 placeholder thumbnails.
-2. Select a few photos → the selection count updates. Open one → the Photo view shows the preview and the before/after toggle and split work.
-3. Styles → 4 cards → open one → the detail page shows samples and the parameter table.
-4. Library → select photos → "Apply style…" → choose a style → choose "Instagram portrait" → choose a destination → confirm →
-   Jobs shows a progressing job.
-5. Open the Export dialog → switch presets → the summary line updates.
-6. **Give feedback on layout, look and feel.** Changes are made before Phase 2.
+0. Stop any `photoedit ui` still running from Phase 0 (Ctrl+C in its terminal), because it holds files that `uv sync` must
+   update. Then, in a new terminal: `uv sync`, `npm --prefix ui install` and `npm --prefix ui run build`.
+1. `uv run photoedit ui` → the browser opens on the **Library**: 24 placeholder thumbnails, a yellow `DEMO DATA` tag and a
+   green backend badge.
+2. Selecting: click one photo, **Shift+click** another (range), **Ctrl+click** to add/remove → "N selected" updates.
+   Try sorting (date/name/rating, ↑↓), the Style filter and the Rating filter.
+3. **Double-click** a photo (or Enter) → the **Photo view**. Check the **After / Before / Split** buttons (drag across the
+   image in Split), the **Crop** overlay, the right panel (**Adjust**: read-only sliders per group; **Info**: EXIF), the
+   filmstrip, and ←/→ keys for prev/next and Esc to go back.
+4. **Styles** → 4 cards → open one → description, best for / avoid on, before/after samples and the parameter table.
+   "Create style…" explains Phase 8.
+5. Library → select several photos → **Apply style…** → pick a style → Next → keep "Instagram portrait (4:5)" → click a
+   *Recent* destination or type one → Next → review → **Apply & export** → you land on **Jobs**, and the job's progress
+   bar runs to 100%. The top bar shows "N running" while it runs.
+6. Library → select photos → **Export…** → switch presets and change settings → the summary line at the bottom updates
+   live, and the preset label says "(modified)".
+7. **Export presets** → browse the 10 built-in presets (read-only).
+8. **Give feedback on layout, look and feel** (colors, sizes, what's missing or in the wrong place). Changes are made on
+   this branch before Phase 2.
+
+Optional: `npm --prefix ui run test:e2e` clicks through the whole loop in Chrome and saves screenshots of every screen to
+`output/screenshots/`.
 
 ### ⛔ STOP: user approves the UI skeleton (with any change requests applied)
 
