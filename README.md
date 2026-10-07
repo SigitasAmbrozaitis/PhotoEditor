@@ -6,7 +6,8 @@ PhotoEditor is a non-destructive RAW photo editor meant to replace Lightroom for
 cropping, zooming and centering. An **AI agent** (Claude Code, through MCP) drives it. You describe the look you want, the AI
 applies it, and the tool's code enforces the rules. A small web UI lets you browse, compare and approve.
 
-> **Status: early development.** Nothing below works yet. See [PLAN.md](PLAN.md) for the full plan and phases.
+> **Status: early development (Phase 0, project scaffold).** None of the editing features work yet.
+> See [PLAN.md](PLAN.md) for the full plan and [TODO.md](TODO.md) for progress.
 
 ---
 
@@ -50,18 +51,80 @@ Out of scope: local or spot edits (healing, cloning, masks) and generative edits
 
 ## Getting started
 
-_Setup instructions will be added in Phase 0 (project scaffold)._
+### Install the tools (once per machine)
 
-## Project layout (planned)
+```bash
+winget install Python.Python.3.12
+```
+```bash
+winget install OpenJS.NodeJS.LTS
+```
+```bash
+winget install astral-sh.uv
+```
+
+Open a **new** terminal afterwards so the tools are on `PATH`.
+
+### Set up the project
+
+```bash
+git clone https://github.com/SigitasAmbrozaitis/PhotoEditor.git
+```
+```bash
+cd PhotoEditor
+```
+```bash
+uv sync
+```
+```bash
+npm --prefix ui install
+```
+```bash
+npm --prefix ui run build
+```
+
+Optional: copy `config.example.toml` to `config.local.toml` and set `sample_photos_dir` to a folder of your RAW photos.
+`uv run photoedit config show` prints the effective settings.
+
+### Run
+
+```bash
+uv run photoedit ui
+```
+
+This opens http://127.0.0.1:8765 in the browser (backend plus built UI). Stop it with Ctrl+C.
+
+For UI development with hot reload (backend plus Vite dev server on http://localhost:5173):
+
+```bash
+scripts\dev.cmd
+```
+
+### Test
+
+```bash
+uv run pytest
+```
+```bash
+npm --prefix ui test
+```
+
+Lint and type checks: `uv run ruff check`, `uv run ruff format --check`, `uv run mypy`, `npm --prefix ui run lint`.
+
+## Project layout
 
 ```
 PLAN.md            implementation plan and decisions
-src/photoedit/     Python core, CLI, API, MCP server
-ui/                web UI (React + TS)
-tests/             unit, golden-image and safety tests
-styles/            saved styles (style.json + README + sample images)
-export-presets/    export settings presets
-workspace/         local catalog, edits and preview cache (git-ignored)
+TODO.md            step-by-step checklist per phase
+CLAUDE.md          rules for AI agents working on this repo
+src/photoedit/     Python package: CLI, config, safety (write guard), API, core, MCP server
+ui/                web UI (React + TypeScript + Vite)
+tests/             Python tests
+scripts/           dev helpers (dev.cmd starts backend + UI dev server)
+styles/            saved styles: style.json + README + sample images (from Phase 4)
+export-presets/    export settings presets (from Phase 5)
+workspace/         local catalog, edits (git-ignored)
+cache/             previews and thumbnails (git-ignored)
 output/            development test exports (git-ignored)
 ```
 

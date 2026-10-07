@@ -89,14 +89,14 @@ Goal: an empty but complete project. The Python package, CLI, API server, web UI
   - `scripts/dev.ps1`, which starts both processes for the user
 
 ### AI rules + docs
-- [ ] **P0.12** `CLAUDE.md`: project rules for AI.
+- [x] **P0.12** `CLAUDE.md`: project rules for AI.
   - golden rules (originals are read-only, write boundaries, deterministic rendering, one core with many front-ends, the code enforces ranges)
   - workflow (PLAN → TODO → phase → STOP gates; ask when in doubt)
   - commands (test, lint, type-check, run)
   - code conventions (typing, Pydantic models for all data, no logic in front-ends)
   - git rules (identity, commit message format with the item ID, the per-phase branch workflow from PLAN.md §8.1)
-- [ ] **P0.13** README "Getting started" section: clone, then `uv sync`, `cd ui && npm install`, `photoedit ui`, and how to run the tests.
-- [ ] **P0.14** Full check: `uv run pytest`, `uv run ruff check`, `uv run mypy src`, `npm test` and `npm run build` are all green.
+- [x] **P0.13** README "Getting started" section: clone, then `uv sync`, `cd ui && npm install`, `photoedit ui`, and how to run the tests.
+- [x] **P0.14** Full check: `uv run pytest`, `uv run ruff check`, `uv run mypy src`, `npm test` and `npm run build` are all green.
 
 ### 🧑 Human test: Phase 0
 1. In a new terminal: `cd C:\Work\PhotoEditing` → `uv sync` → expect no errors.
