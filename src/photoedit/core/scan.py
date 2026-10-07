@@ -9,13 +9,15 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
+from photoedit.core.errors import InvalidRequestError
+
 # RAW formats LibRaw decodes that we accept. Only RAF is tested against real files (the X-T3 samples).
 RAW_EXTENSIONS = frozenset({".raf", ".cr2", ".cr3", ".nef", ".arw", ".orf", ".rw2", ".dng", ".pef", ".srw"})
 JPEG_EXTENSIONS = frozenset({".jpg", ".jpeg"})
 RASTER_EXTENSIONS = JPEG_EXTENSIONS | frozenset({".tif", ".tiff"})
 
 
-class ScanError(ValueError):
+class ScanError(InvalidRequestError):
     """The folder can't be scanned (missing, not a folder, not readable)."""
 
 

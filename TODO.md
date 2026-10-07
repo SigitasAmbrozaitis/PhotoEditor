@@ -258,22 +258,22 @@ underexposes the RAW to protect highlights).
   out upright, output size, identical bytes on two decodes).
 
 ### Benchmark: go/no-go
-- [ ] **P2.6** `core/benchmark.py` + CLI `photoedit benchmark [FOLDER] [--count N] [--workers 1,2,4,6,8]` (FOLDER defaults to
+- [x] **P2.6** `core/benchmark.py` + CLI `photoedit benchmark [FOLDER] [--count N] [--workers 1,2,4,6,8]` (FOLDER defaults to
   `sample_photos_dir`). Per photo: full-res decode + a basic float32 render (exposure gain, a tone curve, a saturation
   change, back to 8-bit) + JPEG q90 encode **in memory** (nothing is written near the photos). It runs sequentially and
   with a process pool for each worker count, and reports seconds per photo, **minutes per 100 photos** and **peak RAM**
   (sum over the process tree, sampled with psutil). The report goes to `output/benchmark/report-<timestamp>.md`.
   Tests: report math and formatting on a fake decoder (non-golden); a 2-photo real run is `@pytest.mark.golden` + `slow`.
-- [ ] **P2.7** Run the benchmark on all 67 RAFs. Copy the summary table into `docs/benchmark.md` (committed).
+- [x] **P2.7** Run the benchmark on all 67 RAFs. Copy the summary table into `docs/benchmark.md` (committed).
   ⛔ **Go/no-go**: if the best configuration takes more than 5 min per 100 photos, stop and discuss with the user.
 
 ### Catalog + cache
-- [ ] **P2.8** `core/catalog.py`: SQLite at `workspace/catalog.sqlite` (stdlib `sqlite3`, no ORM). Tables `folders` and
+- [x] **P2.8** `core/catalog.py`: SQLite at `workspace/catalog.sqlite` (stdlib `sqlite3`, no ORM). Tables `folders` and
   `photos` (id from the content hash, path, folder, filename, size, mtime, sha256, kind raw/raster, sidecar JPEG path,
   metadata fields, rating, missing flag). Schema version in `PRAGMA user_version` with a migration hook. Queries back the
   existing filter/sort/paging contract. The DB file goes through `PathGuard.assert_writable`.
   Tests: CRUD, upsert on re-import, a moved file keeps its id, filter/sort/paging, schema version mismatch → clear error.
-- [ ] **P2.9** `core/cache.py`: disk cache in `cache/`, keyed by photo id + render identity:
+- [x] **P2.9** `core/cache.py`: disk cache in `cache/`, keyed by photo id + render identity:
   - thumbnails `cache/thumbs/…jpg` (400 px long edge, from the embedded JPEG for RAWs),
   - previews `cache/previews/…jpg` (half-size render, JPEG q92), resized per request with a small in-memory LRU.
 
@@ -282,29 +282,32 @@ underexposes the RAW to protect highlights).
   folder is refused.
 
 ### Import
-- [ ] **P2.10** `core/jobs.py`: a real in-process job manager (thread pool, progress, cancel) behind the existing `Job`
-  model; add `JobKind.IMPORT`. The mock apply/export jobs run on it too, so the Jobs screen shows both.
-  Tests: progress, cancel, a failing item doesn't stop the job, list order.
-- [ ] **P2.11** `core/library.py`: `import_folder(folder, include_subfolders)` as a job. It protects the folder in the path
+- [x] **P2.10** `core/jobs.py`: a real in-process job manager (thread pool, progress, cancel) behind the existing `Job`
+  model; add `JobKind.IMPORT`, `Job.folder`, `Job.summary`, and make `JobItem.photo_id` optional (an import item has no
+  id until its file is hashed). The mock apply/export jobs run on it too (each item just sleeps), so the Jobs screen
+  shows both. Tests: progress, cancel, a failing item doesn't stop the job, list order.
+- [x] **P2.11** `core/library.py`: `import_folder(folder, include_subfolders)` as a job. It protects the folder in the path
   guard **first**, then per photo: stat → hash (skipped when size + mtime are unchanged since the last import) → metadata →
   thumbnail. Re-import is incremental; files that disappeared are flagged missing and hidden. Also: list folders, current
   folder (remembered in the workspace), photo list/detail, thumbnail/preview bytes. CLI `photoedit import FOLDER`.
   Tests on synthetic JPEG folders in `tmp_path`: first import, incremental re-import, deleted file, renamed folder, cancel.
-- [ ] **P2.12** **Safety tests**:
+- [x] **P2.12** **Safety tests**:
   - synthetic (always runs): a protected folder in `tmp_path`; import + thumbnails + previews → every file's SHA-256, size,
     mtime and the folder listing are unchanged;
   - golden: the same check on the real `2026-08-11` folder, with workspace and cache in `tmp_path`.
 
 ### API + UI
-- [ ] **P2.13** Real endpoints replace the mock photo endpoints (same contract for photos/detail/thumbnail/preview;
+- [x] **P2.13** Real endpoints replace the mock photo endpoints (same contract for photos/detail/thumbnail/preview;
   `before` returns the same image until Phase 3). New:
   - `GET /api/library/folders`, `PUT /api/library/current` (switch folder), `POST /api/library/import` → `Job`
   - `GET /api/fs/dirs?path=` for the folder browser: drives when `path` is empty, otherwise subfolders + the number of
     supported photos in each (read-only listing)
 
   Styles and export presets stay mock. Unknown folder / not a folder / unreadable → 4xx with a clear message.
-  Regenerate `openapi.json` + `schema.d.ts`. Tests for every new and changed endpoint.
-- [ ] **P2.14** UI:
+  `photoedit/services.py` wires the core from settings (shared by API and CLI); the app builds it on the first request,
+  so `photoedit openapi` never creates a catalog. Regenerate `openapi.json` + `schema.d.ts`. Tests for every new and
+  changed endpoint.
+- [x] **P2.14** UI:
   - **Library**: empty state ("Open a folder", sample folder pre-filled); editable folder field + **Browse…** dialog +
     recent folders + **Include subfolders**; **Open** starts the import, shows progress in the Library and in Jobs, and the
     grid fills in as thumbnails arrive. The `DEMO DATA` tag leaves the Library (it stays on Styles/Presets).
@@ -312,10 +315,11 @@ underexposes the RAW to protect highlights).
     Sliders stay disabled.
 
   Vitest tests: empty state, folder browser navigation, import progress, the grid after import.
-- [ ] **P2.15** Playwright smoke test on generated photos: setup writes a few synthetic JPEGs into `output/e2e/photos` and
-  points workspace/cache at `output/e2e/` (tool-owned folders only); then open the folder → import → grid → photo view,
-  plus the existing apply/export loop. Screenshots go to `output/screenshots/`.
-- [ ] **P2.16** Full check (pytest incl. `-m golden` locally, ruff, format, mypy, npm test/lint/build, e2e) and update README.
+- [x] **P2.15** Playwright smoke test on generated photos: `scripts/e2e_setup.py` writes 8 synthetic JPEGs into
+  `output/e2e/photos`, and the e2e server's workspace/cache/sample folder point at `output/e2e/` via `PHOTOEDIT_*`
+  (tool-owned folders only); then open the folder → import → grid → photo view, plus the existing apply/export loop.
+  Screenshots go to `output/screenshots/`.
+- [x] **P2.16** Full check (pytest incl. `-m golden` locally, ruff, format, mypy, npm test/lint/build, e2e) and update README.
 
 ### 🧑 Human test: Phase 2
 0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`.
@@ -325,16 +329,17 @@ underexposes the RAW to protect highlights).
    JPG pairs merged; the `.MOV` reported as skipped), with portrait shots upright.
 3. Open `DSCF5437` → **Info** shows FUJIFILM X-T3, XF18-55mmF2.8-4 R LM OIS, ISO 6400, 1/4000, f/4.5, 55 mm,
    2026-08-11 06:02:51, and the camera JPEG as sidecar.
-4. The preview shows within about 1–2 s the first time and instantly afterwards. Compare a few photos with their camera
-   JPEGs: similar brightness, natural colors, no color cast or pink highlights. Flatter and less saturated is expected (no
-   film simulation).
+4. The preview shows within about 2 s the first time (a spinner shows meanwhile) and instantly afterwards. Compare a few
+   photos with their camera JPEGs: natural colors and white balance, no strong color cast. Expected differences (fixed by
+   the Phase 3 pipeline): flatter and less saturated (no film simulation); dark, low-key scenes come out **brighter**
+   than the camera JPEG (LibRaw auto-brightness); blown-out lights can show a faint tint instead of pure white.
 5. Sort/filter still work. ←/→ in the Photo view walks through the real photos.
-6. Close and restart `photoedit ui` → the library is there at once. **Open** the folder again → it finishes quickly with
-   "0 new".
+6. Close and restart `photoedit ui` → the library is there at once. **Open** the folder again → it finishes within a
+   few seconds with "Last import: 67 photos: 67 unchanged; 1 other file skipped".
 7. In Explorer, the `2026-08-11` folder has no new or changed files (sort by Date modified). `uv run pytest -m golden` →
    the real-folder safety test passes.
-8. `uv run photoedit benchmark` → prints the table (minutes per 100 photos, peak RAM) and the report path. Compare with
-   `docs/benchmark.md`.
+8. `uv run photoedit benchmark` (takes about 6 minutes; the computer is busy meanwhile) → prints the table (minutes per
+   100 photos, peak RAM) and the report path. Compare with `docs/benchmark.md`.
 
 ### ⛔ STOP: user approves Phase 2
 

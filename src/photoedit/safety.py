@@ -8,6 +8,7 @@ Every write in the codebase must go through ``PathGuard.assert_writable``.
 from __future__ import annotations
 
 import os
+import threading
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -20,7 +21,14 @@ class WriteNotAllowedError(PermissionError):
 
 def _normalize(path: Path) -> Path:
     """Absolute, symlink-resolved path (works for paths that don't exist yet)."""
-    return Path(os.path.realpath(path.expanduser()))
+    real = os.path.realpath(path.expanduser())
+    # On Windows, realpath sometimes keeps the extended-length prefix (seen while another thread creates the
+    # same folder at that moment). Strip it so the path compares equal to the roots.
+    if real.startswith("\\\\?\\UNC\\"):
+        real = "\\\\" + real[len("\\\\?\\UNC\\") :]
+    elif real.startswith("\\\\?\\"):
+        real = real[len("\\\\?\\") :]
+    return Path(real)
 
 
 def _is_within(path: Path, root: Path) -> bool:
@@ -81,6 +89,19 @@ class PathGuard:
             raise WriteNotAllowedError(f"Refusing to write into a protected (read-only) folder: {target}")
         if not any(_is_within(target, root) for root in self._writable):
             raise WriteNotAllowedError(f"Refusing to write outside the allowed folders: {target}")
+        return target
+
+    def write_atomic(self, path: Path, data: bytes) -> Path:
+        """Write ``data`` to ``path`` via a temp file + rename, so readers never see a half-written file."""
+        target = self.assert_writable(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        # Unique per process and thread: parallel writers of the same file must not share a temp file.
+        temp = target.with_name(f".{target.name}.{os.getpid()}-{threading.get_ident()}.tmp")
+        try:
+            temp.write_bytes(data)
+            temp.replace(target)
+        finally:
+            temp.unlink(missing_ok=True)
         return target
 
 

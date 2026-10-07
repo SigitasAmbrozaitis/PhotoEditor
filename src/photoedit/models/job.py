@@ -12,6 +12,7 @@ from photoedit.models.export import ExportSettings
 
 
 class JobKind(StrEnum):
+    IMPORT = "import"
     APPLY_STYLE = "apply_style"
     EXPORT = "export"
     APPLY_AND_EXPORT = "apply_and_export"
@@ -28,7 +29,7 @@ class JobStatus(StrEnum):
 class JobItem(BaseModel):
     model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
 
-    photo_id: str
+    photo_id: str | None = Field(description="None while an import hasn't identified the file yet.")
     filename: str
     status: JobStatus
     message: str | None = None
@@ -51,6 +52,8 @@ class Job(BaseModel):
     style_id: str | None = None
     preset_id: str | None = None
     destination: str | None = None
+    folder: str | None = Field(default=None, description="Photo folder an import job reads (read-only).")
+    summary: str | None = Field(default=None, description="Outcome in one line, e.g. '67 new, 1 skipped'.")
     items: list[JobItem] = Field(default_factory=list)
 
 

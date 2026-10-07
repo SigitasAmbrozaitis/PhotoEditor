@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { imageUrls } from '../../api/client'
 import type { Photo } from '../../api/types'
+import { Spinner } from '../../components/ui'
 import { fitInside, useElementSize } from '../../hooks/useElementSize'
 
 export type ViewMode = 'after' | 'before' | 'split'
@@ -41,16 +42,32 @@ export function PhotoViewer({ photo, mode, crop }: { photo: Photo; mode: ViewMod
   const [split, setSplit] = useState(50)
   const after = imageUrls.preview(photo.id, { size: 1600 })
   const before = imageUrls.preview(photo.id, { size: 1600, before: true })
+  const shown = mode === 'before' ? before : after
+  // The first preview of a RAW takes a second or two to render; show a spinner until the image arrives.
+  const [settled, setSettled] = useState<{ src: string; ok: boolean } | null>(null)
 
   return (
     <div ref={boxRef} className="checker relative flex h-full w-full items-center justify-center overflow-hidden">
       <div className="relative" style={fitted.width ? { width: fitted.width, height: fitted.height } : undefined}>
         <img
-          src={mode === 'before' ? before : after}
+          src={shown}
           alt={`${photo.filename} (${mode === 'before' ? 'before' : 'after'})`}
           draggable={false}
+          onLoad={() => setSettled({ src: shown, ok: true })}
+          onError={() => setSettled({ src: shown, ok: false })}
           className="block h-full w-full object-contain select-none"
         />
+        {settled?.src !== shown ? (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Spinner className="size-8" label="Rendering preview" />
+          </div>
+        ) : (
+          !settled.ok && (
+            <div role="alert" className="absolute inset-0 flex items-center justify-center text-sm text-muted">
+              Preview unavailable (is the original still in its folder?)
+            </div>
+          )
+        )}
         {mode === 'split' && (
           <>
             <img

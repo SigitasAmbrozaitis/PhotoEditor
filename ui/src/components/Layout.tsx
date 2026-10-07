@@ -1,5 +1,5 @@
 import { Download, FolderOpen, Images, ListChecks, LoaderCircle, Palette } from 'lucide-react'
-import { NavLink, Outlet } from 'react-router'
+import { NavLink, Outlet, useLocation } from 'react-router'
 import { useJobs, useLibrary } from '../api/queries'
 import { useBackendHealth, type BackendState } from '../hooks/useBackendHealth'
 import { Tooltip } from './ui'
@@ -50,15 +50,25 @@ function JobIndicator() {
   )
 }
 
+/** Screens still backed by mock data, and the phase that makes them real. */
+const MOCK_SCREENS: Record<string, string> = {
+  '/styles': 'Styles are mock data until Phase 4.',
+  '/presets': 'Export presets are built in; exporting is simulated until Phase 5.',
+}
+
 function TopBar() {
   const backend = useBackendHealth()
   const { data: library } = useLibrary()
+  const { pathname } = useLocation()
+  const mockNote = Object.entries(MOCK_SCREENS).find(([prefix]) => pathname.startsWith(prefix))?.[1]
   return (
     <header className="flex h-10 shrink-0 items-center gap-4 border-b border-line bg-panel px-3">
       <span className="text-sm font-semibold tracking-wide text-strong">PhotoEditor</span>
-      <Tooltip content="Mock data: Phase 1 UI skeleton. Real photos arrive in Phase 2.">
-        <span className="rounded bg-warn/15 px-1.5 py-0.5 text-[11px] font-medium text-warn">DEMO DATA</span>
-      </Tooltip>
+      {mockNote && (
+        <Tooltip content={mockNote}>
+          <span className="rounded bg-warn/15 px-1.5 py-0.5 text-[11px] font-medium text-warn">DEMO DATA</span>
+        </Tooltip>
+      )}
       {library?.folder && (
         <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted" title={library.folder}>
           <FolderOpen className="size-3.5 shrink-0" aria-hidden />

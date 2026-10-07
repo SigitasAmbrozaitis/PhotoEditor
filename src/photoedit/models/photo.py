@@ -32,6 +32,9 @@ class Photo(BaseModel):
     rating: int = Field(default=0, ge=0, le=5)
     style_id: str | None = Field(default=None, description="Style assigned to this photo, if any.")
     has_overrides: bool = Field(default=False, description="Per-photo adjustments on top of the style.")
+    sidecar_jpeg: str | None = Field(
+        default=None, description="Camera JPEG saved next to a RAW original (read-only), if any."
+    )
 
 
 class PhotoEdit(BaseModel):
@@ -72,4 +75,34 @@ class LibraryInfo(BaseModel):
     model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
 
     folder: str | None = Field(description="Currently opened photo folder.")
+    include_subfolders: bool = Field(
+        default=False, description="The Library also shows photos in subfolders."
+    )
     photo_count: int = Field(ge=0)
+    suggested_folder: str | None = Field(
+        default=None, description="Folder to offer when nothing is open yet (the configured sample folder)."
+    )
+
+
+class LibraryFolder(BaseModel):
+    """A folder that has been imported into the catalog."""
+
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
+
+    path: str
+    include_subfolders: bool
+    photo_count: int = Field(ge=0)
+    last_imported_at: datetime | None = None
+
+
+class ImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
+
+    folder: str = Field(min_length=1, description="Absolute path of the photo folder to import (read-only).")
+    include_subfolders: bool = False
+
+
+class OpenFolderRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
+
+    folder: str = Field(min_length=1, description="An already imported folder to show in the Library.")

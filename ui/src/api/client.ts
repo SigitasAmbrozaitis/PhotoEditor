@@ -46,6 +46,7 @@ async function request<T>(method: string, path: string, body?: unknown, signal?:
 export const api = {
   get: <T>(path: string, query?: Query, signal?: AbortSignal) => request<T>('GET', buildUrl(path, query), undefined, signal),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {}),
+  put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
 }
 
 // Image URLs (served as JPEG by the backend).

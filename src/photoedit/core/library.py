@@ -1,0 +1,297 @@
+"""The photo library: importing folders (read-only) and serving photos, thumbnails and previews."""
+
+from __future__ import annotations
+
+import hashlib
+from collections import Counter
+from collections.abc import Callable
+from datetime import UTC, datetime
+from enum import StrEnum
+from pathlib import Path
+
+from PIL import Image
+
+from photoedit.core.cache import ImageCache
+from photoedit.core.catalog import Catalog, CatalogPhoto, FolderRecord, photo_id
+from photoedit.core.decode import is_raw, oriented_image, read_raw_info
+from photoedit.core.errors import NotFoundError
+from photoedit.core.jobs import ItemResult, ItemSpec, JobManager
+from photoedit.core.metadata import MetadataError, PhotoMetadata, read_metadata, read_metadata_from_bytes
+from photoedit.core.scan import ScannedPhoto, SourceKind, scan_folder
+from photoedit.models import (
+    Job,
+    JobKind,
+    LibraryFolder,
+    LibraryInfo,
+    Page,
+    Photo,
+    PhotoDetail,
+    PhotoEdit,
+    PhotoSort,
+    SortOrder,
+)
+from photoedit.safety import PathGuard
+
+CURRENT_FOLDER = "current_folder"
+IMPORT_THREADS = 4  # hashing and JPEG decoding release the GIL, so a few threads overlap disk and CPU
+_HASH_CHUNK = 1 << 20
+
+type Clock = Callable[[], datetime]
+
+
+class ImportOutcome(StrEnum):
+    NEW = "new"
+    UPDATED = "updated"
+    UNCHANGED = "unchanged"
+
+
+class Library:
+    def __init__(
+        self,
+        catalog: Catalog,
+        cache: ImageCache,
+        jobs: JobManager,
+        guard: PathGuard,
+        *,
+        suggested_folder: Path | None = None,
+        clock: Clock | None = None,
+    ) -> None:
+        self.catalog = catalog
+        self.cache = cache
+        self.jobs = jobs
+        self._guard = guard
+        self._suggested = suggested_folder
+        self._clock: Clock = clock or (lambda: datetime.now(UTC))
+        # Every folder ever imported stays read-only for the life of the process (golden rule 1).
+        for record in catalog.folders():
+            guard.protect(record.path)
+
+    # ---- import
+
+    def import_folder(self, folder: Path, *, include_subfolders: bool = False) -> Job:
+        """Start importing ``folder`` as a background job and make it the Library's current folder.
+
+        Only reads the photos. Raises ``ScanError`` right away if the folder can't be listed.
+        """
+        self._guard.protect(folder)  # before anything else touches the folder
+        scan = scan_folder(folder, recursive=include_subfolders)
+        root = scan.folder
+        self._guard.protect(root)
+        previous = self.catalog.get_folder(root)
+        self.catalog.save_folder(
+            FolderRecord(
+                path=root,
+                include_subfolders=include_subfolders,
+                last_imported_at=previous.last_imported_at if previous else None,
+            )
+        )
+        self.catalog.set_state(CURRENT_FOLDER, str(root))
+
+        outcomes: dict[int, tuple[str, ImportOutcome]] = {}
+
+        def work(index: int) -> ItemResult:
+            photo, outcome = self._import_one(scan.photos[index])
+            outcomes[index] = (photo.id, outcome)
+            return ItemResult(photo_id=photo.id, message=outcome.value)
+
+        def finish() -> str:
+            present = {pid for pid, _ in outcomes.values()}
+            missing = self.catalog.mark_missing(root, recursive=include_subfolders, present_ids=present)
+            self.catalog.save_folder(
+                FolderRecord(path=root, include_subfolders=include_subfolders, last_imported_at=self._clock())
+            )
+            return _summary(
+                Counter(o for _, o in outcomes.values()), len(scan.photos), len(scan.skipped), missing
+            )
+
+        noun = "photo" if len(scan.photos) == 1 else "photos"
+        return self.jobs.submit(
+            JobKind.IMPORT,
+            f"Import {len(scan.photos)} {noun} from {root.name or root}",
+            [ItemSpec(filename=p.path.name) for p in scan.photos],
+            work,
+            parallel=IMPORT_THREADS,
+            finish=finish,
+            folder=root.as_posix(),
+        )
+
+    def _import_one(self, scanned: ScannedPhoto) -> tuple[CatalogPhoto, ImportOutcome]:
+        path = scanned.path
+        stat = path.stat()
+        existing = self.catalog.get_by_path(path)
+        if (
+            existing is not None
+            and existing.file_size == stat.st_size
+            and existing.mtime_ns == stat.st_mtime_ns
+            and existing.sidecar_jpeg == scanned.sidecar_jpeg
+            and self.cache.has_thumbnail(existing.id)
+        ):
+            if existing.missing:
+                existing = existing.model_copy(update={"missing": False})
+                self.catalog.upsert(existing)
+            return existing, ImportOutcome.UNCHANGED
+
+        sha256 = _sha256(path)
+        meta, thumbnail = _read_metadata_and_thumbnail(path)
+        previous = self.catalog.get(photo_id(sha256))
+        photo = CatalogPhoto(
+            id=photo_id(sha256),
+            sha256=sha256,
+            path=path,
+            kind=scanned.kind,
+            sidecar_jpeg=scanned.sidecar_jpeg,
+            file_size=stat.st_size,
+            mtime_ns=stat.st_mtime_ns,
+            captured_at=meta.captured_at,
+            camera=meta.camera,
+            lens=meta.lens,
+            iso=meta.iso,
+            shutter=meta.shutter,
+            aperture=meta.aperture,
+            focal_length=meta.focal_length,
+            orientation=meta.orientation,
+            width=meta.width,
+            height=meta.height,
+            rating=meta.rating,
+        )
+        # Thumbnail first: a file that can't be decoded fails here and never enters the catalog half-done.
+        if thumbnail is not None:
+            self.cache.put_thumbnail(photo.id, thumbnail)
+        else:
+            self.cache.thumbnail(photo)
+        self.catalog.upsert(photo)
+        outcome = ImportOutcome.NEW if existing is None and previous is None else ImportOutcome.UPDATED
+        return photo, outcome
+
+    # ---- folders
+
+    def info(self) -> LibraryInfo:
+        current = self._current()
+        suggested = self._suggested.as_posix() if self._suggested else None
+        if current is None:
+            return LibraryInfo(folder=None, photo_count=0, suggested_folder=suggested)
+        return LibraryInfo(
+            folder=current.path.as_posix(),
+            include_subfolders=current.include_subfolders,
+            photo_count=self.catalog.count(current.path, recursive=current.include_subfolders),
+            suggested_folder=suggested,
+        )
+
+    def folders(self) -> list[LibraryFolder]:
+        return [
+            LibraryFolder(
+                path=record.path.as_posix(),
+                include_subfolders=record.include_subfolders,
+                photo_count=self.catalog.count(record.path, recursive=record.include_subfolders),
+                last_imported_at=record.last_imported_at,
+            )
+            for record in self.catalog.folders()
+        ]
+
+    def open_folder(self, folder: Path) -> LibraryInfo:
+        """Show an already imported folder in the Library (no disk access)."""
+        record = self.catalog.get_folder(folder)
+        if record is None:
+            raise NotFoundError(f"folder '{folder}' has not been imported yet")
+        self.catalog.set_state(CURRENT_FOLDER, str(record.path))
+        return self.info()
+
+    def _current(self) -> FolderRecord | None:
+        value = self.catalog.get_state(CURRENT_FOLDER)
+        return self.catalog.get_folder(Path(value)) if value else None
+
+    # ---- photos
+
+    def list_photos(
+        self,
+        *,
+        style_id: str | None = None,
+        min_rating: int = 0,
+        sort: PhotoSort = PhotoSort.DATE,
+        order: SortOrder = SortOrder.ASC,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> Page[Photo]:
+        current = self._current()
+        if current is None:
+            return Page[Photo](items=[], total=0, offset=offset, limit=limit)
+        items, total = self.catalog.page(
+            current.path,
+            recursive=current.include_subfolders,
+            style_id=style_id,
+            min_rating=min_rating,
+            sort=sort,
+            order=order,
+            offset=offset,
+            limit=limit,
+        )
+        return Page[Photo](items=[p.to_photo() for p in items], total=total, offset=offset, limit=limit)
+
+    def photo(self, photo_id: str) -> CatalogPhoto:
+        photo = self.catalog.get(photo_id)
+        if photo is None:
+            raise NotFoundError(f"photo '{photo_id}' not found")
+        return photo
+
+    def photo_detail(self, photo_id: str) -> PhotoDetail:
+        photo = self.photo(photo_id)
+        # Edits arrive in Phase 3/4; until then every photo shows its neutral, unedited state.
+        return PhotoDetail(photo=photo.to_photo(), edit=PhotoEdit(photo_id=photo.id, style_id=photo.style_id))
+
+    def thumbnail(self, photo_id: str) -> bytes:
+        photo = self.photo(photo_id)
+        if self.cache.has_thumbnail(photo.id):
+            return self.cache.thumbnail(photo)
+        self._require_original(photo)
+        return self.cache.thumbnail(photo)
+
+    def preview(self, photo_id: str, long_edge: int) -> bytes:
+        photo = self.photo(photo_id)
+        if not self.cache.preview_path(photo.id).is_file():
+            self._require_original(photo)
+        return self.cache.preview(photo, long_edge)
+
+    def _require_original(self, photo: CatalogPhoto) -> None:
+        if not photo.path.is_file():
+            raise NotFoundError(f"the original of '{photo.path.name}' is no longer at {photo.path}")
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(_HASH_CHUNK):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _read_metadata_and_thumbnail(path: Path) -> tuple[PhotoMetadata, Image.Image | None]:
+    """Metadata, plus an upright thumbnail source when it comes for free (a RAW's embedded JPEG)."""
+    if not is_raw(path):
+        return read_metadata(path), None
+    info = read_raw_info(path)
+    if info.embedded_jpeg is None:
+        return PhotoMetadata(width=info.width, height=info.height), None
+    try:
+        meta = read_metadata_from_bytes(info.embedded_jpeg)
+    except MetadataError:
+        meta = PhotoMetadata(width=info.width, height=info.height)
+    # The embedded JPEG is smaller than the sensor; the RAW knows the real size.
+    meta = meta.model_copy(update={"width": info.width, "height": info.height})
+    return meta, oriented_image(info.embedded_jpeg, info.flip)
+
+
+def _summary(outcomes: Counter[ImportOutcome], photos: int, skipped: int, missing: int) -> str:
+    noun = "photo" if photos == 1 else "photos"
+    parts = [f"{outcomes[o]} {o.value}" for o in ImportOutcome if outcomes[o]]
+    failed = photos - sum(outcomes.values())
+    if failed:
+        parts.append(f"{failed} failed")
+    text = f"{photos} {noun}" + (f": {', '.join(parts)}" if parts else "")
+    if skipped:
+        text += f"; {skipped} other file{'s' if skipped != 1 else ''} skipped"
+    if missing:
+        text += f"; {missing} no longer in the folder"
+    return text
+
+
+__all__ = ["ImportOutcome", "Library", "SourceKind"]

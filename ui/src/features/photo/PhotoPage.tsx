@@ -19,6 +19,16 @@ function InfoPanel({ photo, styleName }: { photo: Photo; styleName?: string }) {
   const rows: [string, ReactNode][] = [
     ['File', <span key="v" className="font-mono">{photo.filename}</span>],
     ['Folder', <span key="v" className="break-all">{photo.folder}</span>],
+    [
+      'Camera JPEG',
+      photo.sidecar_jpeg ? (
+        <span key="v" className="font-mono" title={photo.sidecar_jpeg}>
+          {photo.sidecar_jpeg.split('/').pop()}
+        </span>
+      ) : (
+        '—'
+      ),
+    ],
     ['Captured', photo.captured_at ? new Date(photo.captured_at).toLocaleString() : '—'],
     ['Camera', photo.camera ?? '—'],
     ['Lens', photo.lens ?? '—'],

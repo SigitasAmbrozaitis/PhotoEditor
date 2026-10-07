@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import threading
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -11,7 +14,9 @@ from pydantic import BaseModel
 from photoedit import __version__
 from photoedit.api.routes import router
 from photoedit.config import Settings, load_settings
-from photoedit.mock import MockBackend, NotFoundError
+from photoedit.core.errors import InvalidRequestError, NotFoundError
+from photoedit.safety import WriteNotAllowedError
+from photoedit.services import Services
 
 UI_NOT_BUILT_HTML = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>PhotoEditor</title></head>
@@ -29,18 +34,30 @@ class Health(BaseModel):
     version: str
 
 
-def create_app(settings: Settings | None = None, backend: MockBackend | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, services: Services | None = None) -> FastAPI:
     settings = settings if settings is not None else load_settings()
-    app = FastAPI(title="PhotoEditor", version=__version__)
+    provider = _ServicesProvider(settings, services)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        yield
+        provider.close()
+
+    app = FastAPI(title="PhotoEditor", version=__version__, lifespan=lifespan)
     app.state.settings = settings
-    if backend is None:
-        folder = settings.sample_photos_dir.as_posix() if settings.sample_photos_dir else "C:/Photos/Demo"
-        backend = MockBackend(folder=folder)
-    app.state.backend = backend
+    app.state.services = provider
 
     @app.exception_handler(NotFoundError)
     async def not_found(_: Request, exc: NotFoundError) -> JSONResponse:
         return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+    @app.exception_handler(InvalidRequestError)
+    async def invalid(_: Request, exc: InvalidRequestError) -> JSONResponse:
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+    @app.exception_handler(WriteNotAllowedError)
+    async def write_refused(_: Request, exc: WriteNotAllowedError) -> JSONResponse:
+        return JSONResponse(status_code=403, content={"detail": str(exc)})
 
     @app.get("/api/health", response_model=Health, tags=["system"])
     def health() -> Health:
@@ -66,6 +83,29 @@ def create_app(settings: Settings | None = None, backend: MockBackend | None = N
         return HTMLResponse(UI_NOT_BUILT_HTML)
 
     return app
+
+
+class _ServicesProvider:
+    """Builds the services on first use, so ``create_app()`` alone (e.g. for ``photoedit openapi``) never
+    creates a catalog or touches the workspace."""
+
+    def __init__(self, settings: Settings, services: Services | None) -> None:
+        self._settings = settings
+        self._services = services
+        self._lock = threading.Lock()
+        self._factory: Callable[[Settings], Services] = Services
+
+    def __call__(self) -> Services:
+        with self._lock:
+            if self._services is None:
+                self._services = self._factory(self._settings)
+            return self._services
+
+    def close(self) -> None:
+        with self._lock:
+            if self._services is not None:
+                self._services.close()
+                self._services = None
 
 
 def _safe_child(root: Path, relative: str) -> Path | None:

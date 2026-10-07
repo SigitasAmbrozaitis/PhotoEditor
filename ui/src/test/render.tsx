@@ -23,6 +23,15 @@ export function defaultHandlers(): Record<string, Handler> {
   return {
     'GET /api/health': () => ({ status: 'ok', version: '0.1.0' }),
     'GET /api/library': () => fx.library,
+    'GET /api/library/folders': () => fx.folders,
+    'GET /api/fs/dirs': ({ query }) => fx.dirListing(query.get('path')),
+    'POST /api/library/import': ({ body }) => {
+      const job = fx.makeImportJob({ status: 'running', completed: 0, progress: 0, finished_at: null, summary: null })
+      job.folder = (body as { folder: string }).folder
+      jobs.unshift(job)
+      return job
+    },
+    'PUT /api/library/current': ({ body }) => ({ ...fx.library, folder: (body as { folder: string }).folder }),
     'GET /api/photos': ({ query }) => {
       let items = [...fx.photos]
       const style = query.get('style_id')

@@ -1,14 +1,24 @@
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Download, FolderOpen, Wand2 } from 'lucide-react'
-import { useMemo, useState, type KeyboardEvent, type MouseEvent } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Download, Wand2 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { imageUrls } from '../../api/client'
-import { useLibrary, usePhotos, useStyles, type PhotoQuery } from '../../api/queries'
+import {
+  IMPORT_REFRESH_MS,
+  queryKeys,
+  useLatestImport,
+  useLibrary,
+  usePhotos,
+  useStyles,
+  type PhotoQuery,
+} from '../../api/queries'
 import type { Photo, PhotoSort } from '../../api/types'
-import { Button, Chip, EmptyState, ErrorState, Field, Loading, PageHeader, Select, Stars, TextInput, Tooltip } from '../../components/ui'
+import { Button, Chip, EmptyState, ErrorState, Field, Loading, PageHeader, Select, Stars } from '../../components/ui'
 import { cn } from '../../lib/cn'
 import { useSelection } from '../../state/selection'
 import { ExportDialog } from '../export/ExportDialog'
 import { ProcessWizard } from '../process/ProcessWizard'
+import { FolderBar, ImportStatus } from './FolderBar'
 
 function PhotoTile({
   photo,
@@ -66,10 +76,24 @@ function PhotoTile({
 export function LibraryPage() {
   const navigate = useNavigate()
   const selection = useSelection()
+  const client = useQueryClient()
   const library = useLibrary()
   const styles = useStyles()
+  const importing = useLatestImport().running
   const [query, setQuery] = useState<PhotoQuery>({ sort: 'date', order: 'asc' })
-  const photos = usePhotos(query)
+  const photos = usePhotos(query, { refetchInterval: importing ? IMPORT_REFRESH_MS : false })
+  const noFolder = library.data !== undefined && library.data.folder === null
+
+  // While importing, the grid polls; when the import ends, refresh once more so counts and the last photos show.
+  const wasImporting = useRef(importing)
+  useEffect(() => {
+    if (wasImporting.current !== importing) {
+      void client.invalidateQueries({ queryKey: queryKeys.library })
+      void client.invalidateQueries({ queryKey: queryKeys.folders })
+      if (!importing) void client.invalidateQueries({ queryKey: ['photos'] })
+    }
+    wasImporting.current = importing
+  }, [importing, client])
   const [dialog, setDialog] = useState<'apply' | 'export' | null>(null)
 
   const items = useMemo(() => photos.data?.items ?? [], [photos.data])
@@ -105,7 +129,11 @@ export function LibraryPage() {
       <PageHeader
         title="Library"
         subtitle={
-          library.data ? `${library.data.photo_count} photos · ${count} selected` : 'Loading library…'
+          !library.data
+            ? 'Loading library…'
+            : noFolder
+              ? 'No folder open'
+              : `${library.data.photo_count} photos · ${count} selected`
         }
         actions={
           <>
@@ -120,18 +148,7 @@ export function LibraryPage() {
       />
 
       <div className="flex flex-wrap items-end gap-3 border-b border-line bg-panel/60 px-4 py-2">
-        <Field label="Folder" className="min-w-64 flex-1">
-          <div className="flex gap-2">
-            <TextInput readOnly value={library.data?.folder ?? ''} className="flex-1" aria-label="Photo folder" />
-            <Tooltip content="Opening other folders arrives in Phase 2 (real import).">
-              <span>
-                <Button disabled>
-                  <FolderOpen className="size-4" aria-hidden /> Change…
-                </Button>
-              </span>
-            </Tooltip>
-          </div>
-        </Field>
+        <FolderBar library={library.data} />
         <Field label="Sort by">
           <Select
             value={query.sort}
@@ -193,13 +210,22 @@ export function LibraryPage() {
         </div>
       </div>
 
+      <ImportStatus />
+
       <div className="min-h-0 flex-1 overflow-y-auto p-4" onKeyDown={handleGridKey}>
         {photos.isError ? (
           <ErrorState error={photos.error} />
         ) : photos.isLoading ? (
           <Loading label="Loading photos…" />
+        ) : noFolder ? (
+          <EmptyState title="Open a folder">
+            <p className="max-w-md text-xs">
+              Type or paste a folder path above, or use Browse…, then press Open. Photos are only read, never
+              changed: RAW + JPEG pairs show as one photo.
+            </p>
+          </EmptyState>
         ) : items.length === 0 ? (
-          <EmptyState title="No photos match these filters." />
+          <EmptyState title={importing ? 'Importing…' : 'No photos match these filters.'} />
         ) : (
           <div
             role="listbox"

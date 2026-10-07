@@ -87,6 +87,18 @@ function JobDetail({ jobId }: { jobId: string }) {
             {j.completed} of {j.total} ({Math.round(j.progress * 100)}%)
             {j.failed > 0 && <span className="text-err"> · {j.failed} failed</span>}
           </dd>
+          {j.summary && (
+            <>
+              <dt className="text-muted">Result</dt>
+              <dd>{j.summary}</dd>
+            </>
+          )}
+          {j.folder && (
+            <>
+              <dt className="text-muted">Folder</dt>
+              <dd className="font-mono break-all">{j.folder}</dd>
+            </>
+          )}
           {j.style_id && (
             <>
               <dt className="text-muted">Style</dt>
@@ -121,18 +133,28 @@ function JobDetail({ jobId }: { jobId: string }) {
             </tr>
           </thead>
           <tbody>
-            {j.items.map((item) => (
-              <tr key={item.photo_id} className="border-b border-line/50">
+            {j.items.map((item, index) => (
+              // Import items have no photo id until the file is identified, so rows are keyed by position.
+              <tr key={index} className="border-b border-line/50">
                 <td className="px-4 py-1.5 font-mono">
-                  <Link className="hover:underline" to={`/library/${item.photo_id}`}>
-                    {item.filename}
-                  </Link>
+                  {item.photo_id ? (
+                    <Link className="hover:underline" to={`/library/${item.photo_id}`}>
+                      {item.filename}
+                    </Link>
+                  ) : (
+                    item.filename
+                  )}
                 </td>
                 <td className="px-4 py-1.5">
                   <StatusLabel status={item.status} />
                 </td>
-                <td className={cn('px-4 py-1.5 break-all', item.message ? 'text-err' : 'font-mono text-muted')}>
-                  {item.message ?? item.output_path ?? ''}
+                <td
+                  className={cn(
+                    'px-4 py-1.5 break-all',
+                    item.status === 'failed' ? 'text-err' : item.output_path ? 'font-mono text-muted' : 'text-muted',
+                  )}
+                >
+                  {item.status === 'failed' ? item.message : (item.output_path ?? item.message ?? '')}
                 </td>
               </tr>
             ))}
