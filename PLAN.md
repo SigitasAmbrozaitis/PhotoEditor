@@ -18,6 +18,10 @@
 | Lightroom import | **Not needed** (fallback F4 dropped) | 2026-10-07 |
 | Folder layout | **Tool + its data (workspace, styles, presets) live in `C:\Work\PhotoEditing`. Photos and exports live in other folders.** During development, test exports go to `C:\Work\PhotoEditing\output\` (git-ignored). | 2026-10-07 |
 | UI look & build | **Dark neutral-gray theme, Tailwind CSS, Radix primitives** (plus react-router, TanStack Query, lucide icons) | 2026-10-07 |
+| RAW + JPEG pairs | **One photo**: the RAW is the master, the camera JPEG is kept as a sidecar (Phase 8 test data). Lone JPEG/TIFF = own photo | 2026-10-07 |
+| Opening folders | **In-app folder browser + paste a path + recent folders.** Catalog keeps all imported folders; Library shows one at a time | 2026-10-07 |
+| Photo identity | **Content hash (SHA-256).** Moved/renamed folders keep their edits; identical copies are one photo | 2026-10-07 |
+| Phase 2 preview | **LibRaw half-size, camera WB, sRGB, auto-brightness on** (temporary until the Phase 3 pipeline) | 2026-10-07 |
 
 **Target machine**: i7-12700H (14 cores / 20 threads), 16 GB RAM, RTX 3060 Laptop (6 GB), Windows 11.
 .NET 9 SDK is installed. Python and uv are not installed yet.
