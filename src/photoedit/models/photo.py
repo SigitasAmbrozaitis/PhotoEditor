@@ -13,7 +13,7 @@ from photoedit.models.adjustments import AdjustmentParams
 class Photo(BaseModel):
     """A source photo known to the catalog. The file itself is never modified."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
 
     id: str = Field(description="Stable catalog id.")
     path: str = Field(description="Absolute path of the original file (read-only).")
@@ -37,7 +37,7 @@ class Photo(BaseModel):
 class PhotoEdit(BaseModel):
     """The edit of one photo: an optional style plus per-photo overrides. Overrides always win."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
 
     photo_id: str
     style_id: str | None = None
@@ -51,7 +51,7 @@ class PhotoEdit(BaseModel):
 
 
 class PhotoDetail(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
 
     photo: Photo
     edit: PhotoEdit
@@ -69,7 +69,7 @@ class SortOrder(StrEnum):
 
 
 class LibraryInfo(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
 
     folder: str | None = Field(description="Currently opened photo folder.")
     photo_count: int = Field(ge=0)

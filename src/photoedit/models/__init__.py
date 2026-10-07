@@ -17,13 +17,13 @@ from photoedit.models.job import (
     JobStatus,
 )
 from photoedit.models.photo import LibraryInfo, Photo, PhotoDetail, PhotoEdit, PhotoSort, SortOrder
-from photoedit.models.style import Style, StyleSample, StyleSummary
+from photoedit.models.style import Style, StyleSample, StyleSummary, StyleView, style_view
 
 
 class Page[T](BaseModel):
     """One page of a list result."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
 
     items: list[T]
     total: int = Field(ge=0)
@@ -54,4 +54,6 @@ __all__ = [
     "Style",
     "StyleSample",
     "StyleSummary",
+    "StyleView",
+    "style_view",
 ]

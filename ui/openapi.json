@@ -344,7 +344,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Style"
+                  "$ref": "#/components/schemas/StyleView"
                 }
               }
             }
@@ -686,6 +686,18 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "required": [
+          "white_balance",
+          "tone",
+          "presence",
+          "tone_curve",
+          "hsl",
+          "color_grading",
+          "detail",
+          "effects",
+          "geometry",
+          "lens"
+        ],
         "title": "AdjustmentParams",
         "description": "Complete set of global adjustments. All defaults = identity (no change)."
       },
@@ -722,7 +734,7 @@
             "title": "Preset Id"
           },
           "settings": {
-            "$ref": "#/components/schemas/ExportSettings"
+            "$ref": "#/components/schemas/ExportSettings-Input"
           },
           "destination": {
             "type": "string",
@@ -770,7 +782,7 @@
         ],
         "title": "ApplyStyleRequest"
       },
-      "AspectSettings": {
+      "AspectSettings-Input": {
         "properties": {
           "ratio": {
             "anyOf": [
@@ -798,6 +810,41 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "title": "AspectSettings"
+      },
+      "AspectSettings-Output": {
+        "properties": {
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\d+(\\.\\d+)?:\\d+(\\.\\d+)?$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratio",
+            "description": "Crop to this aspect ratio, e.g. '4:5'. None = keep the photo's own aspect."
+          },
+          "orientation": {
+            "$ref": "#/components/schemas/Orientation",
+            "description": "auto = follow the photo; otherwise force the ratio's orientation.",
+            "default": "auto"
+          },
+          "anchor": {
+            "$ref": "#/components/schemas/CropAnchor",
+            "description": "What the aspect crop is centered on.",
+            "default": "subject"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "ratio",
+          "orientation",
+          "anchor"
+        ],
         "title": "AspectSettings"
       },
       "CollisionPolicy": {
@@ -842,6 +889,14 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "required": [
+          "shadows",
+          "midtones",
+          "highlights",
+          "global",
+          "blending",
+          "balance"
+        ],
         "title": "ColorGrading"
       },
       "ColorSpace": {
@@ -894,6 +949,12 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "required": [
+          "left",
+          "top",
+          "right",
+          "bottom"
+        ],
         "title": "CropRect",
         "description": "Crop rectangle in normalized image coordinates (0..1), applied after rotation."
       },
@@ -933,6 +994,10 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "required": [
+          "sharpening",
+          "noise_reduction"
+        ],
         "title": "Detail"
       },
       "Effects": {
@@ -946,6 +1011,10 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "required": [
+          "vignette",
+          "grain"
+        ],
         "title": "Effects"
       },
       "ExportPreset": {
@@ -977,14 +1046,18 @@
             "default": false
           },
           "settings": {
-            "$ref": "#/components/schemas/ExportSettings"
+            "$ref": "#/components/schemas/ExportSettings-Output"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "id",
-          "name"
+          "name",
+          "description",
+          "target",
+          "builtin",
+          "settings"
         ],
         "title": "ExportPreset"
       },
@@ -1018,7 +1091,7 @@
             "description": "Preset the settings started from (for display)."
           },
           "settings": {
-            "$ref": "#/components/schemas/ExportSettings"
+            "$ref": "#/components/schemas/ExportSettings-Input"
           },
           "destination": {
             "type": "string",
@@ -1035,29 +1108,29 @@
         ],
         "title": "ExportRequest"
       },
-      "ExportSettings": {
+      "ExportSettings-Input": {
         "properties": {
           "file": {
-            "$ref": "#/components/schemas/FileSettings"
+            "$ref": "#/components/schemas/FileSettings-Input"
           },
           "color_space": {
             "$ref": "#/components/schemas/ColorSpace",
             "default": "srgb"
           },
           "size": {
-            "$ref": "#/components/schemas/SizeSettings"
+            "$ref": "#/components/schemas/SizeSettings-Input"
           },
           "aspect": {
-            "$ref": "#/components/schemas/AspectSettings"
+            "$ref": "#/components/schemas/AspectSettings-Input"
           },
           "sharpening": {
-            "$ref": "#/components/schemas/OutputSharpening"
+            "$ref": "#/components/schemas/OutputSharpening-Input"
           },
           "metadata": {
-            "$ref": "#/components/schemas/MetadataSettings"
+            "$ref": "#/components/schemas/MetadataSettings-Input"
           },
           "naming": {
-            "$ref": "#/components/schemas/NamingSettings"
+            "$ref": "#/components/schemas/NamingSettings-Input"
           },
           "destination": {
             "anyOf": [
@@ -1074,6 +1147,58 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "title": "ExportSettings",
+        "description": "Everything needed to turn an edited photo into an output file."
+      },
+      "ExportSettings-Output": {
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/FileSettings-Output"
+          },
+          "color_space": {
+            "$ref": "#/components/schemas/ColorSpace",
+            "default": "srgb"
+          },
+          "size": {
+            "$ref": "#/components/schemas/SizeSettings-Output"
+          },
+          "aspect": {
+            "$ref": "#/components/schemas/AspectSettings-Output"
+          },
+          "sharpening": {
+            "$ref": "#/components/schemas/OutputSharpening-Output"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/MetadataSettings-Output"
+          },
+          "naming": {
+            "$ref": "#/components/schemas/NamingSettings-Output"
+          },
+          "destination": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination",
+            "description": "Default output folder. None = ask every time."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "file",
+          "color_space",
+          "size",
+          "aspect",
+          "sharpening",
+          "metadata",
+          "naming",
+          "destination"
+        ],
         "title": "ExportSettings",
         "description": "Everything needed to turn an edited photo into an output file."
       },
@@ -1096,7 +1221,7 @@
         ],
         "title": "FileFormat"
       },
-      "FileSettings": {
+      "FileSettings-Input": {
         "properties": {
           "format": {
             "$ref": "#/components/schemas/FileFormat",
@@ -1135,6 +1260,54 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "title": "FileSettings"
+      },
+      "FileSettings-Output": {
+        "properties": {
+          "format": {
+            "$ref": "#/components/schemas/FileFormat",
+            "default": "jpeg"
+          },
+          "jpeg_quality": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Jpeg Quality",
+            "default": 90
+          },
+          "max_file_size_kb": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 50.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max File Size Kb",
+            "description": "JPEG only: shrink quality to fit."
+          },
+          "bit_depth": {
+            "type": "integer",
+            "title": "Bit Depth",
+            "description": "8 or 16 (16 only for TIFF/PNG).",
+            "default": 8
+          },
+          "tiff_compression": {
+            "$ref": "#/components/schemas/TiffCompression",
+            "default": "lzw"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "format",
+          "jpeg_quality",
+          "max_file_size_kb",
+          "bit_depth",
+          "tiff_compression"
+        ],
         "title": "FileSettings"
       },
       "Geometry": {
@@ -1176,6 +1349,13 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "required": [
+          "crop",
+          "aspect",
+          "angle",
+          "flip_horizontal",
+          "flip_vertical"
+        ],
         "title": "Geometry"
       },
       "GradeWheel": {
@@ -1207,6 +1387,11 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "required": [
+          "hue",
+          "saturation",
+          "luminance"
+        ],
         "title": "GradeWheel"
       },
       "Grain": {
@@ -1238,6 +1423,11 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "required": [
+          "amount",
+          "size",
+          "roughness"
+        ],
         "title": "Grain"
       },
       "HTTPValidationError": {
@@ -1300,6 +1490,16 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "required": [
+          "red",
+          "orange",
+          "yellow",
+          "green",
+          "aqua",
+          "blue",
+          "purple",
+          "magenta"
+        ],
         "title": "Hsl"
       },
       "HslBand": {
@@ -1331,6 +1531,11 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "required": [
+          "hue",
+          "saturation",
+          "luminance"
+        ],
         "title": "HslBand"
       },
       "Job": {
@@ -1438,9 +1643,15 @@
           "status",
           "title",
           "created_at",
+          "finished_at",
           "progress",
           "total",
-          "completed"
+          "completed",
+          "failed",
+          "style_id",
+          "preset_id",
+          "destination",
+          "items"
         ],
         "title": "Job"
       },
@@ -1485,7 +1696,9 @@
         "required": [
           "photo_id",
           "filename",
-          "status"
+          "status",
+          "message",
+          "output_path"
         ],
         "title": "JobItem"
       },
@@ -1525,6 +1738,10 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "required": [
+          "profile_corrections",
+          "remove_chromatic_aberration"
+        ],
         "title": "Lens"
       },
       "LibraryInfo": {
@@ -1565,7 +1782,7 @@
         ],
         "title": "MetadataPolicy"
       },
-      "MetadataSettings": {
+      "MetadataSettings-Input": {
         "properties": {
           "policy": {
             "$ref": "#/components/schemas/MetadataPolicy",
@@ -1600,7 +1817,48 @@
         "type": "object",
         "title": "MetadataSettings"
       },
-      "NamingSettings": {
+      "MetadataSettings-Output": {
+        "properties": {
+          "policy": {
+            "$ref": "#/components/schemas/MetadataPolicy",
+            "default": "all_except_camera_and_gps"
+          },
+          "strip_gps": {
+            "type": "boolean",
+            "title": "Strip Gps",
+            "default": true
+          },
+          "copyright": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Copyright"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Keywords"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "policy",
+          "strip_gps",
+          "copyright",
+          "keywords"
+        ],
+        "title": "MetadataSettings"
+      },
+      "NamingSettings-Input": {
         "properties": {
           "template": {
             "type": "string",
@@ -1617,6 +1875,29 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "title": "NamingSettings"
+      },
+      "NamingSettings-Output": {
+        "properties": {
+          "template": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Template",
+            "description": "Tokens: {original} {date} {time} {seq} {seq:03} {style} {preset}.",
+            "default": "{original}"
+          },
+          "on_collision": {
+            "$ref": "#/components/schemas/CollisionPolicy",
+            "default": "suffix"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "template",
+          "on_collision"
+        ],
         "title": "NamingSettings"
       },
       "NoiseReduction": {
@@ -1640,6 +1921,10 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "required": [
+          "luminance",
+          "color"
+        ],
         "title": "NoiseReduction"
       },
       "Orientation": {
@@ -1651,7 +1936,7 @@
         ],
         "title": "Orientation"
       },
-      "OutputSharpening": {
+      "OutputSharpening-Input": {
         "properties": {
           "target": {
             "$ref": "#/components/schemas/SharpenFor",
@@ -1664,6 +1949,25 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "title": "OutputSharpening"
+      },
+      "OutputSharpening-Output": {
+        "properties": {
+          "target": {
+            "$ref": "#/components/schemas/SharpenFor",
+            "default": "screen"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/SharpenAmount",
+            "default": "standard"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "target",
+          "amount"
+        ],
         "title": "OutputSharpening"
       },
       "Page_Photo_": {
@@ -1858,8 +2162,18 @@
           "filename",
           "folder",
           "file_size",
+          "captured_at",
+          "camera",
+          "lens",
+          "iso",
+          "shutter",
+          "aperture",
+          "focal_length",
           "width",
-          "height"
+          "height",
+          "rating",
+          "style_id",
+          "has_overrides"
         ],
         "title": "Photo",
         "description": "A source photo known to the catalog. The file itself is never modified."
@@ -1914,7 +2228,10 @@
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "photo_id"
+          "photo_id",
+          "style_id",
+          "adjustments",
+          "overridden"
         ],
         "title": "PhotoEdit",
         "description": "The edit of one photo: an optional style plus per-photo overrides. Overrides always win."
@@ -1973,6 +2290,13 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "required": [
+          "vibrance",
+          "saturation",
+          "clarity",
+          "texture",
+          "dehaze"
+        ],
         "title": "Presence"
       },
       "ResizeMode": {
@@ -2043,9 +2367,15 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "required": [
+          "amount",
+          "radius",
+          "detail",
+          "masking"
+        ],
         "title": "Sharpening"
       },
-      "SizeSettings": {
+      "SizeSettings-Input": {
         "properties": {
           "mode": {
             "$ref": "#/components/schemas/ResizeMode",
@@ -2151,6 +2481,123 @@
         "type": "object",
         "title": "SizeSettings"
       },
+      "SizeSettings-Output": {
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/ResizeMode",
+            "default": "original"
+          },
+          "long_edge": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 65535.0,
+                "minimum": 16.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Long Edge",
+            "description": "Pixels (mode=long_edge)."
+          },
+          "short_edge": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 65535.0,
+                "minimum": 16.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Short Edge",
+            "description": "Pixels (mode=short_edge)."
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 65535.0,
+                "minimum": 16.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width",
+            "description": "Pixels (mode=width_height)."
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 65535.0,
+                "minimum": 16.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height",
+            "description": "Pixels (mode=width_height)."
+          },
+          "megapixels": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 500.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Megapixels"
+          },
+          "percentage": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 100.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percentage"
+          },
+          "dont_enlarge": {
+            "type": "boolean",
+            "title": "Dont Enlarge",
+            "default": true
+          },
+          "ppi": {
+            "type": "integer",
+            "maximum": 2400.0,
+            "minimum": 1.0,
+            "title": "Ppi",
+            "description": "Print resolution stored in the file.",
+            "default": 300
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "mode",
+          "long_edge",
+          "short_edge",
+          "width",
+          "height",
+          "megapixels",
+          "percentage",
+          "dont_enlarge",
+          "ppi"
+        ],
+        "title": "SizeSettings"
+      },
       "SortOrder": {
         "type": "string",
         "enum": [
@@ -2159,7 +2606,82 @@
         ],
         "title": "SortOrder"
       },
-      "Style": {
+      "StyleSample": {
+        "properties": {
+          "caption": {
+            "type": "string",
+            "title": "Caption",
+            "default": ""
+          },
+          "before_url": {
+            "type": "string",
+            "title": "Before Url"
+          },
+          "after_url": {
+            "type": "string",
+            "title": "After Url"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "caption",
+          "before_url",
+          "after_url"
+        ],
+        "title": "StyleSample",
+        "description": "A before/after example showing the expected result of a style."
+      },
+      "StyleSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "title": "Id",
+            "description": "Slug, also the folder name under styles/."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Description",
+            "default": ""
+          },
+          "cover_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url",
+            "description": "Thumbnail of an 'after' sample."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "cover_url",
+          "updated_at"
+        ],
+        "title": "StyleSummary"
+      },
+      "StyleView": {
         "properties": {
           "id": {
             "type": "string",
@@ -2233,6 +2755,13 @@
             "title": "Version",
             "description": "Incremented on every saved change.",
             "default": 1
+          },
+          "changed_parameters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Changed Parameters",
+            "description": "Parameters this style changes from neutral, as {dotted.name: value}.",
+            "readOnly": true
           }
         },
         "additionalProperties": false,
@@ -2240,82 +2769,19 @@
         "required": [
           "id",
           "name",
+          "description",
+          "cover_url",
           "updated_at",
-          "created_at"
+          "best_for",
+          "avoid_on",
+          "adjustments",
+          "samples",
+          "created_at",
+          "version",
+          "changed_parameters"
         ],
-        "title": "Style"
-      },
-      "StyleSample": {
-        "properties": {
-          "caption": {
-            "type": "string",
-            "title": "Caption",
-            "default": ""
-          },
-          "before_url": {
-            "type": "string",
-            "title": "Before Url"
-          },
-          "after_url": {
-            "type": "string",
-            "title": "After Url"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "before_url",
-          "after_url"
-        ],
-        "title": "StyleSample",
-        "description": "A before/after example showing the expected result of a style."
-      },
-      "StyleSummary": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
-            "title": "Id",
-            "description": "Slug, also the folder name under styles/."
-          },
-          "name": {
-            "type": "string",
-            "maxLength": 80,
-            "minLength": 1,
-            "title": "Name"
-          },
-          "description": {
-            "type": "string",
-            "maxLength": 2000,
-            "title": "Description",
-            "default": ""
-          },
-          "cover_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cover Url",
-            "description": "Thumbnail of an 'after' sample."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "id",
-          "name",
-          "updated_at"
-        ],
-        "title": "StyleSummary"
+        "title": "StyleView",
+        "description": "API response for a style: the stored style plus derived, read-only information."
       },
       "TiffCompression": {
         "type": "string",
@@ -2379,6 +2845,14 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "required": [
+          "exposure",
+          "contrast",
+          "highlights",
+          "shadows",
+          "whites",
+          "blacks"
+        ],
         "title": "Tone"
       },
       "ToneCurve": {
@@ -2454,6 +2928,16 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "required": [
+          "highlights",
+          "lights",
+          "darks",
+          "shadows",
+          "rgb",
+          "red",
+          "green",
+          "blue"
+        ],
         "title": "ToneCurve"
       },
       "ValidationError": {
@@ -2533,6 +3017,12 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "required": [
+          "amount",
+          "midpoint",
+          "roundness",
+          "feather"
+        ],
         "title": "Vignette"
       },
       "WhiteBalance": {
@@ -2568,6 +3058,10 @@
         },
         "additionalProperties": false,
         "type": "object",
+        "required": [
+          "temperature",
+          "tint"
+        ],
         "title": "WhiteBalance"
       }
     }

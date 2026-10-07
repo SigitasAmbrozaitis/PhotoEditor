@@ -19,7 +19,9 @@ Hue = Annotated[float, Field(ge=0, lt=360)]
 
 
 class _Group(BaseModel):
-    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+    model_config = ConfigDict(
+        extra="forbid", json_schema_serialization_defaults_required=True, validate_assignment=True
+    )
 
 
 class WhiteBalance(_Group):
@@ -112,7 +114,12 @@ class ColorGrading(_Group):
     blending: Unsigned100 = Field(default=50, description="Overlap between the tonal ranges.")
     balance: Signed100 = Field(default=0, description="Shift the shadows/highlights split point.")
 
-    model_config = ConfigDict(extra="forbid", validate_assignment=True, populate_by_name=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_serialization_defaults_required=True,
+        validate_assignment=True,
+        populate_by_name=True,
+    )
 
 
 class Sharpening(_Group):

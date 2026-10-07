@@ -252,16 +252,16 @@ export interface components {
          * @description Complete set of global adjustments. All defaults = identity (no change).
          */
         AdjustmentParams: {
-            white_balance?: components["schemas"]["WhiteBalance"];
-            tone?: components["schemas"]["Tone"];
-            presence?: components["schemas"]["Presence"];
-            tone_curve?: components["schemas"]["ToneCurve"];
-            hsl?: components["schemas"]["Hsl"];
-            color_grading?: components["schemas"]["ColorGrading"];
-            detail?: components["schemas"]["Detail"];
-            effects?: components["schemas"]["Effects"];
-            geometry?: components["schemas"]["Geometry"];
-            lens?: components["schemas"]["Lens"];
+            white_balance: components["schemas"]["WhiteBalance"];
+            tone: components["schemas"]["Tone"];
+            presence: components["schemas"]["Presence"];
+            tone_curve: components["schemas"]["ToneCurve"];
+            hsl: components["schemas"]["Hsl"];
+            color_grading: components["schemas"]["ColorGrading"];
+            detail: components["schemas"]["Detail"];
+            effects: components["schemas"]["Effects"];
+            geometry: components["schemas"]["Geometry"];
+            lens: components["schemas"]["Lens"];
         };
         /** ApplyAndExportRequest */
         ApplyAndExportRequest: {
@@ -277,7 +277,7 @@ export interface components {
             style_id: string;
             /** Preset Id */
             preset_id?: string | null;
-            settings: components["schemas"]["ExportSettings"];
+            settings: components["schemas"]["ExportSettings-Input"];
             /** Destination */
             destination: string;
         };
@@ -295,12 +295,30 @@ export interface components {
             style_id: string;
         };
         /** AspectSettings */
-        AspectSettings: {
+        "AspectSettings-Input": {
             /**
              * Ratio
              * @description Crop to this aspect ratio, e.g. '4:5'. None = keep the photo's own aspect.
              */
             ratio?: string | null;
+            /**
+             * @description auto = follow the photo; otherwise force the ratio's orientation.
+             * @default auto
+             */
+            orientation: components["schemas"]["Orientation"];
+            /**
+             * @description What the aspect crop is centered on.
+             * @default subject
+             */
+            anchor: components["schemas"]["CropAnchor"];
+        };
+        /** AspectSettings */
+        "AspectSettings-Output": {
+            /**
+             * Ratio
+             * @description Crop to this aspect ratio, e.g. '4:5'. None = keep the photo's own aspect.
+             */
+            ratio: string | null;
             /**
              * @description auto = follow the photo; otherwise force the ratio's orientation.
              * @default auto
@@ -319,10 +337,10 @@ export interface components {
         CollisionPolicy: "suffix" | "overwrite" | "skip";
         /** ColorGrading */
         ColorGrading: {
-            shadows?: components["schemas"]["GradeWheel"];
-            midtones?: components["schemas"]["GradeWheel"];
-            highlights?: components["schemas"]["GradeWheel"];
-            global?: components["schemas"]["GradeWheel"];
+            shadows: components["schemas"]["GradeWheel"];
+            midtones: components["schemas"]["GradeWheel"];
+            highlights: components["schemas"]["GradeWheel"];
+            global: components["schemas"]["GradeWheel"];
             /**
              * Blending
              * @description Overlap between the tonal ranges.
@@ -387,13 +405,13 @@ export interface components {
         };
         /** Detail */
         Detail: {
-            sharpening?: components["schemas"]["Sharpening"];
-            noise_reduction?: components["schemas"]["NoiseReduction"];
+            sharpening: components["schemas"]["Sharpening"];
+            noise_reduction: components["schemas"]["NoiseReduction"];
         };
         /** Effects */
         Effects: {
-            vignette?: components["schemas"]["Vignette"];
-            grain?: components["schemas"]["Grain"];
+            vignette: components["schemas"]["Vignette"];
+            grain: components["schemas"]["Grain"];
         };
         /** ExportPreset */
         ExportPreset: {
@@ -414,7 +432,7 @@ export interface components {
              * @default false
              */
             builtin: boolean;
-            settings?: components["schemas"]["ExportSettings"];
+            settings: components["schemas"]["ExportSettings-Output"];
         };
         /** ExportRequest */
         ExportRequest: {
@@ -431,7 +449,7 @@ export interface components {
              * @description Preset the settings started from (for display).
              */
             preset_id?: string | null;
-            settings: components["schemas"]["ExportSettings"];
+            settings: components["schemas"]["ExportSettings-Input"];
             /** Destination */
             destination: string;
         };
@@ -439,20 +457,39 @@ export interface components {
          * ExportSettings
          * @description Everything needed to turn an edited photo into an output file.
          */
-        ExportSettings: {
-            file?: components["schemas"]["FileSettings"];
+        "ExportSettings-Input": {
+            file?: components["schemas"]["FileSettings-Input"];
             /** @default srgb */
             color_space: components["schemas"]["ColorSpace"];
-            size?: components["schemas"]["SizeSettings"];
-            aspect?: components["schemas"]["AspectSettings"];
-            sharpening?: components["schemas"]["OutputSharpening"];
-            metadata?: components["schemas"]["MetadataSettings"];
-            naming?: components["schemas"]["NamingSettings"];
+            size?: components["schemas"]["SizeSettings-Input"];
+            aspect?: components["schemas"]["AspectSettings-Input"];
+            sharpening?: components["schemas"]["OutputSharpening-Input"];
+            metadata?: components["schemas"]["MetadataSettings-Input"];
+            naming?: components["schemas"]["NamingSettings-Input"];
             /**
              * Destination
              * @description Default output folder. None = ask every time.
              */
             destination?: string | null;
+        };
+        /**
+         * ExportSettings
+         * @description Everything needed to turn an edited photo into an output file.
+         */
+        "ExportSettings-Output": {
+            file: components["schemas"]["FileSettings-Output"];
+            /** @default srgb */
+            color_space: components["schemas"]["ColorSpace"];
+            size: components["schemas"]["SizeSettings-Output"];
+            aspect: components["schemas"]["AspectSettings-Output"];
+            sharpening: components["schemas"]["OutputSharpening-Output"];
+            metadata: components["schemas"]["MetadataSettings-Output"];
+            naming: components["schemas"]["NamingSettings-Output"];
+            /**
+             * Destination
+             * @description Default output folder. None = ask every time.
+             */
+            destination: string | null;
         };
         /**
          * ExportTarget
@@ -465,7 +502,7 @@ export interface components {
          */
         FileFormat: "jpeg" | "tiff" | "png";
         /** FileSettings */
-        FileSettings: {
+        "FileSettings-Input": {
             /** @default jpeg */
             format: components["schemas"]["FileFormat"];
             /**
@@ -487,14 +524,37 @@ export interface components {
             /** @default lzw */
             tiff_compression: components["schemas"]["TiffCompression"];
         };
+        /** FileSettings */
+        "FileSettings-Output": {
+            /** @default jpeg */
+            format: components["schemas"]["FileFormat"];
+            /**
+             * Jpeg Quality
+             * @default 90
+             */
+            jpeg_quality: number;
+            /**
+             * Max File Size Kb
+             * @description JPEG only: shrink quality to fit.
+             */
+            max_file_size_kb: number | null;
+            /**
+             * Bit Depth
+             * @description 8 or 16 (16 only for TIFF/PNG).
+             * @default 8
+             */
+            bit_depth: number;
+            /** @default lzw */
+            tiff_compression: components["schemas"]["TiffCompression"];
+        };
         /** Geometry */
         Geometry: {
-            crop?: components["schemas"]["CropRect"];
+            crop: components["schemas"]["CropRect"];
             /**
              * Aspect
              * @description Locked aspect ratio such as '4:5'. None = free.
              */
-            aspect?: string | null;
+            aspect: string | null;
             /**
              * Angle
              * @description Straighten / rotate angle in degrees.
@@ -568,14 +628,14 @@ export interface components {
         };
         /** Hsl */
         Hsl: {
-            red?: components["schemas"]["HslBand"];
-            orange?: components["schemas"]["HslBand"];
-            yellow?: components["schemas"]["HslBand"];
-            green?: components["schemas"]["HslBand"];
-            aqua?: components["schemas"]["HslBand"];
-            blue?: components["schemas"]["HslBand"];
-            purple?: components["schemas"]["HslBand"];
-            magenta?: components["schemas"]["HslBand"];
+            red: components["schemas"]["HslBand"];
+            orange: components["schemas"]["HslBand"];
+            yellow: components["schemas"]["HslBand"];
+            green: components["schemas"]["HslBand"];
+            aqua: components["schemas"]["HslBand"];
+            blue: components["schemas"]["HslBand"];
+            purple: components["schemas"]["HslBand"];
+            magenta: components["schemas"]["HslBand"];
         };
         /** HslBand */
         HslBand: {
@@ -615,7 +675,7 @@ export interface components {
              */
             created_at: string;
             /** Finished At */
-            finished_at?: string | null;
+            finished_at: string | null;
             /** Progress */
             progress: number;
             /** Total */
@@ -628,13 +688,13 @@ export interface components {
              */
             failed: number;
             /** Style Id */
-            style_id?: string | null;
+            style_id: string | null;
             /** Preset Id */
-            preset_id?: string | null;
+            preset_id: string | null;
             /** Destination */
-            destination?: string | null;
+            destination: string | null;
             /** Items */
-            items?: components["schemas"]["JobItem"][];
+            items: components["schemas"]["JobItem"][];
         };
         /** JobItem */
         JobItem: {
@@ -644,9 +704,9 @@ export interface components {
             filename: string;
             status: components["schemas"]["JobStatus"];
             /** Message */
-            message?: string | null;
+            message: string | null;
             /** Output Path */
-            output_path?: string | null;
+            output_path: string | null;
         };
         /**
          * JobKind
@@ -688,7 +748,7 @@ export interface components {
          */
         MetadataPolicy: "all" | "copyright_only" | "copyright_and_contact" | "all_except_camera_and_gps";
         /** MetadataSettings */
-        MetadataSettings: {
+        "MetadataSettings-Input": {
             /** @default all_except_camera_and_gps */
             policy: components["schemas"]["MetadataPolicy"];
             /**
@@ -701,8 +761,33 @@ export interface components {
             /** Keywords */
             keywords?: string[];
         };
+        /** MetadataSettings */
+        "MetadataSettings-Output": {
+            /** @default all_except_camera_and_gps */
+            policy: components["schemas"]["MetadataPolicy"];
+            /**
+             * Strip Gps
+             * @default true
+             */
+            strip_gps: boolean;
+            /** Copyright */
+            copyright: string | null;
+            /** Keywords */
+            keywords: string[];
+        };
         /** NamingSettings */
-        NamingSettings: {
+        "NamingSettings-Input": {
+            /**
+             * Template
+             * @description Tokens: {original} {date} {time} {seq} {seq:03} {style} {preset}.
+             * @default {original}
+             */
+            template: string;
+            /** @default suffix */
+            on_collision: components["schemas"]["CollisionPolicy"];
+        };
+        /** NamingSettings */
+        "NamingSettings-Output": {
             /**
              * Template
              * @description Tokens: {original} {date} {time} {seq} {seq:03} {style} {preset}.
@@ -733,7 +818,14 @@ export interface components {
          */
         Orientation: "auto" | "portrait" | "landscape";
         /** OutputSharpening */
-        OutputSharpening: {
+        "OutputSharpening-Input": {
+            /** @default screen */
+            target: components["schemas"]["SharpenFor"];
+            /** @default standard */
+            amount: components["schemas"]["SharpenAmount"];
+        };
+        /** OutputSharpening */
+        "OutputSharpening-Output": {
             /** @default screen */
             target: components["schemas"]["SharpenFor"];
             /** @default standard */
@@ -775,31 +867,31 @@ export interface components {
              */
             file_size: number;
             /** Captured At */
-            captured_at?: string | null;
+            captured_at: string | null;
             /**
              * Camera
              * @description Camera make and model, e.g. 'FUJIFILM X-T3'.
              */
-            camera?: string | null;
+            camera: string | null;
             /** Lens */
-            lens?: string | null;
+            lens: string | null;
             /** Iso */
-            iso?: number | null;
+            iso: number | null;
             /**
              * Shutter
              * @description Exposure time as displayed, e.g. '1/250'.
              */
-            shutter?: string | null;
+            shutter: string | null;
             /**
              * Aperture
              * @description f-number.
              */
-            aperture?: number | null;
+            aperture: number | null;
             /**
              * Focal Length
              * @description Millimetres.
              */
-            focal_length?: number | null;
+            focal_length: number | null;
             /**
              * Width
              * @description Pixel width after orientation.
@@ -819,7 +911,7 @@ export interface components {
              * Style Id
              * @description Style assigned to this photo, if any.
              */
-            style_id?: string | null;
+            style_id: string | null;
             /**
              * Has Overrides
              * @description Per-photo adjustments on top of the style.
@@ -840,14 +932,14 @@ export interface components {
             /** Photo Id */
             photo_id: string;
             /** Style Id */
-            style_id?: string | null;
+            style_id: string | null;
             /** @description Effective adjustments (style + overrides). */
-            adjustments?: components["schemas"]["AdjustmentParams"];
+            adjustments: components["schemas"]["AdjustmentParams"];
             /**
              * Overridden
              * @description Dotted parameter names that are overridden per photo, e.g. 'tone.exposure'.
              */
-            overridden?: string[];
+            overridden: string[];
         };
         /**
          * PhotoSort
@@ -930,7 +1022,7 @@ export interface components {
             masking: number;
         };
         /** SizeSettings */
-        SizeSettings: {
+        "SizeSettings-Input": {
             /** @default original */
             mode: components["schemas"]["ResizeMode"];
             /**
@@ -969,60 +1061,51 @@ export interface components {
              */
             ppi: number;
         };
+        /** SizeSettings */
+        "SizeSettings-Output": {
+            /** @default original */
+            mode: components["schemas"]["ResizeMode"];
+            /**
+             * Long Edge
+             * @description Pixels (mode=long_edge).
+             */
+            long_edge: number | null;
+            /**
+             * Short Edge
+             * @description Pixels (mode=short_edge).
+             */
+            short_edge: number | null;
+            /**
+             * Width
+             * @description Pixels (mode=width_height).
+             */
+            width: number | null;
+            /**
+             * Height
+             * @description Pixels (mode=width_height).
+             */
+            height: number | null;
+            /** Megapixels */
+            megapixels: number | null;
+            /** Percentage */
+            percentage: number | null;
+            /**
+             * Dont Enlarge
+             * @default true
+             */
+            dont_enlarge: boolean;
+            /**
+             * Ppi
+             * @description Print resolution stored in the file.
+             * @default 300
+             */
+            ppi: number;
+        };
         /**
          * SortOrder
          * @enum {string}
          */
         SortOrder: "asc" | "desc";
-        /** Style */
-        Style: {
-            /**
-             * Id
-             * @description Slug, also the folder name under styles/.
-             */
-            id: string;
-            /** Name */
-            name: string;
-            /**
-             * Description
-             * @default
-             */
-            description: string;
-            /**
-             * Cover Url
-             * @description Thumbnail of an 'after' sample.
-             */
-            cover_url?: string | null;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-            /**
-             * Best For
-             * @description Scenes/subjects the style suits.
-             */
-            best_for?: string[];
-            /**
-             * Avoid On
-             * @description Scenes/subjects the style handles badly.
-             */
-            avoid_on?: string[];
-            adjustments?: components["schemas"]["AdjustmentParams"];
-            /** Samples */
-            samples?: components["schemas"]["StyleSample"][];
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /**
-             * Version
-             * @description Incremented on every saved change.
-             * @default 1
-             */
-            version: number;
-        };
         /**
          * StyleSample
          * @description A before/after example showing the expected result of a style.
@@ -1056,12 +1139,71 @@ export interface components {
              * Cover Url
              * @description Thumbnail of an 'after' sample.
              */
-            cover_url?: string | null;
+            cover_url: string | null;
             /**
              * Updated At
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * StyleView
+         * @description API response for a style: the stored style plus derived, read-only information.
+         */
+        StyleView: {
+            /**
+             * Id
+             * @description Slug, also the folder name under styles/.
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Cover Url
+             * @description Thumbnail of an 'after' sample.
+             */
+            cover_url: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Best For
+             * @description Scenes/subjects the style suits.
+             */
+            best_for: string[];
+            /**
+             * Avoid On
+             * @description Scenes/subjects the style handles badly.
+             */
+            avoid_on: string[];
+            adjustments: components["schemas"]["AdjustmentParams"];
+            /** Samples */
+            samples: components["schemas"]["StyleSample"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Version
+             * @description Incremented on every saved change.
+             * @default 1
+             */
+            version: number;
+            /**
+             * Changed Parameters
+             * @description Parameters this style changes from neutral, as {dotted.name: value}.
+             */
+            readonly changed_parameters: {
+                [key: string]: unknown;
+            };
         };
         /**
          * TiffCompression
@@ -1134,13 +1276,13 @@ export interface components {
              */
             shadows: number;
             /** Rgb */
-            rgb?: components["schemas"]["CurvePoint"][];
+            rgb: components["schemas"]["CurvePoint"][];
             /** Red */
-            red?: components["schemas"]["CurvePoint"][];
+            red: components["schemas"]["CurvePoint"][];
             /** Green */
-            green?: components["schemas"]["CurvePoint"][];
+            green: components["schemas"]["CurvePoint"][];
             /** Blue */
-            blue?: components["schemas"]["CurvePoint"][];
+            blue: components["schemas"]["CurvePoint"][];
         };
         /** ValidationError */
         ValidationError: {
@@ -1188,12 +1330,12 @@ export interface components {
              * Temperature
              * @description Color temperature in Kelvin. None = as shot.
              */
-            temperature?: number | null;
+            temperature: number | null;
             /**
              * Tint
              * @description Green (-) / magenta (+) tint. None = as shot.
              */
-            tint?: number | null;
+            tint: number | null;
         };
     };
     responses: never;
@@ -1416,7 +1558,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Style"];
+                    "application/json": components["schemas"]["StyleView"];
                 };
             };
             /** @description Validation Error */

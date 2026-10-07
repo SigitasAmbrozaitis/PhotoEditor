@@ -17,8 +17,9 @@ from photoedit.models import (
     PhotoDetail,
     PhotoSort,
     SortOrder,
-    Style,
     StyleSummary,
+    StyleView,
+    style_view,
 )
 
 THUMBNAIL_LONG_EDGE = 400
@@ -95,9 +96,9 @@ def list_styles(backend: Backend) -> list[StyleSummary]:
     return backend.list_styles()
 
 
-@router.get("/styles/{style_id}", response_model=Style, tags=["styles"])
-def style(style_id: str, backend: Backend) -> Style:
-    return backend.style(style_id)
+@router.get("/styles/{style_id}", response_model=StyleView, tags=["styles"])
+def style(style_id: str, backend: Backend) -> StyleView:
+    return style_view(backend.style(style_id))
 
 
 @router.get(

@@ -87,7 +87,9 @@ def test_thumbnail_and_preview(client: TestClient) -> None:
 def test_styles(client: TestClient) -> None:
     summaries = TypeAdapter(list[StyleSummary]).validate_python(client.get("/api/styles").json())
     assert len(summaries) == 4
-    style = Style.model_validate(client.get(f"/api/styles/{summaries[0].id}").json())
+    data = client.get(f"/api/styles/{summaries[0].id}").json()
+    assert data.pop("changed_parameters")  # derived, read-only field of the API view
+    style = Style.model_validate(data)
     assert style.samples
     sample = client.get(style.samples[0].after_url)
     assert sample.status_code == 200

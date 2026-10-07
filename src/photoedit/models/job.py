@@ -26,7 +26,7 @@ class JobStatus(StrEnum):
 
 
 class JobItem(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
 
     photo_id: str
     filename: str
@@ -36,7 +36,7 @@ class JobItem(BaseModel):
 
 
 class Job(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
 
     id: str
     kind: JobKind
@@ -55,7 +55,7 @@ class Job(BaseModel):
 
 
 class _JobRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
 
     photo_ids: list[str] = Field(min_length=1, max_length=10000)
 
