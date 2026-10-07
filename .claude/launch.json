@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "photoedit", "ui", "--no-browser"],
+      "port": 8765
+    },
+    {
+      "name": "ui-dev",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["ui/node_modules/vite/bin/vite.js", "ui", "--port", "5173", "--strictPort"],
+      "port": 5173
+    }
+  ]
+}

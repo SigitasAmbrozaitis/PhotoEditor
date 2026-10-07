@@ -1,0 +1,90 @@
+"""Write-boundary enforcement.
+
+Golden rule: original photos are read-only, and the tool writes only into folders it owns or into export
+destinations the user explicitly chose.
+Every write in the codebase must go through ``PathGuard.assert_writable``.
+"""
+
+from __future__ import annotations
+
+import os
+from collections.abc import Iterable
+from pathlib import Path
+
+from photoedit.config import Settings
+
+
+class WriteNotAllowedError(PermissionError):
+    """Raised when code tries to write to a path outside the allowed roots or inside a protected one."""
+
+
+def _normalize(path: Path) -> Path:
+    """Absolute, symlink-resolved path (works for paths that don't exist yet)."""
+    return Path(os.path.realpath(path.expanduser()))
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    # normcase: case-insensitive comparison and unified separators on Windows.
+    p = os.path.normcase(str(path))
+    r = os.path.normcase(str(root))
+    try:
+        return os.path.commonpath([p, r]) == r
+    except ValueError:  # different drives / UNC vs local
+        return False
+
+
+class PathGuard:
+    """Decides whether a path may be written to.
+
+    A path is writable when it lies inside at least one writable root and inside no protected root.
+    Protected roots always win, so a photo folder stays read-only even if it sits inside a writable root.
+    """
+
+    def __init__(self, writable_roots: Iterable[Path] = (), protected_roots: Iterable[Path] = ()) -> None:
+        self._writable: list[Path] = []
+        self._protected: list[Path] = []
+        for root in writable_roots:
+            self.allow_writes_to(root)
+        for root in protected_roots:
+            self.protect(root)
+
+    @property
+    def writable_roots(self) -> tuple[Path, ...]:
+        return tuple(self._writable)
+
+    @property
+    def protected_roots(self) -> tuple[Path, ...]:
+        return tuple(self._protected)
+
+    def allow_writes_to(self, root: Path) -> None:
+        """Register a writable root (e.g. an export destination chosen by the user)."""
+        normalized = _normalize(root)
+        if normalized not in self._writable:
+            self._writable.append(normalized)
+
+    def protect(self, root: Path) -> None:
+        """Mark a folder (e.g. a source photo folder) as never writable."""
+        normalized = _normalize(root)
+        if normalized not in self._protected:
+            self._protected.append(normalized)
+
+    def is_writable(self, path: Path) -> bool:
+        target = _normalize(path)
+        if any(_is_within(target, root) for root in self._protected):
+            return False
+        return any(_is_within(target, root) for root in self._writable)
+
+    def assert_writable(self, path: Path) -> Path:
+        """Return the normalized path if writing is allowed, otherwise raise ``WriteNotAllowedError``."""
+        target = _normalize(path)
+        if any(_is_within(target, root) for root in self._protected):
+            raise WriteNotAllowedError(f"Refusing to write into a protected (read-only) folder: {target}")
+        if not any(_is_within(target, root) for root in self._writable):
+            raise WriteNotAllowedError(f"Refusing to write outside the allowed folders: {target}")
+        return target
+
+
+def guard_from_settings(settings: Settings) -> PathGuard:
+    """Guard for the tool-owned folders, with the sample photo folder (if configured) protected."""
+    protected = [settings.sample_photos_dir] if settings.sample_photos_dir is not None else []
+    return PathGuard(writable_roots=settings.writable_dirs, protected_roots=protected)

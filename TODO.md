@@ -29,14 +29,14 @@ Derived from [PLAN.md](PLAN.md) v0.3. This checklist is written for an AI to fol
 Goal: an empty but complete project. The Python package, CLI, API server, web UI scaffold, tests and AI rules all work together.
 
 ### Python project
-- [ ] **P0.1** `uv init` as a src-layout package `photoedit`. `.python-version` = 3.12. Fill in the `pyproject.toml` metadata
+- [x] **P0.1** `uv init` as a src-layout package `photoedit`. `.python-version` = 3.12. Fill in the `pyproject.toml` metadata
   (name, version 0.1.0, MIT, author).
-- [ ] **P0.2** Add dependencies:
+- [x] **P0.2** Add dependencies:
   - runtime: `typer`, `fastapi`, `uvicorn[standard]`, `pydantic`, `pydantic-settings`
-  - dev group: `pytest`, `pytest-cov`, `hypothesis`, `httpx`, `ruff`, `mypy`
+  - dev group: `pytest`, `pytest-cov`, `hypothesis`, `httpx2`, `ruff`, `mypy`
 
   Image libraries (rawpy, numpy, opencv…) come later in Phase 2. Commit `uv.lock`.
-- [ ] **P0.3** Package skeleton:
+- [x] **P0.3** Package skeleton:
   ```
   src/photoedit/
     __init__.py        (__version__)
@@ -48,13 +48,13 @@ Goal: an empty but complete project. The Python package, CLI, API server, web UI
     mcp/__init__.py    (empty, Phase 7)
   tests/
   ```
-- [ ] **P0.4** Tool config in `pyproject.toml`:
+- [x] **P0.4** Tool config in `pyproject.toml`:
   - ruff (lint + format, line length 110)
   - mypy (strict on `src/`)
   - pytest (testpaths, `--strict-markers`), plus markers `slow` and `golden` registered for later
 
 ### Core foundations
-- [ ] **P0.5** `config.py`: a Pydantic-settings `Settings` with:
+- [x] **P0.5** `config.py`: a Pydantic-settings `Settings` with:
   - `project_root`, `workspace_dir`, `styles_dir`, `presets_dir`, `output_dir` (all default under the project root)
   - `sample_photos_dir` (optional)
   - `host` / `port` (127.0.0.1:8765)
@@ -62,49 +62,52 @@ Goal: an empty but complete project. The Python package, CLI, API server, web UI
   Values are loaded from defaults, then `config.local.toml` (git-ignored), then env vars `PHOTOEDIT_*`. Commit
   `config.example.toml` with `sample_photos_dir = "C:/Users/ambro/Pictures/2026/2026-08-11"`.
   Tests: defaults, local override, env override.
-- [ ] **P0.6** `safety.py`: the path guard. `assert_writable(path)` allows writes only inside the allowed roots (project
-  folders, plus export destinations registered at runtime). `assert_readonly_source(path)` marks photo folders as never-write.
+- [x] **P0.6** `safety.py`: the path guard. `assert_writable(path)` allows writes only inside the allowed roots (project
+  folders, plus export destinations registered at runtime). `protect(root)` marks photo folders as never-write (protected roots win over writable ones).
   Tests: inside/outside a root, `..` traversal, symlinks, case-insensitive Windows paths, UNC paths.
 
 ### CLI + API
-- [ ] **P0.7** CLI:
+- [x] **P0.7** CLI:
   - `photoedit --version`
   - `photoedit config show` (prints the effective settings)
   - `photoedit ui [--no-browser]` (starts uvicorn and opens the browser)
 
   Register the `photoedit` script entry point. Tests use Typer's `CliRunner`.
-- [ ] **P0.8** FastAPI app factory:
+- [x] **P0.8** FastAPI app factory:
   - `GET /api/health` returns `{status, version}`
   - serves the built UI from `ui/dist` when it exists, otherwise a plain "UI not built" page
 
   Tests use `TestClient`.
 
 ### Web UI scaffold
-- [ ] **P0.9** `ui/`: Vite + React + TypeScript (strict). Dev server proxy `/api` → `127.0.0.1:8765`.
-  Add `npm run build`, `npm run dev`, `npm test` (Vitest + React Testing Library) and `npm run lint` (ESLint).
-- [ ] **P0.10** The UI shell shows "PhotoEditor" plus the backend version from `/api/health`. If the backend is down, it shows a red "backend offline" badge.
+- [x] **P0.9** `ui/`: Vite + React + TypeScript (strict). Dev server proxy `/api` → `127.0.0.1:8765`.
+  Add `npm run build`, `npm run dev`, `npm test` (Vitest + React Testing Library) and `npm run lint` (oxlint, the Vite template default).
+- [x] **P0.10** The UI shell shows "PhotoEditor" plus the backend version from `/api/health`. If the backend is down, it shows a red "backend offline" badge.
   Tests: renders the version, and shows the offline state (fetch mocked).
-- [ ] **P0.11** Dev launch:
+- [x] **P0.11** Dev launch:
   - `.claude/launch.json` (backend + UI dev server), so Claude can preview the UI
   - `scripts/dev.ps1`, which starts both processes for the user
 
 ### AI rules + docs
-- [ ] **P0.12** `CLAUDE.md`: project rules for AI.
+- [x] **P0.12** `CLAUDE.md`: project rules for AI.
   - golden rules (originals are read-only, write boundaries, deterministic rendering, one core with many front-ends, the code enforces ranges)
   - workflow (PLAN → TODO → phase → STOP gates; ask when in doubt)
   - commands (test, lint, type-check, run)
   - code conventions (typing, Pydantic models for all data, no logic in front-ends)
   - git rules (identity, commit message format with the item ID, the per-phase branch workflow from PLAN.md §8.1)
-- [ ] **P0.13** README "Getting started" section: clone, then `uv sync`, `cd ui && npm install`, `photoedit ui`, and how to run the tests.
-- [ ] **P0.14** Full check: `uv run pytest`, `uv run ruff check`, `uv run mypy src`, `npm test` and `npm run build` are all green.
+- [x] **P0.13** README "Getting started" section: clone, then `uv sync`, `cd ui && npm install`, `photoedit ui`, and how to run the tests.
+- [x] **P0.14** Full check: `uv run pytest`, `uv run ruff check`, `uv run mypy src`, `npm test` and `npm run build` are all green.
 
 ### 🧑 Human test: Phase 0
-1. In a new terminal: `cd C:\Work\PhotoEditing` → `uv sync` → expect no errors.
+1. Open a **new** terminal (so uv and node are on PATH): `cd C:\Work\PhotoEditing` → `uv sync` → expect no errors.
 2. `uv run photoedit --version` → prints `0.1.0`.
-3. `uv run photoedit config show` → shows the paths under `C:\Work\PhotoEditing`.
+3. `uv run photoedit config show` → the paths are under `C:\Work\PhotoEditing`, and `sample_photos_dir` is your
+   `2026-08-11` folder (from `config.local.toml`).
 4. `cd ui; npm install; npm run build; cd ..` → the build succeeds.
-5. `uv run photoedit ui` → the browser opens and shows "PhotoEditor" with the version. Stop the server, and the page shows "backend offline" after a refresh.
-6. `uv run pytest` → all tests pass.
+5. `uv run photoedit ui` → the browser opens and shows "PhotoEditor" with a green `backend v0.1.0` badge. Ctrl+C stops it.
+6. `uv run pytest` → all tests pass (2 symlink tests are skipped unless Windows Developer Mode is on). `cd ui; npm test` → all pass.
+7. `scripts\dev.cmd` → a backend window opens, and the browser opens http://localhost:5173 with a green badge.
+   Close the backend window → within about 5 s the badge turns red "backend offline". Ctrl+C in the first terminal stops the dev server.
 
 ### ⛔ STOP: user approves Phase 0
 

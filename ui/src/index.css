@@ -1,0 +1,82 @@
+/* Neutral dark theme: photo editors use neutral grays so the UI does not bias color perception. */
+:root {
+  --bg: #1e1e1e;
+  --bg-elevated: #262626;
+  --border: #3a3a3a;
+  --text: #d4d4d4;
+  --text-muted: #8c8c8c;
+  --ok: #3fa66b;
+  --warn: #c9a227;
+  --error: #d9534f;
+
+  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+
+  font: 14px/1.5 var(--sans);
+  color: var(--text);
+  background: var(--bg);
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+}
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.content {
+  flex: 1;
+  padding: 1.5rem;
+}
+
+.placeholder {
+  color: var(--text-muted);
+}
+
+.badge {
+  font: 12px var(--mono);
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+
+.badge--checking {
+  color: var(--warn);
+}
+
+.badge--online {
+  color: var(--ok);
+}
+
+.badge--offline {
+  color: #fff;
+  background: var(--error);
+  border-color: var(--error);
+}
