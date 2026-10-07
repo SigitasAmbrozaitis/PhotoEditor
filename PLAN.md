@@ -1,0 +1,323 @@
+# PhotoEditing Tool: Implementation Plan (v0.3)
+
+> Status: **All decisions made (section 0). Waiting for final approval.**
+> After the plan is approved, it gets split into an AI-followable `TODO.md`, one block per phase.
+
+## 0. Decisions so far
+
+| Topic | Decision | Date |
+|---|---|---|
+| AI mode | **MCP server used from Claude Code** (no API key) | 2026-10-07 |
+| Style input | **Both**: finished photos (approximate look) and RAW + edited pairs (numerical fit). Fallbacks in section 4.5.1 | 2026-10-07 |
+| Backend language | **Python 3.12** (stack as in section 3) | 2026-10-07 |
+| Engine | **Own pipeline on LibRaw (rawpy). No RawTherapee.** | 2026-10-07 |
+| UI | **Python backend (FastAPI) + web UI (React/TS)** | 2026-10-07 |
+| Phase order | **UI skeleton early** (clickable, mock data, no functionality); each later phase wires its part of the UI | 2026-10-07 |
+| Sample photos | `C:\Users\ambro\Pictures\2026\2026-08-11`: 67 × Fujifilm **X-T3** `.RAF` (26 MP X-Trans), each with a camera `.JPG`. **Read-only.** | 2026-10-07 |
+| Style samples | **No style yet. At the style-creation phase, STOP and ask the user for style samples.** | 2026-10-07 |
+| Lightroom import | **Not needed** (fallback F4 dropped) | 2026-10-07 |
+| Folder layout | **Tool + its data (workspace, styles, presets) live in `C:\Work\PhotoEditing`. Photos and exports live in other folders.** During development, test exports go to `C:\Work\PhotoEditing\output\` (git-ignored). | 2026-10-07 |
+
+**Target machine**: i7-12700H (14 cores / 20 threads), 16 GB RAM, RTX 3060 Laptop (6 GB), Windows 11.
+.NET 9 SDK is installed. Python and uv are not installed yet.
+
+**Camera notes (X-T3)**:
+- X-Trans sensors need a special demosaic. LibRaw supports it, but it is slower than for standard (Bayer) sensors, so the
+  Phase 2 benchmark must use these files.
+- The camera JPEGs (film simulations) that sit next to each RAF are useful test data. They give RAW + "edited" pairs, which
+  can be used to test the style-fitting code without waiting for a real style.
+
+---
+
+## 1. Goal
+
+A RAW photo editor that replaces Lightroom for **global, non-destructive edits** (color, tone, crop, zoom, centering).
+An **AI agent** drives it instead of a human moving sliders. The human says what they want ("make these look like my
+*Moody Forest* style, export for Instagram"), and the AI calls the tool's API. The tool's **code enforces** what is allowed:
+valid parameter ranges, never touching originals, a deterministic render. A small **UI** lets the human browse, compare
+and approve.
+
+Out of scope: local or spot edits (healing, cloning, masks, brushes), generative fill, and anything that invents pixels.
+
+---
+
+## 2. Core principles (also become the AI rules in `CLAUDE.md`)
+
+1. **Originals are read-only.** The tool never writes to or next to a RAW file unless the user asks for it. A test checks
+   that file hashes are unchanged after every operation.
+2. **Everything is data.** Styles, per-photo edits and export presets are versioned, human-readable JSON files that are
+   validated against a schema.
+3. **Deterministic rendering.** The same RAW, edit and engine version always give the same output, which makes golden-image tests possible.
+4. **One core, many front-ends.** The CLI, the AI interface (MCP) and the UI all call the same Python core API. None of them contains its own logic.
+5. **The code enforces the rules.** The AI can only set parameters that exist, inside their allowed ranges. Invalid input gets a clear error back.
+6. **Plan → TODO → phases → each phase human-testable + unit-tested.** When in doubt, ask.
+
+---
+
+## 3. Recommended tech stack (needs your decision, see section 9)
+
+| Layer | Recommendation | Why |
+|---|---|---|
+| Language | **Python 3.12** | Best ecosystem for image processing and AI tooling. Claude writes and tests it well. |
+| Env / packaging | **uv** | Fast, reproducible environments on Windows. |
+| RAW decoding | **rawpy** (LibRaw) | Supports nearly every camera RAW (CR2/CR3, NEF, ARW, RAF, ORF, RW2, DNG…). |
+| Image math | **NumPy** (+ **OpenCV** for resize, sharpen, geometry, face detection) | Fast vectorised pipeline in float32 linear light. |
+| Color management | **Pillow ImageCms** (LittleCMS) + **colour-science** | ICC profiles for sRGB, Display P3 and AdobeRGB output, plus white balance math. |
+| Metadata | **ExifTool** (bundled exe) via **PyExifTool** | Read and copy EXIF/IPTC/XMP the same way Lightroom does. Strips GPS on request. |
+| Lens corrections (later) | **lensfunpy** | Distortion and vignetting profiles. |
+| Data models / validation | **Pydantic v2** | Schema, ranges and JSON (de)serialization for styles, edits and presets. |
+| CLI | **Typer** | `photoedit style apply ...` and similar commands. Also used for manual testing. |
+| AI interface | **MCP server** (official `mcp` Python SDK) | Claude Code / Claude Desktop calls the tool's functions directly and gets preview images back to "see" results. |
+| UI | **Local web UI**: FastAPI backend + **React + TypeScript + Vite** frontend, opened in the browser | Same core API, easy to test, Claude can also drive and check it in a browser. |
+| Tests | **pytest** (+ golden-image comparisons with tolerance, hypothesis for parameter fuzzing) | |
+| Lint / types | **ruff**, **mypy** | |
+
+Alternatives are listed in section 9.
+
+### 3.1 Performance: can Python handle 50–100 photos?
+
+Yes. Two things matter:
+
+- **Applying a style is instant.** It only writes small edit JSON files. Pixels are processed only for previews and for export.
+- **The heavy work is not Python.** RAW decoding and demosaicing happen in LibRaw (C++). The pixel math runs in NumPy/OpenCV
+  (C, vectorised). A C# or Rust backend would call the same kind of native code, so it would not be meaningfully faster.
+
+Estimates for this machine (to be confirmed by a benchmark in Phase 1):
+
+| Job | 24 MP RAWs | 45 MP RAWs |
+|---|---|---|
+| Full-res render + export, single photo | ~3–5 s | ~6–9 s |
+| **100 photos, parallel** (6 workers for 24 MP, 3–4 for 45 MP, limited by 16 GB RAM) | **~1–2 min** | **~3–4 min** |
+| 100 previews (half-size, cached) | ~10–20 s | ~20–40 s |
+
+For comparison, a Lightroom export takes roughly 1–2 s per photo on similar hardware, so this is in the same range.
+If it's too slow, the next steps are, in order:
+1. Process in float16 or tiles to fit more workers in RAM.
+2. Move pipeline stages to the GPU (CuPy/PyTorch on the RTX 3060). That leaves decoding as the only real cost.
+3. Use Numba-compiled kernels for the hottest stages.
+
+Your X-T3 files are 26 MP, so the 24 MP column applies. X-Trans demosaicing adds roughly 30–50 %, so expect **about 1.5–3 min
+per 100 photos**.
+
+**Phase 2 includes a go/no-go benchmark.** If 100 photos take more than 5 minutes, we stop and rethink before building further.
+
+### 3.2 Splitting UI and backend (e.g. C# UI + Python backend)
+
+The architecture (section 4) already separates them, so it is possible. The Python backend runs as a **local HTTP service**
+(FastAPI on `127.0.0.1`). Any UI talks to it: web, C# or something else.
+
+| UI option | Pros | Cons |
+|---|---|---|
+| **Web UI** (React/TS in the browser, served by the backend) | One process; fastest to build; Claude can test it in a browser; easy to restyle | Feels like a web page, not a native app |
+| **C# WPF / WinUI 3** (.NET 9 is already installed) | Native Windows feel, good image controls, fast scrolling of thumbnails | Two languages and two builds. The C# app has to start and supervise the Python process. Harder for Claude to test the UI automatically. |
+| **Avalonia (C#)** | Like WPF, but cross-platform | Same costs as WPF |
+| **PySide6 (Qt, Python)** | Single language, native window | Qt is verbose; less pleasant for a rich gallery UI |
+
+Recommendation: start with the **web UI**, because it gets you to a testable full loop fastest. The HTTP API contract is defined in
+OpenAPI, so a C# UI can be added or swapped in later without changing the backend.
+If a native feel matters to you from day one, C# WPF + Python backend is a solid choice. It just costs more time per phase.
+
+### 3.3 RawTherapee: licensing and permissions
+
+- **License: GPLv3.** For your **personal use** there are no obligations at all. The GPL only applies when software is
+  **distributed** to others.
+- If we **call `rawtherapee-cli` as a separate program** (no code copied or linked), our tool can keep any license. That
+  holds even if it is shared later. We would just have to say that RawTherapee must be installed, or follow GPL rules if we
+  bundle its binaries in a download.
+- **Permissions**: a normal free Windows install with no account, no network and no telemetry. Our tool would only need read
+  access to the RAWs and write access to the output folder, the same as our own engine. (To verify before choosing it: whether
+  a portable/no-admin install works.)
+- The other libraries in the plan are fine for personal and commercial use: rawpy (MIT), LibRaw (LGPL/CDDL), OpenCV
+  (Apache 2), NumPy (BSD), Pillow (MIT-like), lensfun (LGPL), ExifTool (Perl Artistic/GPL, called as a program).
+- **Trade-off reminder**: RawTherapee gives better image quality on day one (noise reduction, highlight recovery, lens
+  corrections, local contrast). In exchange, there is an external dependency, rendering is slower to iterate on, and only
+  what `.pp3` files expose can be controlled.
+
+---
+
+## 4. Architecture
+
+```
+            ┌────────────┐   ┌──────────────┐   ┌──────────────────┐
+  Human ──▶ │  Web UI    │   │  CLI (Typer) │   │ MCP server (AI)  │ ◀── Claude
+            └─────┬──────┘   └──────┬───────┘   └────────┬─────────┘
+                  │ HTTP            │                    │
+                  ▼                 ▼                    ▼
+            ┌───────────────────────────────────────────────────────┐
+            │                 Core API  (photoedit.core)            │
+            │  library · styles · edits · render · analyze · export │
+            └───┬──────────────┬───────────────┬──────────────┬─────┘
+                ▼              ▼               ▼              ▼
+          RAW decode     Render pipeline   Analysis       Export
+          (rawpy)        (NumPy/OpenCV)    (stats, faces) (resize, ICC,
+                                                           sharpen, EXIF)
+```
+
+### 4.1 Data on disk (inside this folder by default; location configurable)
+
+```
+workspace/
+  catalog.sqlite              # photo index: path, hash, EXIF, thumbnails cache keys
+  edits/<photo-id>.json       # per-photo edit = style ref + per-photo overrides (crop, exposure tweak…)
+  cache/previews/...          # rendered previews (disposable)
+styles/
+  <style-slug>/
+    style.json                # parameters (schema-validated, versioned)
+    README.md                 # human description: intent, "best for", "avoid on"
+    samples/                  # before/after JPEGs showing expected result
+    analysis.json             # stats of reference photos it was derived from
+export-presets/
+  instagram-portrait.json
+  print-8x10-glossy.json
+  ...
+```
+
+Originals stay where they are. The catalog only stores their path and hash.
+
+### 4.2 Edit parameter model (Lightroom-like, global only)
+
+The MVP set comes first. Later items are marked ⏭.
+
+- **White balance**: temperature (K), tint
+- **Tone**: exposure (EV), contrast, highlights, shadows, whites, blacks
+- **Presence**: vibrance, saturation, ⏭ clarity, ⏭ texture, ⏭ dehaze
+- **Tone curve**: parametric curve, plus point curves for RGB, R, G and B
+- **HSL / color mixer**: 8 hue bands × (hue, saturation, luminance)
+- **Color grading**: shadows / midtones / highlights (hue, sat, lum), blending, balance
+- **Detail**: sharpening (amount, radius, detail, masking), ⏭ noise reduction
+- **Effects**: post-crop vignette, ⏭ grain
+- **Geometry** (usually per photo, not per style): crop rectangle, aspect lock, rotate/straighten, flip, zoom/center
+- ⏭ **Lens**: profile distortion and vignetting correction
+
+A **Style** holds a subset of these parameters, plus *adaptive rules* that the code applies per photo. Example:
+"auto-exposure to target mid-gray, then apply the style". Without these, one style would only look right on photos that were
+shot the same way. A **per-photo edit** = style + overrides. Overrides always win.
+
+### 4.3 Render pipeline (fixed order, float32 linear working space)
+
+1. Decode RAW → demosaic → camera RGB to linear wide gamut (ProPhoto / Rec.2020 linear), with white balance applied
+2. Exposure → highlights/shadows/whites/blacks → contrast
+3. Tone curve → HSL → color grading → vibrance/saturation
+4. Geometry (crop / rotate / zoom)
+5. Vignette → sharpening
+6. Output transform: gamut-map to the target color space, encode the gamma, embed the ICC profile
+
+Previews use LibRaw's half-size decode and are cached, so the AI and the UI get fast feedback (~0.5 s). Exports use full resolution.
+
+### 4.4 AI interface (MCP tools, first draft)
+
+| Tool | Purpose |
+|---|---|
+| `import_photos(paths/folder)` | Add photos to the catalog (read-only scan). |
+| `list_photos(filter)` / `get_photo_info(id)` | EXIF, current edit, thumbnails. |
+| `render_preview(id, edit?, size)` | Returns a JPEG so the AI can **see** the result. |
+| `analyze_photo(id)` | Histogram, clipping, mean luminance, color cast, saturation per hue, faces/subject box. |
+| `list_styles` / `get_style` | Read the style library. |
+| `create_style` / `update_style` | Write a style (validated). |
+| `apply_style(style, photos)` | Bulk-assign a style to photos (writes edit JSON only). |
+| `set_adjustments(photo, params)` | Per-photo overrides (crop, exposure tweak…). |
+| `suggest_crop(photo, aspect)` | Code-computed crop centered on the detected subject. The AI can accept it or adjust. |
+| `list/create_export_preset` | Export settings. |
+| `export(photos, preset, dest)` | Render and write output files. |
+
+### 4.5 Style creation workflow (the AI-heavy feature)
+
+1. The user points at sample photos (see open question Q4 about what kind of samples).
+2. The code runs `analyze_photo` on each sample: tone statistics, color cast in shadows and highlights, saturation per hue,
+   contrast, and so on.
+3. The AI looks at the samples and the statistics and proposes style parameters.
+4. If **RAW + edited pairs** exist, the code also **fits** parameters numerically. It optimizes them to minimize the color
+   difference (ΔE) between our render and the user's edit. This gives the most accurate result.
+5. The code renders before/after on the samples. The AI compares and iterates a few rounds.
+6. The style is saved with a README (description, intent, "best for"), sample before/after images and the analysis.
+7. The human reviews it in the UI and approves it, or asks for changes.
+
+Both input types are supported. **Finished photos** go through steps 2–3 and 5–7 and give an approximate look.
+**RAW + edited pairs** also go through step 4 and give an exact fit.
+
+#### 4.5.1 Fallbacks if style creation doesn't give the desired result
+
+Try these in order. Each is a self-contained addition, so we can switch to one without redesigning the tool.
+
+| # | Approach | When to use | Cost |
+|---|---|---|---|
+| F1 | **Human-in-the-loop A/B**: the AI renders 3–4 variants and you pick one; repeat 2–3 rounds | The AI proposal is "close but not it" | Low; only UI and MCP work |
+| F2 | **Statistical color transfer**: Lab mean/variance transfer (Reinhard), per-channel histogram matching, tone-curve fit from luminance histograms | Finished photos only, and the AI's parameter guesses are off | Low–medium |
+| F3 | **Learned 3D LUT** (e.g. 33³) fitted from RAW + edited pairs, stored inside the style next to the parameters | Pairs exist, but the slider model can't express the look (complex color shifts) | Medium. Very accurate for global color, but less tweakable |
+| F4 | **Import Lightroom develop settings / presets (`.xmp`)** and map them onto our parameters | You already have the look as a Lightroom preset or edits | Medium; the mapping is approximate for Adobe-specific processing |
+| F5 | **ML enhancement model** (image-adaptive 3D LUT / HDRNet-style), trained on your pairs | Look depends heavily on scene content and needs many pairs (50+) | High. GPU training, the most complex option |
+
+### 4.6 Export settings (Lightroom export parity, staged)
+
+- **File**: JPEG (quality, optional max file size), TIFF 8/16-bit (compression), PNG, ⏭ WebP/AVIF, DNG passthrough copy
+- **Color space**: sRGB, Display P3, AdobeRGB, ⏭ ProPhoto
+- **Size**: original, long edge, short edge, width × height (fit), megapixels, percentage; don't enlarge; DPI/PPI
+- **Aspect / orientation**: crop-to-aspect (1:1, 4:5, 1.91:1, 9:16, 2:3, 4:3, 5:7, 8:10, A-series…) with subject-centered
+  auto crop; force portrait/landscape
+- **Output sharpening**: screen / matte / glossy × low / standard / high
+- **Metadata**: all, copyright only, copyright + contact, all except camera & GPS; strip GPS; add copyright/keywords
+- **Naming**: template (`{date}_{seq:03}_{orig}`), collision handling
+- **Watermark** (⏭ simple text/PNG)
+- **Built-in presets**: Instagram feed portrait (1080×1350 4:5 sRGB), square, landscape, story (1080×1920); print
+  4×6 / 5×7 / 8×10 / A4 / A3 at 300 PPI (AdobeRGB or sRGB, TIFF/JPEG max quality); web full-size
+
+---
+
+## 5. Phases (each one ends with something you can test by hand)
+
+| # | Phase | You can check it by… |
+|---|---|---|
+| # | Phase | Backend | UI part | You can check it by… |
+|---|---|---|---|---|
+| 0 | **Project setup + AI rules** | uv project, folder structure, `CLAUDE.md` rules, ruff/mypy/pytest, `.gitignore` (RAWs, output, cache) | Vite + React + TS scaffold, served by FastAPI | `uv run pytest` is green; `uv run photoedit --version` works; `photoedit ui` opens an empty page |
+| 1 | **UI skeleton (no functionality)** | Mock API that returns fake data | All screens, clickable with placeholder images: Library grid, Photo view (before/after, adjustment panel), Style library (card with description + samples), Style detail, Export dialog (all settings), Jobs/progress | Click through the full use loop and judge the look and feel. Give feedback, and the layout gets adjusted before real work starts |
+| 2 | **Import & decode + benchmark** | Catalog, EXIF read, thumbnails, half-size preview render, **go/no-go speed benchmark on the X-T3 RAFs** | Library grid shows real thumbnails and EXIF | Import `2026-08-11` → real thumbnails in UI; previews look neutral and correct; originals' hashes unchanged; benchmark report |
+| 3 | **Edit engine (MVP params)** | Parameter model + render pipeline + per-photo edit JSON | Adjustment panel works (sliders for testing, even though AI is the main user); before/after toggle | Move sliders → preview updates; contact sheet of each slider at −/0/+ |
+| 4 | **Styles** | Style file format, library, apply to one/many, adaptive rules, overrides | Style library and detail screens are live; "apply style to selection" | Apply a hand-written test style to the folder → before/after looks consistent |
+| 5 | **Export** | Presets, resize, color space + ICC, output sharpening, metadata, naming, aspect crop | Export dialog is live; job progress | Instagram preset → 1080×1350, sRGB tagged, EXIF as configured; print preset → correct PPI/size |
+| 6 | **Geometry & centering** | Crop/rotate/straighten/zoom, subject detection, `suggest_crop` | Crop overlay in the Photo view | Auto 4:5 crop keeps subjects well framed |
+| 7 | **MCP server (agentic workflow)** | Exposes the core API to Claude Code | UI auto-refreshes when the AI changes something | In Claude Code: "apply style X to folder Y and export for Instagram to Z" works end to end |
+| 8 | **AI style creation**. ⛔ **STOP at the start and ask the user for style samples** | Analysis tools, parameter fitting from pairs (developed and tested first on the camera JPEG + RAF pairs), README + samples generation, fallbacks F1–F3, F5 | "Create style" flow; A/B variant picker (F1) | Give sample photos → style created, saved, and its samples look like the references |
+| 9 | **Polish** | Parallel batch tuning, caching, clarity/texture/dehaze, noise reduction, lens corrections, more formats | UI refinements from your feedback | 100 RAFs export in acceptable time; extra sliders behave |
+
+---
+
+## 6. Testing strategy
+
+- **Unit tests** for every pipeline stage. They run on small synthetic images (gradients, color patches) with exact
+  expected math: exposure +1 EV doubles linear values, zero parameters give an identity result, and so on.
+- **Property tests** (hypothesis). Every valid parameter combination renders without NaN or out-of-range values.
+  Invalid values are rejected.
+- **Golden-image tests** on a small set of real RAWs. The render must match the stored reference within ΔE tolerance, which catches regressions.
+- **Safety tests**. Originals' hashes stay unchanged after import, edit and export, and nothing is written outside the configured folders.
+- **Export tests**: output dimensions, color profile, metadata and file naming.
+- **MCP tests**. Each tool is called with valid and invalid input and returns schema-correct responses.
+- **UI**: API tests via FastAPI TestClient, plus a few Playwright smoke tests in a later phase.
+
+---
+
+## 7. Risks / hard parts (to be honest up front)
+
+- **Color science quality.** Matching Lightroom's look (Adobe camera profiles, highlight recovery, noise reduction) is hard.
+  The plan is to start with LibRaw's standard pipeline and improve it. It will look *good*, but not identical to Lightroom.
+- **One style on very different photos.** Adaptive rules (auto-exposure and WB normalization before the style) are key here. These need iteration with your real photos.
+- **Speed.** Python/NumPy on 24–60 MP files takes about 2–5 s per photo at full size. Running in parallel across CPU cores is planned. A GPU path is possible later if needed.
+- **Style-from-finished-JPEGs** (no RAW pairs) can only approximate a look. RAW + edited pairs give much better results.
+
+---
+
+## 8. Workflow rules for building it (AI rules)
+
+- Each phase: plan section → `TODO.md` checklist → implement → unit tests → **human test script** (exact steps + expected
+  result) → you approve → next phase.
+- Never modify files outside `C:\Work\PhotoEditing`. Photo folders are read-only. Exports outside this folder only go to a
+  destination the user explicitly chose.
+- Git commits use the user's identity, set in the repo-local config (not the global `cyam` identity).
+- Ask when requirements are ambiguous. Don't guess.
+- Small commits per TODO item, once you have set up git.
+
+---
+
+## 9. Open decisions (please answer)
+
+All decided. See section 0.
