@@ -133,10 +133,11 @@ The API **contract** (Pydantic models + OpenAPI) is defined here and kept in the
   - `Job` (id, kind, status, progress, items)
 
   Tests: validation, ranges, JSON round-trip.
-- [ ] **P1.2** Mock data provider: ~24 fake photos, 4 styles, the built-in export presets (Instagram portrait, square,
+- [x] **P1.2** Mock data provider: ~24 fake photos, 4 styles, the built-in export presets (Instagram portrait, square,
   landscape, story; Print 4×6, 5×7, 8×10, A4, A3; Web full size) and 2 jobs. Placeholder images are generated in code as
-  gradients/patterns with a label, and cached in `/cache` (no real photos).
-- [ ] **P1.3** Mock endpoints (`/api/...`):
+  gradients/patterns with a label, and cached in memory (no real photos, no disk writes). The built-in presets are
+  real data in `core/presets.py` and are kept for Phase 5.
+- [x] **P1.3** Mock endpoints (`/api/...`):
   - photos list (filter, paging), photo detail, thumbnail, preview (`?before=true`)
   - styles list/detail
   - export presets list/detail
