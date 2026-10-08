@@ -140,6 +140,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photos/{photo_id}/sidecar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Photo Sidecar
+         * @description The camera's own JPEG of a RAW (if it saved one), for comparing with the default look.
+         */
+        get: operations["photo_sidecar_api_photos__photo_id__sidecar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photos/{photo_id}/edit": {
         parameters: {
             query?: never;
@@ -1389,6 +1409,8 @@ export interface components {
              * @default
              */
             revision: string;
+            /** @description The photo's unedited parameters (what a reset goes back to; JPEGs start unsharpened). */
+            defaults: components["schemas"]["AdjustmentParams-Output"];
         };
         /**
          * PhotoSort
@@ -2182,6 +2204,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PhotoDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    photo_sidecar_api_photos__photo_id__sidecar_get: {
+        parameters: {
+            query?: {
+                /** @description Long edge in pixels. */
+                size?: number;
+            };
+            header?: never;
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JPEG image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
                 };
             };
             /** @description Validation Error */

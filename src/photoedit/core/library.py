@@ -262,6 +262,7 @@ class Library:
                 adjustments=edit.adjustments,
                 overridden=edit.overridden,
                 revision=edit.revision,
+                defaults=self.edits.default(photo).adjustments,
             ),
             as_shot=AsShot(temperature=as_shot[0], tint=as_shot[1]) if as_shot else None,
         )
@@ -330,6 +331,15 @@ class Library:
         if not self.renderer.preview_path(photo, edit, long_edge).is_file():
             self._require_original(photo)
         return self.renderer.preview(photo, edit, long_edge)
+
+    def sidecar(self, photo_id: str, long_edge: int) -> bytes:
+        """The camera's own JPEG saved next to a RAW (read-only), scaled to ``long_edge``, for comparison."""
+        photo = self.photo(photo_id)
+        if photo.sidecar_jpeg is None:
+            raise NotFoundError(f"'{photo.path.name}' has no camera JPEG next to it")
+        if not photo.sidecar_jpeg.is_file():
+            raise NotFoundError(f"the camera JPEG is no longer at {photo.sidecar_jpeg}")
+        return self.cache.sidecar(photo, long_edge)
 
     def render_thumbnails(self, photo_ids: list[str]) -> Job | None:
         """Background job rendering the thumbnails that aren't rendered yet. None if nothing to do."""

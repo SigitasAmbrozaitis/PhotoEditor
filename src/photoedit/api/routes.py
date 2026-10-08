@@ -100,6 +100,16 @@ def photo_detail(photo_id: str, svc: Svc) -> PhotoDetail:
     return svc.library.photo_detail(photo_id)
 
 
+@router.get("/photos/{photo_id}/sidecar", response_class=Response, responses=IMAGE_RESPONSE, tags=["library"])
+def photo_sidecar(
+    photo_id: str,
+    svc: Svc,
+    size: Annotated[int, Query(ge=256, le=4096, description="Long edge in pixels.")] = 1600,
+) -> Response:
+    """The camera's own JPEG of a RAW (if it saved one), for comparing with the default look."""
+    return Response(content=svc.library.sidecar(photo_id, size), media_type=JPEG, headers=IMAGE_CACHE)
+
+
 @router.put("/photos/{photo_id}/edit", response_model=PhotoDetail, tags=["edit"])
 def save_edit(photo_id: str, adjustments: Annotated[AdjustmentParams, Body()], svc: Svc) -> PhotoDetail:
     """Save a photo's adjustments (the full set; only what differs from the defaults is stored)."""

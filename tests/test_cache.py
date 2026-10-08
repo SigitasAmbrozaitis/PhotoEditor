@@ -242,3 +242,20 @@ def test_real_raf_linear_base(sample_raw: Path) -> None:
     height, width = base.pixels.shape[:2]
     assert max(height, width) == LINEAR_LONG_EDGE and height > width  # portrait shot stays upright
     assert base.is_raw and float(base.pixels.min()) >= 0 and float(base.pixels.max()) <= 1
+
+
+def test_sidecar_is_scaled_upright_and_cached(setup: tuple[ImageCache, Path, Path]) -> None:
+    cache, _, photos = setup
+    raw_like = _jpeg_photo(photos, "x.jpg", size=(1200, 800))
+    sidecar = photos / "x-camera.jpg"
+    exif = Image.Exif()
+    exif[0x0112] = 6  # rotated: the camera JPEG is stored sideways
+    Image.new("RGB", (1200, 800), (90, 120, 150)).save(sidecar, "JPEG", exif=exif.tobytes())
+    photo = raw_like.model_copy(update={"sidecar_jpeg": sidecar})
+    data = cache.sidecar(photo, 600)
+    assert _size(data) == (400, 600)  # upright portrait
+    assert cache.sidecar_path(photo.id, 600).is_file()
+    assert sorted(p.name for p in photos.iterdir()) == [
+        "x-camera.jpg",
+        "x.jpg",
+    ]  # nothing written next to photos

@@ -55,6 +55,10 @@ class PhotoEdit(BaseModel):
         description="Dotted parameter names that are overridden per photo, e.g. 'tone.exposure'.",
     )
     revision: str = Field(default="", description="Changes whenever the edit changes.")
+    defaults: AdjustmentParams = Field(
+        default_factory=AdjustmentParams,
+        description="The photo's unedited parameters (what a reset goes back to; JPEGs start unsharpened).",
+    )
 
 
 class AsShot(BaseModel):

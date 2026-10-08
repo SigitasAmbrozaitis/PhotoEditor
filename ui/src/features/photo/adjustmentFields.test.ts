@@ -56,3 +56,19 @@ describe('adjustment slider metadata', () => {
     expect(formatValue(tint!, -3)).toBe('-3')
   })
 })
+
+describe('slider track scale', () => {
+  it('puts temperature on a log track and rounds to the step', async () => {
+    const { BASIC_GROUPS, fromTrack, toTrack } = await import('./adjustmentFields')
+    const temperature = BASIC_GROUPS[0]!.fields[0]!
+    const lo = toTrack(temperature, temperature.min)
+    const hi = toTrack(temperature, temperature.max)
+    const at6500 = (toTrack(temperature, 6500) - lo) / (hi - lo)
+    expect(at6500).toBeGreaterThan(0.3)
+    expect(at6500).toBeLessThan(0.45)
+    expect(fromTrack(temperature, toTrack(temperature, 5017))).toBe(5000)
+    expect(fromTrack(temperature, hi + 1)).toBe(temperature.max)
+    const exposure = BASIC_GROUPS[1]!.fields[0]!
+    expect(toTrack(exposure, 0.3)).toBe(0.3)
+  })
+})

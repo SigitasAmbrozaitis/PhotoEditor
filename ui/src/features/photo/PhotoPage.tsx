@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronLeft, ChevronRight, Columns2, Crop, Eye, EyeOff } from 'lucide-react'
+import { ArrowLeft, Camera, ChevronLeft, ChevronRight, Columns2, Crop, Eye, EyeOff } from 'lucide-react'
 import { Tabs } from 'radix-ui'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
@@ -78,6 +78,7 @@ const MODES: { mode: ViewMode; label: string; icon: typeof Eye }[] = [
   { mode: 'after', label: 'After', icon: Eye },
   { mode: 'before', label: 'Before', icon: EyeOff },
   { mode: 'split', label: 'Split', icon: Columns2 },
+  { mode: 'camera', label: 'Camera JPEG', icon: Camera },
 ]
 
 export function PhotoPage() {
@@ -103,7 +104,11 @@ export function PhotoPage() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return
+      // Keys a control already handled (a focused slider's arrows, a curve point) or typed into a field are
+      // not page shortcuts: otherwise ←/→ on a slider would switch photos.
+      if (e.defaultPrevented) return
+      const target = e.target as HTMLElement | null
+      if (target?.closest('input, select, textarea, [contenteditable="true"], [role="slider"]')) return
       if (e.key === 'ArrowLeft' && prev) void navigate(`/library/${prev.id}`)
       else if (e.key === 'ArrowRight' && next) void navigate(`/library/${next.id}`)
       else if (e.key === 'Escape') void navigate('/library')
@@ -147,7 +152,7 @@ export function PhotoPage() {
         </span>
         <div className="flex-1" />
         <div role="group" aria-label="View mode" className="flex rounded border border-line">
-          {MODES.map(({ mode: m, label, icon: Icon }) => (
+          {MODES.filter((m) => m.mode !== 'camera' || photo.sidecar_jpeg).map(({ mode: m, label, icon: Icon }) => (
             <button
               key={m}
               type="button"
@@ -192,7 +197,7 @@ export function PhotoPage() {
               ))}
             </Tabs.List>
             <Tabs.Content value="adjust" className="min-h-0 flex-1 overflow-y-auto">
-              <AdjustmentPanel edit={edit} styleName={styleName} />
+              <AdjustmentPanel key={photo.id} detail={detail.data} styleName={styleName} />
             </Tabs.Content>
             <Tabs.Content value="info" className="min-h-0 flex-1 overflow-y-auto">
               <InfoPanel photo={photo} styleName={styleName} />

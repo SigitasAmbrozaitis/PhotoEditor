@@ -345,3 +345,20 @@ def test_engine_info(client: TestClient) -> None:
         info.later_phase_parameters["geometry"] == 6 and info.later_phase_parameters["presence.clarity"] == 9
     )
     assert "-eng" in info.render_identity
+
+
+def test_detail_includes_defaults(client: TestClient, photos: Path) -> None:
+    _import(client, photos)
+    detail = PhotoDetail.model_validate(client.get(f"/api/photos/{_photo_ids(client)[0]}").json())
+    assert detail.edit.defaults.detail.sharpening.amount == 0  # a JPEG starts unsharpened
+
+
+def test_sidecar_camera_jpeg(client: TestClient, tmp_path: Path) -> None:
+    from helpers import write_jpeg
+
+    folder = tmp_path / "pair"
+    write_jpeg(folder / "x.jpg", (10, 200, 30), size=(600, 400))  # a lone JPEG: no sidecar
+    _import(client, folder)
+    pid = _photo_ids(client)[0]
+    r = client.get(f"/api/photos/{pid}/sidecar")
+    assert r.status_code == 404 and "no camera JPEG" in r.json()["detail"]

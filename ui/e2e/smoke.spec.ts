@@ -118,3 +118,29 @@ test('screens render: photo view, styles, presets', async ({ page }) => {
   await expect(page.getByTestId('export-summary')).toContainText('1080×1350')
   await shot(page, '16-export-dialog')
 })
+
+test('edit a photo: slider → preview updates → survives a reload → reset', async ({ page }) => {
+  await page.goto('/library')
+  await page.getByRole('listbox', { name: 'Photos' }).getByRole('option', { name: 'E2E_0001.JPG' }).dblclick()
+  const panel = page.getByRole('complementary', { name: 'Photo details' })
+  const preview = page.getByRole('img', { name: /E2E_0001.JPG \(after\)/ })
+  await expect(page.getByRole('status', { name: 'Rendering preview' })).toHaveCount(0, { timeout: 15_000 })
+  const firstSrc = await preview.getAttribute('src')
+
+  // Keyboard on the Exposure slider: 10 steps of 0.05 EV, and the photo must not change.
+  const exposure = panel.getByRole('slider', { name: 'Exposure' })
+  await exposure.focus()
+  for (let i = 0; i < 10; i++) await page.keyboard.press('ArrowRight')
+  await expect(panel.getByRole('button', { name: '+0.5 EV' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'E2E_0001.JPG' })).toBeVisible()
+  await expect(panel.getByText(/1 change · saved/)).toBeVisible({ timeout: 10_000 })
+  await expect(preview).not.toHaveAttribute('src', firstSrc ?? '', { timeout: 10_000 })
+  await expect(page.getByRole('status', { name: 'Rendering preview' })).toHaveCount(0, { timeout: 15_000 })
+  await shot(page, '17-photo-edited')
+
+  await page.reload()
+  await expect(page.getByRole('complementary', { name: 'Photo details' }).getByRole('button', { name: '+0.5 EV' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Reset all' }).click()
+  await expect(page.getByRole('complementary', { name: 'Photo details' }).getByText('Unedited')).toBeVisible()
+})

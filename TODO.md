@@ -450,14 +450,14 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
 - [x] **P3.19** API: `PUT /api/photos/{id}/edit` (full `AdjustmentParams`; validated, saved as overrides, returns
   `PhotoDetail` with an edit revision), `DELETE /api/photos/{id}/edit` (reset); preview URLs carry the revision for cache
   busting; `PhotoDetail` adds the as-shot WB and which parameters are live in this phase. Regenerate the TS types.
-- [ ] **P3.20** Photo view: sliders enabled for live parameters (later-phase ones stay disabled, labeled "Phase 6/9");
+- [x] **P3.20** Photo view: sliders enabled for live parameters (later-phase ones stay disabled, labeled "Phase 6/9");
   numeric entry; double-click a slider to reset it; reset group / reset all; WB shows the as-shot values; changes save
   automatically (debounced) and the preview updates, keeping the old image until the new one arrives; Before = default
   look; a **Camera JPEG** view mode (when the photo has a sidecar) to compare the default look with what the camera
   made; Ctrl+Z / Ctrl+Shift+Z undo/redo within the session.
-- [ ] **P3.21** Tone curve editor: an SVG point editor for RGB/R/G/B (drag points, click to add, double-click to remove)
+- [x] **P3.21** Tone curve editor: an SVG point editor for RGB/R/G/B (drag points, click to add, double-click to remove)
   next to the parametric sliders.
-- [ ] **P3.22** Tests: Vitest for slider edit/reset/undo and the curve editor; Playwright: move a slider → the preview
+- [x] **P3.22** Tests: Vitest for slider edit/reset/undo and the curve editor; Playwright: move a slider → the preview
   changes and the edit survives a reload; screenshots.
 - [ ] **P3.23** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e) and update README.
 

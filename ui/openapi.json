@@ -351,6 +351,59 @@
         }
       }
     },
+    "/api/photos/{photo_id}/sidecar": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Photo Sidecar",
+        "description": "The camera's own JPEG of a RAW (if it saved one), for comparing with the default look.",
+        "operationId": "photo_sidecar_api_photos__photo_id__sidecar_get",
+        "parameters": [
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 4096,
+              "minimum": 256,
+              "description": "Long edge in pixels.",
+              "default": 1600,
+              "title": "Size"
+            },
+            "description": "Long edge in pixels."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "JPEG image",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/photos/{photo_id}/edit": {
       "put": {
         "tags": [
@@ -3136,6 +3189,10 @@
             "title": "Revision",
             "description": "Changes whenever the edit changes.",
             "default": ""
+          },
+          "defaults": {
+            "$ref": "#/components/schemas/AdjustmentParams-Output",
+            "description": "The photo's unedited parameters (what a reset goes back to; JPEGs start unsharpened)."
           }
         },
         "additionalProperties": false,
@@ -3145,7 +3202,8 @@
           "style_id",
           "adjustments",
           "overridden",
-          "revision"
+          "revision",
+          "defaults"
         ],
         "title": "PhotoEdit",
         "description": "The edit of one photo: an optional style plus per-photo overrides. Overrides always win."

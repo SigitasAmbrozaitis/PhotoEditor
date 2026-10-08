@@ -15,6 +15,8 @@ export interface SliderField {
   format?: (value: number) => string
   /** Label shown when the value is null (e.g. white balance "As shot"). */
   nullLabel?: string
+  /** 'log': the slider track is logarithmic (temperature: 2500–10000 K would otherwise be a sliver). */
+  scale?: 'log'
 }
 
 export interface SliderGroup {
@@ -50,6 +52,7 @@ export const BASIC_GROUPS: SliderGroup[] = [
         schema: ['WhiteBalance', 'temperature'],
         format: (v) => `${Math.round(v)} K`,
         nullLabel: 'As shot',
+        scale: 'log',
       },
       {
         path: 'white_balance.tint',
@@ -58,7 +61,7 @@ export const BASIC_GROUPS: SliderGroup[] = [
         max: 150,
         step: 1,
         schema: ['WhiteBalance', 'tint'],
-        format: signed,
+        format: (v) => signed(Math.round(v)),
         nullLabel: 'As shot',
       },
     ],
@@ -221,6 +224,16 @@ export function getPath(obj: unknown, path: string): unknown {
     if (cur && typeof cur === 'object' && key in cur) return (cur as Record<string, unknown>)[key]
     return undefined
   }, obj)
+}
+
+/** Slider track position ↔ parameter value (identity for linear fields). */
+export function toTrack(field: SliderField, value: number): number {
+  return field.scale === 'log' ? Math.log(value) : value
+}
+
+export function fromTrack(field: SliderField, position: number): number {
+  if (field.scale !== 'log') return position
+  return Math.min(field.max, Math.max(field.min, Math.round(Math.exp(position) / field.step) * field.step))
 }
 
 export function formatValue(field: SliderField, value: number | null): string {

@@ -70,12 +70,31 @@ class ImageCache:
                 return path.read_bytes()
             return self.put_thumbnail(photo.id, _thumbnail_source(photo.path))
 
+    # ---- camera JPEGs (for side-by-side comparison)
+
+    def sidecar_path(self, photo_id: str, long_edge: int) -> Path:
+        return self._root / "sidecars" / f"{photo_id}-{long_edge}.jpg"
+
+    def sidecar(self, photo: CatalogPhoto, long_edge: int) -> bytes:
+        """The photo's camera JPEG, upright and scaled to ``long_edge`` (the original is only read)."""
+        assert photo.sidecar_jpeg is not None
+        path = self.sidecar_path(photo.id, long_edge)
+        with self._build_lock(path):
+            if path.is_file():
+                return path.read_bytes()
+            with Image.open(photo.sidecar_jpeg) as image:
+                image.draft("RGB", (long_edge, long_edge))
+                upright = ImageOps.exif_transpose(image).convert("RGB")
+            data = _encode(_fit(upright, long_edge), THUMBNAIL_QUALITY + 5)
+            self._guard.write_atomic(path, data)
+            return data
+
     # ---- maintenance
 
     def clear(self) -> int:
         """Delete every cached embedded thumbnail (plus Phase 2 previews, if any). Returns files removed."""
         removed = 0
-        for sub in ("thumbs", "previews"):
+        for sub in ("thumbs", "previews", "sidecars"):
             folder = self._root / sub
             if folder.is_dir():
                 self._guard.assert_writable(folder)

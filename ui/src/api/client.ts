@@ -47,6 +47,7 @@ export const api = {
   get: <T>(path: string, query?: Query, signal?: AbortSignal) => request<T>('GET', buildUrl(path, query), undefined, signal),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {}),
   put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
+  delete: <T>(path: string) => request<T>('DELETE', path),
 }
 
 // Image URLs (served as JPEG by the backend). `version` (Photo.image_version) changes whenever the photo renders
@@ -60,4 +61,7 @@ export const imageUrls = {
       size: opts.size,
       v: opts.before ? undefined : opts.version,
     }),
+  /** The camera's own JPEG next to a RAW (for comparing with the default look). */
+  sidecar: (photoId: string, size = 1600) =>
+    buildUrl(`/api/photos/${encodeURIComponent(photoId)}/sidecar`, { size }),
 }

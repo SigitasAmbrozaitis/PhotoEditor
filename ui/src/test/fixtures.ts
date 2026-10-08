@@ -2,6 +2,7 @@
 import type {
   AdjustmentParams,
   DirListing,
+  EngineInfo,
   ExportPreset,
   Job,
   LibraryFolder,
@@ -63,6 +64,19 @@ export function neutralAdjustments(): AdjustmentParams {
 }
 
 export const FOLDER = 'C:/Photos/Test'
+
+export const engine: EngineInfo = {
+  render_identity: 'dec2-libraw0.22.1-eng1',
+  later_phase_parameters: {
+    geometry: 6,
+    'presence.clarity': 9,
+    'presence.texture': 9,
+    'presence.dehaze': 9,
+    'detail.noise_reduction': 9,
+    'effects.grain': 9,
+    lens: 9,
+  },
+}
 
 export function makePhoto(i: number, overrides: Partial<Photo> = {}): Photo {
   const filename = `DSCF${1000 + i}.RAF`
@@ -182,7 +196,14 @@ export function photoDetail(photo: Photo): PhotoDetail {
   }
   return {
     photo,
-    edit: { photo_id: photo.id, style_id: photo.style_id, adjustments, overridden, revision: `r${photo.id}` },
+    edit: {
+      photo_id: photo.id,
+      style_id: photo.style_id,
+      adjustments,
+      overridden,
+      revision: `r${photo.id}`,
+      defaults: neutralAdjustments(),
+    },
     as_shot: { temperature: 5200, tint: 8 },
   }
 }

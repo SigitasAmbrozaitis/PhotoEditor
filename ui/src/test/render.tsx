@@ -43,6 +43,21 @@ export function defaultHandlers(): Record<string, Handler> {
       const photo = fx.photos.find((p) => path.endsWith(`/${p.id}`))
       return photo ? fx.photoDetail(photo) : new Response(JSON.stringify({ detail: 'not found' }), { status: 404 })
     },
+    'GET /api/engine': () => fx.engine,
+    'PUT /api/photos/:id/edit': ({ path, body }) => {
+      const photo = fx.photos.find((p) => path.includes(`/${p.id}/`))!
+      const detail = fx.photoDetail(photo)
+      return {
+        ...detail,
+        photo: { ...detail.photo, image_version: `${photo.image_version}-edited` },
+        edit: { ...detail.edit, adjustments: body, revision: 'r-edited' },
+      }
+    },
+    'DELETE /api/photos/:id/edit': ({ path }) => {
+      const photo = fx.photos.find((p) => path.includes(`/${p.id}/`))!
+      const detail = fx.photoDetail({ ...photo, style_id: null, has_overrides: false })
+      return { ...detail, edit: { ...detail.edit, adjustments: fx.neutralAdjustments(), overridden: [] } }
+    },
     'GET /api/styles': () => fx.styleSummaries,
     'GET /api/styles/:id': () => fx.warmFilm,
     'GET /api/export-presets': () => fx.presets,
