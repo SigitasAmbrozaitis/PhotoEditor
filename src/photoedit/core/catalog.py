@@ -193,6 +193,15 @@ class Catalog:
         row = self._one("SELECT * FROM photos WHERE id = ?", (photo_id,))
         return _photo(row) if row else None
 
+    def find(self, name: str) -> CatalogPhoto | None:
+        """A photo by id, file name or file name without extension (case-insensitive); newest import first."""
+        row = self._one(
+            "SELECT * FROM photos WHERE missing = 0 AND (id = ? OR filename = ? COLLATE NOCASE OR "
+            "filename LIKE ? ESCAPE '!' COLLATE NOCASE) ORDER BY rowid DESC LIMIT 1",
+            (name, name, name.replace("!", "!!").replace("%", "!%").replace("_", "!_") + ".%"),
+        )
+        return _photo(row) if row else None
+
     def get_by_path(self, path: Path) -> CatalogPhoto | None:
         row = self._one("SELECT * FROM photos WHERE path_key = ?", (path_key(path),))
         return _photo(row) if row else None

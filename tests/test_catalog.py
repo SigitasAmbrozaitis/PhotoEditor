@@ -285,3 +285,13 @@ def test_has_edits_flag_survives_reimport(catalog: Catalog) -> None:
         100,
         5000.0,
     )
+
+
+def test_find_by_id_or_file_name(catalog: Catalog) -> None:
+    catalog.upsert(_photo(1, path=PHOTOS / "DSCF5437.RAF"))
+    catalog.upsert(_photo(2, path=PHOTOS / "DSCF5437_x.RAF"))  # an underscore must not act as a wildcard
+    pid = photo_id(_sha(1))
+    for name in (pid, "DSCF5437", "dscf5437.raf", "DSCF5437.RAF"):
+        found = catalog.find(name)
+        assert found is not None and found.id == pid
+    assert catalog.find("DSCF54") is None

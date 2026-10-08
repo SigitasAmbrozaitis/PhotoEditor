@@ -441,7 +441,7 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
   them), plus `photoedit golden update` writing local references for a few real RAFs into `output/golden/`
   (git-ignored, a tool-owned folder: `tests/` is not one), compared by `@pytest.mark.golden` tests within ΔE2000
   mean ≤ 0.5 / p99 ≤ 2.
-- [ ] **P3.17** Contact sheet: `photoedit contact-sheet PHOTO [--group tone]` → `output/contact-sheets/…jpg`, every
+- [x] **P3.17** Contact sheet: `photoedit contact-sheet PHOTO [--group tone]` → `output/contact-sheets/…jpg`, every
   implemented parameter at −/0/+ (min/neutral/max where that's more useful), labeled.
 - [ ] **P3.18** Preview speed: time a full render at 1600 px from the cached base on a real RAF (target ≤ 0.5 s); add the
   result to `docs/benchmark.md`.

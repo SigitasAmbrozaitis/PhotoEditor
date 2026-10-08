@@ -286,6 +286,41 @@ def golden_update(
     typer.echo(f"{len(entries)} references in {out_dir}")
 
 
+@app.command("contact-sheet")
+def contact_sheet(
+    photo: Annotated[str, typer.Argument(help="An imported photo (file name like DSCF5437, or its id).")],
+    group: Annotated[
+        str | None, typer.Option(help="Only this group (e.g. tone); default: all groups.")
+    ] = None,
+    config: ConfigOption = None,
+) -> None:
+    """Render every parameter at low / neutral / high into output/contact-sheets/ (one image per group)."""
+    from photoedit.core.contact_sheet import groups, render_sheet
+    from photoedit.core.decode import decode_linear, is_raw
+    from photoedit.core.errors import InvalidRequestError
+    from photoedit.services import Services
+
+    services = Services(load_settings(config))
+    try:
+        found = services.catalog.find(photo)
+        if found is None:
+            raise typer.BadParameter(
+                f"no imported photo called '{photo}' (import its folder first)", param_hint="PHOTO"
+            )
+        names = [group] if group else list(groups((0, 0)))
+        base = decode_linear(found.path, half_size=is_raw(found.path))
+        out_dir = services.settings.output_dir / "contact-sheets"
+        for name in names:
+            try:
+                data = render_sheet(found, name, base)
+            except InvalidRequestError as exc:
+                raise typer.BadParameter(str(exc), param_hint="--group") from None
+            path = services.guard.write_atomic(out_dir / f"{found.path.stem}-{name}.jpg", data)
+            typer.echo(f"wrote {path}")
+    finally:
+        services.close()
+
+
 @app.command()
 def openapi() -> None:
     """Print the HTTP API's OpenAPI schema (UTF-8 JSON). Used to generate the UI's TypeScript types."""
