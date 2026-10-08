@@ -391,7 +391,7 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
   sRGB/Rec.2020/XYZ matrices and transfer functions; OKLab/OKLCh (Ottosson's reference values); Kelvin + tint ↔
   chromaticity (Planckian/daylight locus, tint perpendicular to it); Bradford adaptation; camera WB multipliers from
   Kelvin + tint (given the camera matrix) and the inverse "as shot" estimate.
-- [ ] **P3.4** `decode.decode_linear(path, size)`: RAW → demosaiced, camera-space, camera-WB, linear float data plus the
+- [x] **P3.4** `decode.decode_linear(path, size)`: RAW → demosaiced, camera-space, camera-WB, linear float data plus the
   camera matrix and as-shot multipliers; JPEG/TIFF → linear Rec.2020. `DECODER_VERSION` → 2. Golden test: our matrix
   path matches LibRaw's sRGB output within 1e-4.
 - [ ] **P3.5** Linear base cache: the decoded linear image at preview working size (long edge 2048) as float16 on disk

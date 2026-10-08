@@ -261,3 +261,62 @@ def test_real_raf_decode_is_identical_across_threads(sample_raw: Path) -> None:
     thread.start()
     thread.join()
     assert np.array_equal(main, result["pixels"])
+
+
+# ----------------------------------------------------------------- linear decode (Phase 3)
+
+
+def test_linear_decode_of_a_tiff_is_linear_rec2020(tmp_path: Path) -> None:
+    from photoedit.core import color
+
+    path = tmp_path / "patches.tif"
+    patches = np.zeros((2, 2, 3), dtype=np.uint8)
+    patches[0, 0] = (128, 128, 128)
+    patches[0, 1] = (255, 0, 0)
+    Image.fromarray(patches).save(path, "TIFF")
+    image = decode.decode_linear(path, half_size=False)
+    assert not image.is_raw and image.pixels.dtype == np.float32
+    np.testing.assert_allclose(image.to_rec2020, np.eye(3))
+    gray = float(color.srgb_decode(np.array([128 / 255]))[0])
+    np.testing.assert_allclose(image.pixels[0, 0], [gray] * 3, atol=1e-6)
+    np.testing.assert_allclose(image.pixels[0, 1], color.REC2020_FROM_SRGB @ [1, 0, 0], atol=1e-6)
+    temperature, _ = image.as_shot
+    assert temperature == pytest.approx(6504, abs=10)  # JPEG/TIFF count as D65
+
+
+def test_linear_decode_half_size(tmp_path: Path) -> None:
+    path = tmp_path / "h.jpg"
+    path.write_bytes(_jpeg_bytes(_gradient(64, 40)))
+    assert decode.decode_linear(path, half_size=True).pixels.shape == (20, 32, 3)
+
+
+@pytest.mark.golden
+def test_real_raf_linear_decode_matches_libraw_srgb(sample_raw: Path) -> None:
+    """Our camera→Rec.2020 matrix, taken on to sRGB, must reproduce LibRaw's own sRGB conversion."""
+    import io as io_module
+
+    import rawpy as rawpy_module
+
+    from photoedit.core import color
+
+    image = decode.decode_linear(sample_raw, half_size=True)
+    assert image.is_raw and image.cam_from_xyz is not None
+    ours = np.clip(
+        color.apply_matrix(image.pixels.astype(np.float64), color.SRGB_FROM_REC2020 @ image.to_rec2020), 0, 1
+    )
+    with rawpy_module.imread(io_module.BytesIO(sample_raw.read_bytes())) as raw:
+        decode._single_threaded_libraw()
+        libraw = (
+            raw.postprocess(
+                half_size=True,
+                output_bps=16,
+                gamma=(1, 1),
+                use_camera_wb=True,
+                no_auto_bright=True,
+                output_color=rawpy_module.ColorSpace.sRGB,
+            ).astype(np.float64)
+            / 65535
+        )
+    assert np.abs(ours - libraw).mean() < 1e-4
+    temperature, tint = image.as_shot
+    assert 4000 < temperature < 7000 and abs(tint) < 50  # the probe measured ~5000 K for these shots
