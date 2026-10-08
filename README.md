@@ -6,9 +6,9 @@ PhotoEditor is a non-destructive RAW photo editor meant to replace Lightroom for
 cropping, zooming and centering. An **AI agent** (Claude Code, through MCP) drives it. You describe the look you want, the AI
 applies it, and the tool's code enforces the rules. A small web UI lets you browse, compare and approve.
 
-> **Status: early development (Phase 2, import & decode).** The Library shows your real photos: folders are imported
-> read-only into a local catalog (EXIF, thumbnails, neutral previews). Editing, styles and export are not real yet:
-> styles are demo data and apply/export jobs are simulated.
+> **Status: early development (Phase 3, edit engine).** Photos render through a deterministic pipeline with live sliders,
+> per-photo edits and a camera profile fitted to the X-T3 camera JPEGs (see docs/default-look.md). Styles and export
+> are still demo data / simulated (Phases 4–5).
 > See [PLAN.md](PLAN.md) for the full plan and [TODO.md](TODO.md) for progress.
 
 ---
