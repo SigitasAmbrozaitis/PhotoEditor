@@ -13,7 +13,7 @@ import numpy.typing as npt
 
 from photoedit.core import color
 from photoedit.core.decode import LinearImage
-from photoedit.models.adjustments import WhiteBalance
+from photoedit.models.adjustments import Tone, WhiteBalance
 
 type F32 = npt.NDArray[np.float32]
 
@@ -104,3 +104,60 @@ def quantize(encoded: F32, bits: int = 8) -> npt.NDArray[np.uint8] | npt.NDArray
     if bits == 8:
         return scaled.astype(np.uint8)
     return scaled.astype(np.uint16)
+
+
+# ----------------------------------------------------------------- tone (exposure-relative luminance curve)
+
+MID_GRAY = 0.18
+# The luminance curve lives on a grid of stops relative to mid gray; 0 is on the grid exactly, so mid gray
+# maps
+# to itself bit-exactly.
+_STOPS_MIN, _STOPS_MAX, _STEPS_PER_STOP = -24, 12, 64
+TONE_GRID = np.arange(_STOPS_MIN * _STEPS_PER_STOP, _STOPS_MAX * _STEPS_PER_STOP + 1) / _STEPS_PER_STOP
+_ZERO_INDEX = -_STOPS_MIN * _STEPS_PER_STOP
+
+# (center in stops, half width in stops, strength in stops of slope change at ±100, sign of a positive
+# slider).
+# A positive "shadows"/"blacks" lifts dark areas by flattening the curve below mid gray; a positive
+# "highlights"/"whites" brightens by steepening it above mid gray.
+_TONE_BANDS = {
+    "blacks": (-6.5, 2.5, 1.0, -1),
+    "shadows": (-2.5, 2.5, 1.0, -1),
+    "highlights": (1.5, 1.5, 1.2, +1),
+    "whites": (3.5, 1.5, 1.0, +1),
+}
+_CONTRAST_STRENGTH = 0.6  # contrast ±100 → overall slope ×2^±0.6 (≈ ×1.52 / ×0.66) around mid gray
+
+
+def tone_curve_stops(tone: Tone) -> npt.NDArray[np.float64]:
+    """Output stops for every input stop on ``TONE_GRID``.
+
+    The curve is defined by its slope: each slider multiplies the local slope by a strictly positive factor,
+    and the slope is integrated outward from mid gray. So the curve is monotone for any slider values and mid
+    gray stays exactly where it is.
+    """
+    log_slope = np.full(TONE_GRID.shape, _CONTRAST_STRENGTH * tone.contrast / 100)
+    for name, (center, half_width, strength, sign) in _TONE_BANDS.items():
+        value: float = getattr(tone, name)
+        if value:
+            distance = np.clip(np.abs(TONE_GRID - center) / half_width, 0, 1)
+            bump = 0.5 + 0.5 * np.cos(np.pi * distance)  # 1 at the center, 0 beyond ±half_width
+            log_slope += sign * strength * value / 100 * bump
+    slope = np.exp2(log_slope)
+    steps = (slope[1:] + slope[:-1]) / 2 / _STEPS_PER_STOP  # trapezoid rule
+    out = np.zeros_like(TONE_GRID)
+    out[_ZERO_INDEX + 1 :] = np.cumsum(steps[_ZERO_INDEX:])
+    out[:_ZERO_INDEX] = -np.cumsum(steps[:_ZERO_INDEX][::-1])[::-1]
+    return out
+
+
+def tone(rgb: F32, params: Tone) -> F32:
+    """Contrast, highlights, shadows, whites and blacks as one luminance curve (colors keep their ratios)."""
+    if not (params.contrast or params.highlights or params.shadows or params.whites or params.blacks):
+        return rgb
+    curve = tone_curve_stops(params)
+    stops = np.log2(np.maximum(luminance(rgb), _EPSILON) / np.float32(MID_GRAY))
+    new_stops = np.interp(stops, TONE_GRID, curve)
+    gain = np.exp2(new_stops - stops).astype(np.float32)
+    out: F32 = rgb * gain[..., None]
+    return out

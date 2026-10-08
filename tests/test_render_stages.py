@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from photoedit.core import color
 from photoedit.core.decode import LinearImage
 from photoedit.core.render import stages
-from photoedit.models.adjustments import WhiteBalance
+from photoedit.models.adjustments import Tone, WhiteBalance
 
 XT3 = np.array([[1.6393, -0.7740, -0.1436], [-0.4140, 1.1745, 0.2632], [-0.0536, 0.1413, 0.6614]])
 
@@ -115,3 +117,66 @@ def test_quantize_rounds_to_nearest() -> None:
 
 def test_luminance_of_white_is_one() -> None:
     assert float(stages.luminance(np.ones((1, 1, 3), dtype=np.float32))[0, 0]) == pytest.approx(1.0, abs=1e-6)
+
+
+# ----------------------------------------------------------------- tone
+
+
+def gray_at(stops: float) -> np.ndarray:
+    return np.full((1, 1, 3), 0.18 * 2.0**stops, dtype=np.float32)
+
+
+def stops_after(params: Tone, stops: float) -> float:
+    out = stages.tone(gray_at(stops), params)
+    return float(np.log2(stages.luminance(out)[0, 0] / 0.18))
+
+
+tone_values = st.floats(min_value=-100, max_value=100)
+
+
+def test_neutral_tone_is_the_same_array() -> None:
+    rgb = PATCHES.astype(np.float32)
+    assert stages.tone(rgb, Tone()) is rgb
+
+
+@given(tone_values, tone_values, tone_values, tone_values, tone_values)
+def test_tone_curve_is_monotone_and_keeps_mid_gray(c: float, h: float, s: float, w: float, b: float) -> None:
+    params = Tone(contrast=c, highlights=h, shadows=s, whites=w, blacks=b)
+    curve = stages.tone_curve_stops(params)
+    assert (np.diff(curve) > 0).all()
+    np.testing.assert_array_equal(stages.tone(gray_at(0), params), gray_at(0))
+
+
+def test_tone_preserves_color_ratios() -> None:
+    rgb = PATCHES.astype(np.float32)
+    out = stages.tone(rgb, Tone(contrast=40, shadows=30, highlights=-50))
+    ratios = out / rgb
+    np.testing.assert_allclose(ratios, ratios[..., :1].repeat(3, axis=-1), rtol=1e-5)
+
+
+def test_shadows_lift_darks_and_leave_brights_alone() -> None:
+    lifted = Tone(shadows=100)
+    assert stops_after(lifted, -4) > -4 + 0.5
+    assert stops_after(lifted, 2) == pytest.approx(2, abs=1e-5)
+    assert stops_after(Tone(shadows=-100), -4) < -4 - 0.5
+
+
+def test_highlights_recover_brights_and_leave_darks_alone() -> None:
+    recovered = Tone(highlights=-100)
+    assert stops_after(recovered, 2.5) < 2.5 - 0.5
+    assert stops_after(recovered, -3) == pytest.approx(-3, abs=1e-5)
+    assert stops_after(Tone(highlights=100), 2.5) > 2.5 + 0.5
+
+
+def test_whites_and_blacks_work_at_the_ends() -> None:
+    assert stops_after(Tone(whites=100), 4) > 4 + 0.3
+    assert stops_after(Tone(whites=100), -2) == pytest.approx(-2, abs=1e-5)
+    assert stops_after(Tone(blacks=-100), -7) < -7 - 0.3
+    assert stops_after(Tone(blacks=-100), 1) == pytest.approx(1, abs=1e-5)
+
+
+def test_contrast_spreads_tones_around_mid_gray() -> None:
+    more = Tone(contrast=50)
+    assert stops_after(more, -3) < -3 and stops_after(more, 3) > 3
+    less = Tone(contrast=-50)
+    assert stops_after(less, -3) > -3 and stops_after(less, 3) < 3

@@ -401,7 +401,7 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
   stage is the identity at its neutral value):
   - white balance + camera → Rec.2020; exposure (+1 EV doubles linear values); output transform (Rec.2020 → sRGB,
     gamut clip, sRGB encoding, 8/16-bit)
-- [ ] **P3.7** Tone stages: whites/blacks, highlights/shadows, contrast (18 % gray stays fixed; ratio-preserving).
+- [x] **P3.7** Tone stages: whites/blacks, highlights/shadows, contrast (18 % gray stays fixed; ratio-preserving).
 - [ ] **P3.8** Curves: base curve, parametric regions (highlights/lights/darks/shadows), point curves for RGB/R/G/B
   (monotone cubic, so curves never overshoot).
 - [ ] **P3.9** Color stages: HSL (8 overlapping hue bands in OKLCh), color grading (shadows/midtones/highlights/global
