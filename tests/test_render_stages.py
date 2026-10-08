@@ -180,3 +180,134 @@ def test_contrast_spreads_tones_around_mid_gray() -> None:
     assert stops_after(more, -3) < -3 and stops_after(more, 3) > 3
     less = Tone(contrast=-50)
     assert stops_after(less, -3) > -3 and stops_after(less, 3) < 3
+
+
+# ----------------------------------------------------------------- color (OKLab)
+
+
+def srgb_patches(*rgbs: tuple[float, float, float]) -> np.ndarray:
+    """Display-linear Rec.2020 pixels for sRGB-encoded colors."""
+    encoded = np.array([list(rgbs)], dtype=np.float64)
+    return color.apply_matrix(color.srgb_decode(encoded), color.REC2020_FROM_SRGB).astype(np.float32)
+
+
+RED, BLUE, GRAY, DARK_GRAY, LIGHT_GRAY = (
+    (0.8, 0.15, 0.1),
+    (0.1, 0.2, 0.8),
+    (0.5, 0.5, 0.5),
+    (0.1, 0.1, 0.1),
+    (0.9, 0.9, 0.9),
+)
+
+
+def lch(display_linear: np.ndarray) -> np.ndarray:
+    return color.oklab_to_oklch(color.rec2020_to_oklab(display_linear.astype(np.float64)))
+
+
+def adjust(pixels: np.ndarray, **kwargs: object) -> np.ndarray:
+    from photoedit.models.adjustments import ColorGrading, Hsl, Presence
+
+    return stages.color_adjust(
+        pixels,
+        kwargs.get("profile_hsl", Hsl()),  # type: ignore[arg-type]
+        kwargs.get("hsl", Hsl()),  # type: ignore[arg-type]
+        kwargs.get("grading", ColorGrading()),  # type: ignore[arg-type]
+        kwargs.get("presence", Presence()),  # type: ignore[arg-type]
+    )
+
+
+def test_neutral_color_stage_returns_the_same_array() -> None:
+    pixels = srgb_patches(RED, GRAY)
+    assert adjust(pixels) is pixels
+
+
+def test_band_weights_cross_fade_and_sum_to_one() -> None:
+    hues = np.arange(0, 360, 0.5, dtype=np.float32)
+    weights = stages.band_weights(hues)
+    np.testing.assert_allclose(sum(weights.values()), 1, atol=1e-6)
+    for name, center in stages.BAND_HUES.items():
+        assert float(stages.band_weights(np.array([center], dtype=np.float32))[name][0]) == pytest.approx(
+            1, abs=1e-5
+        )
+
+
+def test_red_saturation_minus_100_grays_out_red_only() -> None:
+    from photoedit.models.adjustments import Hsl, HslBand
+
+    pixels = srgb_patches(RED, BLUE)
+    out = adjust(pixels, hsl=Hsl(red=HslBand(saturation=-100)))
+    before, after = lch(pixels)[0], lch(out)[0]
+    assert after[0, 1] < 5e-4  # red has no chroma left (float32 round-trip noise only)
+    assert after[0, 0] == pytest.approx(before[0, 0], abs=1e-5)  # same lightness
+    np.testing.assert_allclose(out[0, 1], pixels[0, 1], atol=1e-5)  # blue untouched
+
+
+def test_red_hue_plus_100_moves_red_toward_orange() -> None:
+    from photoedit.models.adjustments import Hsl, HslBand
+
+    pixels = srgb_patches(RED)
+    shifted = lch(adjust(pixels, hsl=Hsl(red=HslBand(hue=100))))[0, 0, 2]
+    original = lch(pixels)[0, 0, 2]
+    assert 15 < (shifted - original) % 360 <= 30
+
+
+def test_hsl_luminance_leaves_grays_alone() -> None:
+    from photoedit.models.adjustments import Hsl, HslBand
+
+    pixels = srgb_patches(RED, GRAY)
+    out = adjust(pixels, hsl=Hsl(red=HslBand(luminance=100), blue=HslBand(luminance=-100)))
+    assert lch(out)[0, 0, 0] > lch(pixels)[0, 0, 0] + 0.05
+    np.testing.assert_allclose(out[0, 1], pixels[0, 1], atol=1e-5)
+
+
+def test_profile_hsl_works_like_user_hsl() -> None:
+    from photoedit.models.adjustments import Hsl, HslBand
+
+    pixels = srgb_patches(RED, BLUE)
+    tweak = Hsl(blue=HslBand(saturation=-50))
+    np.testing.assert_allclose(adjust(pixels, profile_hsl=tweak), adjust(pixels, hsl=tweak), atol=1e-6)
+
+
+def test_shadow_grading_tints_darks_not_lights() -> None:
+    from photoedit.models.adjustments import ColorGrading, GradeWheel
+
+    pixels = srgb_patches(DARK_GRAY, LIGHT_GRAY)
+    out = adjust(pixels, grading=ColorGrading(shadows=GradeWheel(hue=220, saturation=100)))
+    dark, light = lch(out)[0]
+    assert dark[1] > 0.02 and light[1] < 0.005
+    assert 220 < dark[2] < 280  # a blue tint (OKLab blue sits near 264°)
+
+
+def test_global_grading_and_luminance() -> None:
+    from photoedit.models.adjustments import ColorGrading, GradeWheel
+
+    pixels = srgb_patches(DARK_GRAY, LIGHT_GRAY)
+    out = adjust(pixels, grading=ColorGrading(global_=GradeWheel(hue=30, saturation=50, luminance=20)))
+    before, after = lch(pixels)[0], lch(out)[0]
+    assert (after[:, 1] > 0.01).all()
+    assert (after[:, 0] > before[:, 0]).all()
+
+
+def test_grading_masks_and_balance() -> None:
+    from photoedit.models.adjustments import ColorGrading
+
+    lightness = np.linspace(0, 1, 101, dtype=np.float32)
+    masks = stages.grading_masks(lightness, ColorGrading())
+    assert masks["shadows"][0] == 1 and masks["highlights"][-1] == 1 and masks["midtones"][50] == 1
+    assert ((masks["shadows"] + masks["midtones"] + masks["highlights"]) <= 1 + 1e-6).all()
+    favor_highlights = stages.grading_masks(lightness, ColorGrading(balance=100))
+    assert favor_highlights["highlights"].sum() > masks["highlights"].sum()
+
+
+def test_saturation_and_vibrance() -> None:
+    from photoedit.models.adjustments import Presence
+
+    pixels = srgb_patches(RED, (0.55, 0.5, 0.45), GRAY)
+    gray_out = adjust(pixels, presence=Presence(saturation=-100))
+    assert (lch(gray_out)[0, :, 1] < 5e-4).all()
+    np.testing.assert_allclose(lch(gray_out)[0, :, 0], lch(pixels)[0, :, 0], atol=1e-5)
+    boosted = lch(adjust(pixels, presence=Presence(vibrance=100)))[0]
+    original = lch(pixels)[0]
+    gain_vivid, gain_muted = boosted[0, 1] / original[0, 1], boosted[1, 1] / original[1, 1]
+    assert gain_muted > gain_vivid > 1  # vibrance favours muted colors
+    np.testing.assert_allclose(boosted[2, :2], original[2, :2], atol=1e-5)  # gray stays gray (hue: noise)

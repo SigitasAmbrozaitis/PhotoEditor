@@ -15,7 +15,7 @@ from photoedit.core import color
 from photoedit.core.decode import LinearImage
 from photoedit.core.render.curves import pchip
 from photoedit.core.render.profile import CameraProfile
-from photoedit.models.adjustments import Tone, ToneCurve, WhiteBalance
+from photoedit.models.adjustments import ColorGrading, Hsl, Presence, Tone, ToneCurve, WhiteBalance
 
 type F32 = npt.NDArray[np.float32]
 
@@ -215,3 +215,158 @@ def curves(encoded: F32, params: ToneCurve) -> F32:
     for channel, lut in enumerate(luts):
         out[..., channel] = np.interp(encoded[..., channel], _CURVE_GRID, lut)
     return out
+
+
+# ----------------------------------------------------------------- color (OKLab/OKLCh)
+
+
+def _oklch_hue_of_srgb(rgb: tuple[float, float, float]) -> float:
+    linear = color.apply_matrix(color.srgb_decode(np.array(rgb, dtype=np.float64)), color.REC2020_FROM_SRGB)
+    lab = color.rec2020_to_oklab(linear)
+    return float(np.degrees(np.arctan2(lab[2], lab[1])) % 360)
+
+
+# HSL band centers: the OKLCh hue of each named color in sRGB, so "red" means the hue of pure red.
+_BANDS: dict[str, tuple[float, float, float]] = {
+    "red": (1, 0, 0),
+    "orange": (1, 0.5, 0),
+    "yellow": (1, 1, 0),
+    "green": (0, 1, 0),
+    "aqua": (0, 1, 1),
+    "blue": (0, 0, 1),
+    "purple": (0.5, 0, 1),
+    "magenta": (1, 0, 1),
+}
+BAND_HUES = {name: _oklch_hue_of_srgb(rgb) for name, rgb in _BANDS.items()}
+_HSL_HUE_SHIFT = 30.0  # degrees at ±100
+_HSL_LUMINANCE = 0.25  # OKLab L at ±100 (for fully colorful pixels)
+_GRADE_CHROMA = 0.06  # OKLab chroma added at saturation 100
+_GRADE_LUMINANCE = 0.2  # OKLab L at ±100
+_VIBRANCE_SKIN_HUE = BAND_HUES["orange"]
+
+
+def _smoothstep(edge0: float, edge1: float, x: F32) -> F32:
+    t = np.clip((x - np.float32(edge0)) / np.float32(edge1 - edge0), 0, 1)
+    out: F32 = t * t * (3 - 2 * t)
+    return out
+
+
+def band_weights(hue: F32) -> dict[str, F32]:
+    """Weight of each HSL band for every hue (degrees). Neighbouring bands cross-fade; weights sum to 1.
+
+    Each hue falls in exactly one segment between two adjacent band centers (found by search, so float
+    rounding can't put a hue in two segments) and is shared between those two bands only.
+    """
+    names = sorted(BAND_HUES, key=BAND_HUES.__getitem__)
+    centers = np.array([BAND_HUES[n] for n in names], dtype=np.float32)
+    count = len(names)
+    wrapped = hue % np.float32(360)
+    segment = (np.searchsorted(centers, wrapped, side="right") - 1) % count
+    start = centers[segment]
+    span = (centers[(segment + 1) % count] - start) % np.float32(360)
+    t = np.clip(((wrapped - start) % np.float32(360)) / span, 0, 1)
+    s = (t * t * (3 - 2 * t)).astype(np.float32)
+    weights: dict[str, F32] = {}
+    for k, name in enumerate(names):
+        mine = np.where(segment == k, 1 - s, 0)
+        from_previous = np.where(segment == (k - 1) % count, s, 0)
+        weights[name] = (mine + from_previous).astype(np.float32)
+    return weights
+
+
+def _apply_hsl(lightness: F32, chroma: F32, hue: F32, params: Hsl) -> tuple[F32, F32, F32]:
+    weights = band_weights(hue)
+    shift = np.zeros_like(hue)
+    scale = np.zeros_like(hue)
+    lift = np.zeros_like(hue)
+    for name, w in weights.items():
+        band = getattr(params, name)
+        shift += w * np.float32(band.hue / 100 * _HSL_HUE_SHIFT)
+        scale += w * np.float32(1 + band.saturation / 100)
+        lift += w * np.float32(band.luminance / 100 * _HSL_LUMINANCE)
+    colorful = _smoothstep(0, 0.12, chroma)  # grays have no hue: leave their brightness alone
+    return lightness + lift * colorful, chroma * scale, (hue + shift) % 360
+
+
+def _wheel_direction(hsv_hue: float) -> tuple[float, float]:
+    """Unit OKLab (a, b) direction of an HSV hue (0 = red, 120 = green, 240 = blue)."""
+    sector, fraction = divmod(hsv_hue / 60, 1)
+    rgb = [
+        (1, fraction, 0),
+        (1 - fraction, 1, 0),
+        (0, 1, fraction),
+        (0, 1 - fraction, 1),
+        (fraction, 0, 1),
+        (1, 0, 1 - fraction),
+    ][int(sector) % 6]
+    angle = np.radians(_oklch_hue_of_srgb((float(rgb[0]), float(rgb[1]), float(rgb[2]))))
+    return float(np.cos(angle)), float(np.sin(angle))
+
+
+def grading_masks(lightness: F32, grading: ColorGrading) -> dict[str, F32]:
+    """Shadows/midtones/highlights weights from OKLab lightness; blending widens the overlap."""
+    split = 0.5 - 0.2 * grading.balance / 100  # positive balance gives the highlights more room
+    width = 0.1 + 0.4 * grading.blending / 100
+    shadows = 1 - _smoothstep(split - 0.2 - width / 2, split - 0.2 + width / 2, lightness)
+    highlights = _smoothstep(split + 0.2 - width / 2, split + 0.2 + width / 2, lightness)
+    midtones = np.clip(1 - shadows - highlights, 0, 1).astype(np.float32)
+    return {"shadows": shadows, "midtones": midtones, "highlights": highlights}
+
+
+def _apply_grading(lab: F32, grading: ColorGrading) -> F32:
+    masks = grading_masks(lab[..., 0], grading)
+    masks["global"] = np.ones_like(lab[..., 0])
+    out = lab.copy()
+    for name, mask in masks.items():
+        wheel = getattr(grading, "global_" if name == "global" else name)
+        if wheel.saturation:
+            da, db = _wheel_direction(wheel.hue)
+            amount = np.float32(wheel.saturation / 100 * _GRADE_CHROMA) * mask
+            out[..., 1] += amount * np.float32(da)
+            out[..., 2] += amount * np.float32(db)
+        if wheel.luminance:
+            out[..., 0] += np.float32(wheel.luminance / 100 * _GRADE_LUMINANCE) * mask
+    return out
+
+
+def _apply_presence(chroma: F32, hue: F32, presence: Presence) -> F32:
+    out = chroma
+    if presence.vibrance:
+        muted = 1 - _smoothstep(0, 0.2, chroma)  # vibrance mostly lifts muted colors
+        if presence.vibrance > 0:  # and goes easy on skin tones
+            distance = np.abs((hue - np.float32(_VIBRANCE_SKIN_HUE) + 180) % 360 - 180)
+            muted = muted * (1 - 0.5 * (1 - _smoothstep(0, 40, distance)))
+        out = out * (1 + np.float32(presence.vibrance / 100) * muted)
+    if presence.saturation:
+        out = out * np.float32(1 + presence.saturation / 100)
+    return out
+
+
+def color_adjust(
+    display_linear: F32, profile_hsl: Hsl, hsl: Hsl, grading: ColorGrading, presence: Presence
+) -> F32:
+    """Profile HSL, user HSL, color grading, then vibrance/saturation, all in OKLab. Input/output display-
+    linear."""
+    neutral_hsl = Hsl()
+    neutral_grading = ColorGrading()
+    if (
+        profile_hsl == neutral_hsl
+        and hsl == neutral_hsl
+        and grading == neutral_grading
+        and not presence.vibrance
+        and not presence.saturation
+    ):
+        return display_linear
+    lab = color.rec2020_to_oklab(display_linear)
+    for params in (profile_hsl, hsl):
+        if params != neutral_hsl:
+            lch = color.oklab_to_oklch(lab)
+            lch[..., 0], lch[..., 1], lch[..., 2] = _apply_hsl(lch[..., 0], lch[..., 1], lch[..., 2], params)
+            lab = color.oklch_to_oklab(lch)
+    if grading != neutral_grading:
+        lab = _apply_grading(lab, grading)
+    if presence.vibrance or presence.saturation:
+        lch = color.oklab_to_oklch(lab)
+        lch[..., 1] = _apply_presence(lch[..., 1], lch[..., 2], presence)
+        lab = color.oklch_to_oklab(lch)
+    return color.oklab_to_rec2020(lab).astype(np.float32, copy=False)

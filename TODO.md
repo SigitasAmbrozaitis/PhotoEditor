@@ -404,7 +404,7 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
 - [x] **P3.7** Tone stages: whites/blacks, highlights/shadows, contrast (18 % gray stays fixed; ratio-preserving).
 - [x] **P3.8** Curves: base curve, parametric regions (highlights/lights/darks/shadows), point curves for RGB/R/G/B
   (monotone cubic, so curves never overshoot).
-- [ ] **P3.9** Color stages: HSL (8 overlapping hue bands in OKLCh), color grading (shadows/midtones/highlights/global
+- [x] **P3.9** Color stages: HSL (8 overlapping hue bands in OKLCh), color grading (shadows/midtones/highlights/global
   wheels with blending and balance), vibrance (weighted toward muted colors) and saturation (−100 = gray with the same
   luminance).
 - [ ] **P3.10** Effects + detail: post-crop vignette (amount/midpoint/roundness/feather; the center stays unchanged) and
