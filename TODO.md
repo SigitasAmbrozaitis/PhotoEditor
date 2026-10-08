@@ -409,7 +409,7 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
   luminance).
 - [x] **P3.10** Effects + detail: post-crop vignette (amount/midpoint/roundness/feather; the center stays unchanged) and
   sharpening (luminance unsharp mask: amount/radius/detail/masking).
-- [ ] **P3.11** `render.pipeline`: `render(base, params, size)` runs the stages in PLAN 4.3 order. `ENGINE_VERSION` joins
+- [x] **P3.11** `render.pipeline`: `render(base, params, size)` runs the stages in PLAN 4.3 order. `ENGINE_VERSION` joins
   the render identity. Determinism: the same input gives identical bytes (OpenCV thread count pinned; tested twice in a
   row and across threads). Rejects later-phase parameters (P3.1).
 - [ ] **P3.12** Property tests (hypothesis): any valid `AdjustmentParams` renders a small synthetic image with no NaN, no
