@@ -61,8 +61,17 @@ REC2020_LUMA = XYZ_FROM_REC2020[1].copy()
 
 
 def apply_matrix(pixels: Floats, matrix: Matrix) -> Floats:
-    """Multiply every RGB pixel (last axis) by ``matrix``, keeping the input's float dtype."""
-    return pixels @ matrix.T.astype(pixels.dtype, copy=False)
+    """Multiply every RGB pixel (last axis) by ``matrix``, keeping the input's float dtype.
+
+    Written as explicit per-channel sums instead of ``@``: a multithreaded BLAS may split the work differently
+    from run to run, and renders must be bit-identical (golden rule 3).
+    """
+    m = matrix.astype(pixels.dtype, copy=False)
+    r, g, b = pixels[..., 0], pixels[..., 1], pixels[..., 2]
+    out = np.empty_like(pixels)
+    for row in range(3):
+        out[..., row] = r * m[row, 0] + g * m[row, 1] + b * m[row, 2]
+    return out
 
 
 # ----------------------------------------------------------------- transfer functions

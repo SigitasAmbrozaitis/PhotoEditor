@@ -397,7 +397,7 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
 - [x] **P3.5** Linear base cache: the decoded linear image at preview working size (long edge 2048) in an in-memory
   LRU (8 photos, ~33 MB each); no disk copy (~16 MB per photo even as float16): rendered previews are disk-cached
   instead (P3.15). Full resolution is decoded on demand (exports).
-- [ ] **P3.6** Render stages in `core/render/` (pure functions on arrays; exact-math tests on synthetic images, and each
+- [x] **P3.6** Render stages in `core/render/` (pure functions on arrays; exact-math tests on synthetic images, and each
   stage is the identity at its neutral value):
   - white balance + camera → Rec.2020; exposure (+1 EV doubles linear values); output transform (Rec.2020 → sRGB,
     gamut clip, sRGB encoding, 8/16-bit)
