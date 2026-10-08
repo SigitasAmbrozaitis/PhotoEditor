@@ -180,7 +180,11 @@ export function photoDetail(photo: Photo): PhotoDetail {
     adjustments.tone.exposure = 0.3
     adjustments.geometry.crop = { left: 0.1, top: 0, right: 0.9, bottom: 1 }
   }
-  return { photo, edit: { photo_id: photo.id, style_id: photo.style_id, adjustments, overridden } }
+  return {
+    photo,
+    edit: { photo_id: photo.id, style_id: photo.style_id, adjustments, overridden, revision: `r${photo.id}` },
+    as_shot: { temperature: 5200, tint: 8 },
+  }
 }
 
 export const presets: ExportPreset[] = [

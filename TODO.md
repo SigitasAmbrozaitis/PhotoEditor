@@ -447,7 +447,7 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
   result to `docs/benchmark.md`.
 
 ### API + UI
-- [ ] **P3.19** API: `PUT /api/photos/{id}/edit` (full `AdjustmentParams`; validated, saved as overrides, returns
+- [x] **P3.19** API: `PUT /api/photos/{id}/edit` (full `AdjustmentParams`; validated, saved as overrides, returns
   `PhotoDetail` with an edit revision), `DELETE /api/photos/{id}/edit` (reset); preview URLs carry the revision for cache
   busting; `PhotoDetail` adds the as-shot WB and which parameters are live in this phase. Regenerate the TS types.
 - [ ] **P3.20** Photo view: sliders enabled for live parameters (later-phase ones stay disabled, labeled "Phase 6/9");

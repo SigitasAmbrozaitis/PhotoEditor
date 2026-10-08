@@ -17,7 +17,9 @@ const openapi = JSON.parse(readFileSync(fileURLToPath(new URL('../../../openapi.
 }
 
 function range(component: string, property: string): { min?: number; max?: number; exclusiveMax?: number } {
-  const prop = openapi.components.schemas[component]?.properties[property]
+  // Models used both in requests and responses appear as `Name-Input` and `Name-Output`; the ranges are the same.
+  const schemas = openapi.components.schemas
+  const prop = (schemas[component] ?? schemas[`${component}-Output`])?.properties[property]
   if (!prop) throw new Error(`${component}.${property} missing from openapi.json`)
   const numeric = prop.anyOf?.find((s) => s.minimum !== undefined || s.maximum !== undefined) ?? prop
   return { min: numeric.minimum, max: numeric.maximum, exclusiveMax: numeric.exclusiveMaximum }

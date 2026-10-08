@@ -16,6 +16,7 @@ from helpers import fill_folder, write_jpeg
 from photoedit.api import create_app
 from photoedit.config import Settings, load_settings
 from photoedit.models import (
+    AdjustmentParams,
     ExportPreset,
     Job,
     LibraryFolder,
@@ -290,3 +291,57 @@ def test_job_with_unknown_photo_or_style_404(client: TestClient, photos: Path) -
 def test_create_app_alone_does_not_touch_the_workspace(settings: Settings) -> None:
     create_app(settings).openapi()
     assert not settings.workspace_dir.exists()
+
+
+# ----------------------------------------------------------------- edits (Phase 3)
+
+
+def test_save_and_reset_an_edit(client: TestClient, photos: Path) -> None:
+    _import(client, photos)
+    pid = _photo_ids(client)[0]
+    detail = PhotoDetail.model_validate(client.get(f"/api/photos/{pid}").json())
+    assert detail.edit.overridden == [] and detail.as_shot is not None
+    assert detail.as_shot.temperature == pytest.approx(6504, abs=10)  # a JPEG counts as balanced for D65
+
+    adjustments = detail.edit.adjustments.model_dump(mode="json", by_alias=True)
+    adjustments["tone"]["exposure"] = 0.8
+    adjustments["hsl"]["blue"]["saturation"] = -40
+    r = client.put(f"/api/photos/{pid}/edit", json=adjustments)
+    assert r.status_code == 200, r.text
+    saved = PhotoDetail.model_validate(r.json())
+    assert saved.edit.overridden == ["hsl.blue.saturation", "tone.exposure"]
+    assert saved.edit.revision != detail.edit.revision
+    assert saved.photo.image_version != detail.photo.image_version and saved.photo.has_overrides
+    edited = client.get(f"/api/photos/{pid}/preview", params={"size": 256}).content
+    before = client.get(f"/api/photos/{pid}/preview", params={"size": 256, "before": True}).content
+    assert edited != before
+
+    reset = PhotoDetail.model_validate(client.delete(f"/api/photos/{pid}/edit").json())
+    assert reset.edit.overridden == [] and reset.photo.image_version == detail.photo.image_version
+
+
+def test_edit_errors(client: TestClient, photos: Path) -> None:
+    _import(client, photos)
+    pid = _photo_ids(client)[0]
+    body = AdjustmentParams().model_dump(mode="json", by_alias=True)
+    body["geometry"]["angle"] = 5
+    r = client.put(f"/api/photos/{pid}/edit", json=body)
+    assert r.status_code == 400 and "geometry.angle (Phase 6)" in r.json()["detail"]
+    body["geometry"]["angle"] = 0
+    body["tone"]["exposure"] = 9
+    assert client.put(f"/api/photos/{pid}/edit", json=body).status_code == 422
+    assert (
+        client.put("/api/photos/nope/edit", json=AdjustmentParams().model_dump(mode="json")).status_code
+        == 404
+    )
+    assert client.delete("/api/photos/nope/edit").status_code == 404
+
+
+def test_engine_info(client: TestClient) -> None:
+    from photoedit.models import EngineInfo
+
+    info = EngineInfo.model_validate(client.get("/api/engine").json())
+    assert (
+        info.later_phase_parameters["geometry"] == 6 and info.later_phase_parameters["presence.clarity"] == 9
+    )
+    assert "-eng" in info.render_identity

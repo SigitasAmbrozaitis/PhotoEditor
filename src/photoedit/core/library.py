@@ -11,6 +11,7 @@ from pathlib import Path
 
 from PIL import Image
 
+from photoedit.core import color
 from photoedit.core.cache import ImageCache
 from photoedit.core.catalog import Catalog, CatalogPhoto, FolderRecord, photo_id
 from photoedit.core.decode import is_raw, oriented_image, read_raw_info
@@ -22,6 +23,7 @@ from photoedit.core.renderer import Renderer
 from photoedit.core.scan import ScannedPhoto, SourceKind, scan_folder
 from photoedit.models import (
     AdjustmentParams,
+    AsShot,
     Job,
     JobKind,
     LibraryFolder,
@@ -251,6 +253,7 @@ class Library:
     def photo_detail(self, photo_id: str) -> PhotoDetail:
         photo = self.photo(photo_id)
         edit = self.edits.effective(photo)
+        as_shot = self.as_shot(photo)
         return PhotoDetail(
             photo=photo.to_photo(self.image_version(photo)),
             edit=PhotoEdit(
@@ -258,8 +261,24 @@ class Library:
                 style_id=edit.style_id,
                 adjustments=edit.adjustments,
                 overridden=edit.overridden,
+                revision=edit.revision,
             ),
+            as_shot=AsShot(temperature=as_shot[0], tint=as_shot[1]) if as_shot else None,
         )
+
+    def as_shot(self, photo: CatalogPhoto) -> tuple[float, float] | None:
+        """The recorded white balance; read from the RAW (and remembered) for photos imported before
+        Phase 3. JPEG/TIFF originals count as balanced for D65."""
+        if photo.as_shot_temperature is not None and photo.as_shot_tint is not None:
+            return photo.as_shot_temperature, photo.as_shot_tint
+        if not is_raw(photo.path):
+            return color.xy_to_temperature_tint(color.D65)
+        if not photo.path.is_file():
+            return None
+        found = read_raw_info(photo.path).as_shot
+        if found is not None:
+            self.catalog.set_as_shot(photo.id, *found)
+        return found
 
     # ---- edits
 

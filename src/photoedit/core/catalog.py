@@ -225,6 +225,13 @@ class Catalog:
                 values,
             )
 
+    def set_as_shot(self, photo_id: str, temperature: float, tint: float) -> None:
+        with self._transaction() as db:
+            db.execute(
+                "UPDATE photos SET as_shot_temperature = ?, as_shot_tint = ? WHERE id = ?",
+                (temperature, tint, photo_id),
+            )
+
     def set_edit(self, photo_id: str, revision: str | None) -> None:
         """Record a photo's current edit revision (None = unedited)."""
         with self._transaction() as db:

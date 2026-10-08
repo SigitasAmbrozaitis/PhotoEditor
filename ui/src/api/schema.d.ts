@@ -140,6 +140,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photos/{photo_id}/edit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Edit
+         * @description Save a photo's adjustments (the full set; only what differs from the defaults is stored).
+         */
+        put: operations["save_edit_api_photos__photo_id__edit_put"];
+        post?: never;
+        /**
+         * Reset Edit
+         * @description Back to the unedited photo.
+         */
+        delete: operations["reset_edit_api_photos__photo_id__edit_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/engine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Engine */
+        get: operations["engine_api_engine_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photos/{photo_id}/thumbnail": {
         parameters: {
             query?: never;
@@ -319,17 +360,33 @@ export interface components {
          * AdjustmentParams
          * @description Complete set of global adjustments. All defaults = identity (no change).
          */
-        AdjustmentParams: {
-            white_balance: components["schemas"]["WhiteBalance"];
-            tone: components["schemas"]["Tone"];
-            presence: components["schemas"]["Presence"];
-            tone_curve: components["schemas"]["ToneCurve"];
-            hsl: components["schemas"]["Hsl"];
-            color_grading: components["schemas"]["ColorGrading"];
-            detail: components["schemas"]["Detail"];
-            effects: components["schemas"]["Effects"];
-            geometry: components["schemas"]["Geometry"];
-            lens: components["schemas"]["Lens"];
+        "AdjustmentParams-Input": {
+            white_balance?: components["schemas"]["WhiteBalance-Input"];
+            tone?: components["schemas"]["Tone-Input"];
+            presence?: components["schemas"]["Presence-Input"];
+            tone_curve?: components["schemas"]["ToneCurve-Input"];
+            hsl?: components["schemas"]["Hsl-Input"];
+            color_grading?: components["schemas"]["ColorGrading-Input"];
+            detail?: components["schemas"]["Detail-Input"];
+            effects?: components["schemas"]["Effects-Input"];
+            geometry?: components["schemas"]["Geometry-Input"];
+            lens?: components["schemas"]["Lens-Input"];
+        };
+        /**
+         * AdjustmentParams
+         * @description Complete set of global adjustments. All defaults = identity (no change).
+         */
+        "AdjustmentParams-Output": {
+            white_balance: components["schemas"]["WhiteBalance-Output"];
+            tone: components["schemas"]["Tone-Output"];
+            presence: components["schemas"]["Presence-Output"];
+            tone_curve: components["schemas"]["ToneCurve-Output"];
+            hsl: components["schemas"]["Hsl-Output"];
+            color_grading: components["schemas"]["ColorGrading-Output"];
+            detail: components["schemas"]["Detail-Output"];
+            effects: components["schemas"]["Effects-Output"];
+            geometry: components["schemas"]["Geometry-Output"];
+            lens: components["schemas"]["Lens-Output"];
         };
         /** ApplyAndExportRequest */
         ApplyAndExportRequest: {
@@ -361,6 +418,22 @@ export interface components {
             kind: "apply_style";
             /** Style Id */
             style_id: string;
+        };
+        /**
+         * AsShot
+         * @description The white balance the camera recorded (what temperature/tint = None means).
+         */
+        AsShot: {
+            /**
+             * Temperature
+             * @description Kelvin.
+             */
+            temperature: number;
+            /**
+             * Tint
+             * @description Green (-) / magenta (+), Lightroom units.
+             */
+            tint: number;
         };
         /** AspectSettings */
         "AspectSettings-Input": {
@@ -404,11 +477,30 @@ export interface components {
          */
         CollisionPolicy: "suffix" | "overwrite" | "skip";
         /** ColorGrading */
-        ColorGrading: {
-            shadows: components["schemas"]["GradeWheel"];
-            midtones: components["schemas"]["GradeWheel"];
-            highlights: components["schemas"]["GradeWheel"];
-            global: components["schemas"]["GradeWheel"];
+        "ColorGrading-Input": {
+            shadows?: components["schemas"]["GradeWheel-Input"];
+            midtones?: components["schemas"]["GradeWheel-Input"];
+            highlights?: components["schemas"]["GradeWheel-Input"];
+            global?: components["schemas"]["GradeWheel-Input"];
+            /**
+             * Blending
+             * @description Overlap between the tonal ranges.
+             * @default 50
+             */
+            blending: number;
+            /**
+             * Balance
+             * @description Shift the shadows/highlights split point.
+             * @default 0
+             */
+            balance: number;
+        };
+        /** ColorGrading */
+        "ColorGrading-Output": {
+            shadows: components["schemas"]["GradeWheel-Output"];
+            midtones: components["schemas"]["GradeWheel-Output"];
+            highlights: components["schemas"]["GradeWheel-Output"];
+            global: components["schemas"]["GradeWheel-Output"];
             /**
              * Blending
              * @description Overlap between the tonal ranges.
@@ -436,7 +528,33 @@ export interface components {
          * CropRect
          * @description Crop rectangle in normalized image coordinates (0..1), applied after rotation.
          */
-        CropRect: {
+        "CropRect-Input": {
+            /**
+             * Left
+             * @default 0
+             */
+            left: number;
+            /**
+             * Top
+             * @default 0
+             */
+            top: number;
+            /**
+             * Right
+             * @default 1
+             */
+            right: number;
+            /**
+             * Bottom
+             * @default 1
+             */
+            bottom: number;
+        };
+        /**
+         * CropRect
+         * @description Crop rectangle in normalized image coordinates (0..1), applied after rotation.
+         */
+        "CropRect-Output": {
             /**
              * Left
              * @default 0
@@ -472,9 +590,14 @@ export interface components {
             y: number;
         };
         /** Detail */
-        Detail: {
-            sharpening: components["schemas"]["Sharpening"];
-            noise_reduction: components["schemas"]["NoiseReduction"];
+        "Detail-Input": {
+            sharpening?: components["schemas"]["Sharpening-Input"];
+            noise_reduction?: components["schemas"]["NoiseReduction-Input"];
+        };
+        /** Detail */
+        "Detail-Output": {
+            sharpening: components["schemas"]["Sharpening-Output"];
+            noise_reduction: components["schemas"]["NoiseReduction-Output"];
         };
         /** DirEntry */
         DirEntry: {
@@ -509,9 +632,29 @@ export interface components {
             entries: components["schemas"]["DirEntry"][];
         };
         /** Effects */
-        Effects: {
-            vignette: components["schemas"]["Vignette"];
-            grain: components["schemas"]["Grain"];
+        "Effects-Input": {
+            vignette?: components["schemas"]["Vignette-Input"];
+            grain?: components["schemas"]["Grain-Input"];
+        };
+        /** Effects */
+        "Effects-Output": {
+            vignette: components["schemas"]["Vignette-Output"];
+            grain: components["schemas"]["Grain-Output"];
+        };
+        /**
+         * EngineInfo
+         * @description What the render engine can do in this version.
+         */
+        EngineInfo: {
+            /** Render Identity */
+            render_identity: string;
+            /**
+             * Later Phase Parameters
+             * @description Parameter (or group) prefixes that can't be set yet, with the phase that adds them.
+             */
+            later_phase_parameters: {
+                [key: string]: number;
+            };
         };
         /** ExportPreset */
         ExportPreset: {
@@ -648,8 +791,33 @@ export interface components {
             tiff_compression: components["schemas"]["TiffCompression"];
         };
         /** Geometry */
-        Geometry: {
-            crop: components["schemas"]["CropRect"];
+        "Geometry-Input": {
+            crop?: components["schemas"]["CropRect-Input"];
+            /**
+             * Aspect
+             * @description Locked aspect ratio such as '4:5'. None = free.
+             */
+            aspect?: string | null;
+            /**
+             * Angle
+             * @description Straighten / rotate angle in degrees.
+             * @default 0
+             */
+            angle: number;
+            /**
+             * Flip Horizontal
+             * @default false
+             */
+            flip_horizontal: boolean;
+            /**
+             * Flip Vertical
+             * @default false
+             */
+            flip_vertical: boolean;
+        };
+        /** Geometry */
+        "Geometry-Output": {
+            crop: components["schemas"]["CropRect-Output"];
             /**
              * Aspect
              * @description Locked aspect ratio such as '4:5'. None = free.
@@ -673,7 +841,28 @@ export interface components {
             flip_vertical: boolean;
         };
         /** GradeWheel */
-        GradeWheel: {
+        "GradeWheel-Input": {
+            /**
+             * Hue
+             * @description Tint hue in degrees.
+             * @default 0
+             */
+            hue: number;
+            /**
+             * Saturation
+             * @description Tint strength.
+             * @default 0
+             */
+            saturation: number;
+            /**
+             * Luminance
+             * @description Brightness of this tonal range.
+             * @default 0
+             */
+            luminance: number;
+        };
+        /** GradeWheel */
+        "GradeWheel-Output": {
             /**
              * Hue
              * @description Tint hue in degrees.
@@ -694,7 +883,28 @@ export interface components {
             luminance: number;
         };
         /** Grain */
-        Grain: {
+        "Grain-Input": {
+            /**
+             * Amount
+             * @description Film grain strength (planned for Phase 9).
+             * @default 0
+             */
+            amount: number;
+            /**
+             * Size
+             * @description Grain size.
+             * @default 25
+             */
+            size: number;
+            /**
+             * Roughness
+             * @description Grain irregularity.
+             * @default 50
+             */
+            roughness: number;
+        };
+        /** Grain */
+        "Grain-Output": {
             /**
              * Amount
              * @description Film grain strength (planned for Phase 9).
@@ -727,18 +937,50 @@ export interface components {
             version: string;
         };
         /** Hsl */
-        Hsl: {
-            red: components["schemas"]["HslBand"];
-            orange: components["schemas"]["HslBand"];
-            yellow: components["schemas"]["HslBand"];
-            green: components["schemas"]["HslBand"];
-            aqua: components["schemas"]["HslBand"];
-            blue: components["schemas"]["HslBand"];
-            purple: components["schemas"]["HslBand"];
-            magenta: components["schemas"]["HslBand"];
+        "Hsl-Input": {
+            red?: components["schemas"]["HslBand-Input"];
+            orange?: components["schemas"]["HslBand-Input"];
+            yellow?: components["schemas"]["HslBand-Input"];
+            green?: components["schemas"]["HslBand-Input"];
+            aqua?: components["schemas"]["HslBand-Input"];
+            blue?: components["schemas"]["HslBand-Input"];
+            purple?: components["schemas"]["HslBand-Input"];
+            magenta?: components["schemas"]["HslBand-Input"];
+        };
+        /** Hsl */
+        "Hsl-Output": {
+            red: components["schemas"]["HslBand-Output"];
+            orange: components["schemas"]["HslBand-Output"];
+            yellow: components["schemas"]["HslBand-Output"];
+            green: components["schemas"]["HslBand-Output"];
+            aqua: components["schemas"]["HslBand-Output"];
+            blue: components["schemas"]["HslBand-Output"];
+            purple: components["schemas"]["HslBand-Output"];
+            magenta: components["schemas"]["HslBand-Output"];
         };
         /** HslBand */
-        HslBand: {
+        "HslBand-Input": {
+            /**
+             * Hue
+             * @description Shift hue of this color band.
+             * @default 0
+             */
+            hue: number;
+            /**
+             * Saturation
+             * @description Saturation of this color band.
+             * @default 0
+             */
+            saturation: number;
+            /**
+             * Luminance
+             * @description Brightness of this color band.
+             * @default 0
+             */
+            luminance: number;
+        };
+        /** HslBand */
+        "HslBand-Output": {
             /**
              * Hue
              * @description Shift hue of this color band.
@@ -845,7 +1087,21 @@ export interface components {
          */
         JobStatus: "queued" | "running" | "done" | "failed" | "cancelled";
         /** Lens */
-        Lens: {
+        "Lens-Input": {
+            /**
+             * Profile Corrections
+             * @description Apply lens distortion/vignetting profile.
+             * @default false
+             */
+            profile_corrections: boolean;
+            /**
+             * Remove Chromatic Aberration
+             * @default false
+             */
+            remove_chromatic_aberration: boolean;
+        };
+        /** Lens */
+        "Lens-Output": {
             /**
              * Profile Corrections
              * @description Apply lens distortion/vignetting profile.
@@ -949,7 +1205,22 @@ export interface components {
             on_collision: components["schemas"]["CollisionPolicy"];
         };
         /** NoiseReduction */
-        NoiseReduction: {
+        "NoiseReduction-Input": {
+            /**
+             * Luminance
+             * @description Luminance noise reduction (planned for Phase 9).
+             * @default 0
+             */
+            luminance: number;
+            /**
+             * Color
+             * @description Color noise reduction (planned for Phase 9).
+             * @default 25
+             */
+            color: number;
+        };
+        /** NoiseReduction */
+        "NoiseReduction-Output": {
             /**
              * Luminance
              * @description Luminance noise reduction (planned for Phase 9).
@@ -1093,6 +1364,8 @@ export interface components {
         PhotoDetail: {
             photo: components["schemas"]["Photo"];
             edit: components["schemas"]["PhotoEdit"];
+            /** @description None if the camera recorded no white balance. */
+            as_shot: components["schemas"]["AsShot"] | null;
         };
         /**
          * PhotoEdit
@@ -1104,12 +1377,18 @@ export interface components {
             /** Style Id */
             style_id: string | null;
             /** @description Effective adjustments (style + overrides). */
-            adjustments: components["schemas"]["AdjustmentParams"];
+            adjustments: components["schemas"]["AdjustmentParams-Output"];
             /**
              * Overridden
              * @description Dotted parameter names that are overridden per photo, e.g. 'tone.exposure'.
              */
             overridden: string[];
+            /**
+             * Revision
+             * @description Changes whenever the edit changes.
+             * @default
+             */
+            revision: string;
         };
         /**
          * PhotoSort
@@ -1117,7 +1396,40 @@ export interface components {
          */
         PhotoSort: "date" | "name" | "rating";
         /** Presence */
-        Presence: {
+        "Presence-Input": {
+            /**
+             * Vibrance
+             * @description Saturation boost weighted toward muted colors.
+             * @default 0
+             */
+            vibrance: number;
+            /**
+             * Saturation
+             * @description Uniform saturation.
+             * @default 0
+             */
+            saturation: number;
+            /**
+             * Clarity
+             * @description Midtone local contrast (planned for Phase 9).
+             * @default 0
+             */
+            clarity: number;
+            /**
+             * Texture
+             * @description Fine-detail local contrast (planned for Phase 9).
+             * @default 0
+             */
+            texture: number;
+            /**
+             * Dehaze
+             * @description Remove (+) or add (-) atmospheric haze (planned for Phase 9).
+             * @default 0
+             */
+            dehaze: number;
+        };
+        /** Presence */
+        "Presence-Output": {
             /**
              * Vibrance
              * @description Saturation boost weighted toward muted colors.
@@ -1165,7 +1477,34 @@ export interface components {
          */
         SharpenFor: "none" | "screen" | "matte_paper" | "glossy_paper";
         /** Sharpening */
-        Sharpening: {
+        "Sharpening-Input": {
+            /**
+             * Amount
+             * @description Sharpening strength.
+             * @default 40
+             */
+            amount: number;
+            /**
+             * Radius
+             * @description Edge width in pixels.
+             * @default 1
+             */
+            radius: number;
+            /**
+             * Detail
+             * @description How much fine detail is sharpened.
+             * @default 25
+             */
+            detail: number;
+            /**
+             * Masking
+             * @description Limit sharpening to edges (higher = fewer areas).
+             * @default 0
+             */
+            masking: number;
+        };
+        /** Sharpening */
+        "Sharpening-Output": {
             /**
              * Amount
              * @description Sharpening strength.
@@ -1353,7 +1692,7 @@ export interface components {
              * @description Scenes/subjects the style handles badly.
              */
             avoid_on: string[];
-            adjustments: components["schemas"]["AdjustmentParams"];
+            adjustments: components["schemas"]["AdjustmentParams-Output"];
             /** Samples */
             samples: components["schemas"]["StyleSample"][];
             /**
@@ -1381,7 +1720,46 @@ export interface components {
          */
         TiffCompression: "none" | "lzw" | "zip";
         /** Tone */
-        Tone: {
+        "Tone-Input": {
+            /**
+             * Exposure
+             * @description Exposure in EV stops.
+             * @default 0
+             */
+            exposure: number;
+            /**
+             * Contrast
+             * @description Global contrast.
+             * @default 0
+             */
+            contrast: number;
+            /**
+             * Highlights
+             * @description Recover (-) or boost (+) bright areas.
+             * @default 0
+             */
+            highlights: number;
+            /**
+             * Shadows
+             * @description Deepen (-) or lift (+) dark areas.
+             * @default 0
+             */
+            shadows: number;
+            /**
+             * Whites
+             * @description White point.
+             * @default 0
+             */
+            whites: number;
+            /**
+             * Blacks
+             * @description Black point.
+             * @default 0
+             */
+            blacks: number;
+        };
+        /** Tone */
+        "Tone-Output": {
             /**
              * Exposure
              * @description Exposure in EV stops.
@@ -1420,7 +1798,42 @@ export interface components {
             blacks: number;
         };
         /** ToneCurve */
-        ToneCurve: {
+        "ToneCurve-Input": {
+            /**
+             * Highlights
+             * @description Parametric curve: highlights region.
+             * @default 0
+             */
+            highlights: number;
+            /**
+             * Lights
+             * @description Parametric curve: lights region.
+             * @default 0
+             */
+            lights: number;
+            /**
+             * Darks
+             * @description Parametric curve: darks region.
+             * @default 0
+             */
+            darks: number;
+            /**
+             * Shadows
+             * @description Parametric curve: shadows region.
+             * @default 0
+             */
+            shadows: number;
+            /** Rgb */
+            rgb?: components["schemas"]["CurvePoint"][];
+            /** Red */
+            red?: components["schemas"]["CurvePoint"][];
+            /** Green */
+            green?: components["schemas"]["CurvePoint"][];
+            /** Blue */
+            blue?: components["schemas"]["CurvePoint"][];
+        };
+        /** ToneCurve */
+        "ToneCurve-Output": {
             /**
              * Highlights
              * @description Parametric curve: highlights region.
@@ -1468,7 +1881,34 @@ export interface components {
             ctx?: Record<string, never>;
         };
         /** Vignette */
-        Vignette: {
+        "Vignette-Input": {
+            /**
+             * Amount
+             * @description Darken (-) or lighten (+) the corners.
+             * @default 0
+             */
+            amount: number;
+            /**
+             * Midpoint
+             * @description How far the vignette reaches toward the center.
+             * @default 50
+             */
+            midpoint: number;
+            /**
+             * Roundness
+             * @description Shape: rectangular (-) to circular (+).
+             * @default 0
+             */
+            roundness: number;
+            /**
+             * Feather
+             * @description Softness of the vignette edge.
+             * @default 50
+             */
+            feather: number;
+        };
+        /** Vignette */
+        "Vignette-Output": {
             /**
              * Amount
              * @description Darken (-) or lighten (+) the corners.
@@ -1495,7 +1935,20 @@ export interface components {
             feather: number;
         };
         /** WhiteBalance */
-        WhiteBalance: {
+        "WhiteBalance-Input": {
+            /**
+             * Temperature
+             * @description Color temperature in Kelvin. None = as shot.
+             */
+            temperature?: number | null;
+            /**
+             * Tint
+             * @description Green (-) / magenta (+) tint. None = as shot.
+             */
+            tint?: number | null;
+        };
+        /** WhiteBalance */
+        "WhiteBalance-Output": {
             /**
              * Temperature
              * @description Color temperature in Kelvin. None = as shot.
@@ -1738,6 +2191,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_edit_api_photos__photo_id__edit_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdjustmentParams-Input"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhotoDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_edit_api_photos__photo_id__edit_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhotoDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    engine_api_engine_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EngineInfo"];
                 };
             };
         };

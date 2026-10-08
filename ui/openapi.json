@@ -351,6 +351,121 @@
         }
       }
     },
+    "/api/photos/{photo_id}/edit": {
+      "put": {
+        "tags": [
+          "edit"
+        ],
+        "summary": "Save Edit",
+        "description": "Save a photo's adjustments (the full set; only what differs from the defaults is stored).",
+        "operationId": "save_edit_api_photos__photo_id__edit_put",
+        "parameters": [
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustmentParams-Input"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "edit"
+        ],
+        "summary": "Reset Edit",
+        "description": "Back to the unedited photo.",
+        "operationId": "reset_edit_api_photos__photo_id__edit_delete",
+        "parameters": [
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/engine": {
+      "get": {
+        "tags": [
+          "edit"
+        ],
+        "summary": "Engine",
+        "operationId": "engine_api_engine_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EngineInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/photos/{photo_id}/thumbnail": {
       "get": {
         "tags": [
@@ -809,37 +924,75 @@
   },
   "components": {
     "schemas": {
-      "AdjustmentParams": {
+      "AdjustmentParams-Input": {
         "properties": {
           "white_balance": {
-            "$ref": "#/components/schemas/WhiteBalance"
+            "$ref": "#/components/schemas/WhiteBalance-Input"
           },
           "tone": {
-            "$ref": "#/components/schemas/Tone"
+            "$ref": "#/components/schemas/Tone-Input"
           },
           "presence": {
-            "$ref": "#/components/schemas/Presence"
+            "$ref": "#/components/schemas/Presence-Input"
           },
           "tone_curve": {
-            "$ref": "#/components/schemas/ToneCurve"
+            "$ref": "#/components/schemas/ToneCurve-Input"
           },
           "hsl": {
-            "$ref": "#/components/schemas/Hsl"
+            "$ref": "#/components/schemas/Hsl-Input"
           },
           "color_grading": {
-            "$ref": "#/components/schemas/ColorGrading"
+            "$ref": "#/components/schemas/ColorGrading-Input"
           },
           "detail": {
-            "$ref": "#/components/schemas/Detail"
+            "$ref": "#/components/schemas/Detail-Input"
           },
           "effects": {
-            "$ref": "#/components/schemas/Effects"
+            "$ref": "#/components/schemas/Effects-Input"
           },
           "geometry": {
-            "$ref": "#/components/schemas/Geometry"
+            "$ref": "#/components/schemas/Geometry-Input"
           },
           "lens": {
-            "$ref": "#/components/schemas/Lens"
+            "$ref": "#/components/schemas/Lens-Input"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AdjustmentParams",
+        "description": "Complete set of global adjustments. All defaults = identity (no change)."
+      },
+      "AdjustmentParams-Output": {
+        "properties": {
+          "white_balance": {
+            "$ref": "#/components/schemas/WhiteBalance-Output"
+          },
+          "tone": {
+            "$ref": "#/components/schemas/Tone-Output"
+          },
+          "presence": {
+            "$ref": "#/components/schemas/Presence-Output"
+          },
+          "tone_curve": {
+            "$ref": "#/components/schemas/ToneCurve-Output"
+          },
+          "hsl": {
+            "$ref": "#/components/schemas/Hsl-Output"
+          },
+          "color_grading": {
+            "$ref": "#/components/schemas/ColorGrading-Output"
+          },
+          "detail": {
+            "$ref": "#/components/schemas/Detail-Output"
+          },
+          "effects": {
+            "$ref": "#/components/schemas/Effects-Output"
+          },
+          "geometry": {
+            "$ref": "#/components/schemas/Geometry-Output"
+          },
+          "lens": {
+            "$ref": "#/components/schemas/Lens-Output"
           }
         },
         "additionalProperties": false,
@@ -940,6 +1093,28 @@
         ],
         "title": "ApplyStyleRequest"
       },
+      "AsShot": {
+        "properties": {
+          "temperature": {
+            "type": "number",
+            "title": "Temperature",
+            "description": "Kelvin."
+          },
+          "tint": {
+            "type": "number",
+            "title": "Tint",
+            "description": "Green (-) / magenta (+), Lightroom units."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "temperature",
+          "tint"
+        ],
+        "title": "AsShot",
+        "description": "The white balance the camera recorded (what temperature/tint = None means)."
+      },
       "AspectSettings-Input": {
         "properties": {
           "ratio": {
@@ -1014,19 +1189,54 @@
         ],
         "title": "CollisionPolicy"
       },
-      "ColorGrading": {
+      "ColorGrading-Input": {
         "properties": {
           "shadows": {
-            "$ref": "#/components/schemas/GradeWheel"
+            "$ref": "#/components/schemas/GradeWheel-Input"
           },
           "midtones": {
-            "$ref": "#/components/schemas/GradeWheel"
+            "$ref": "#/components/schemas/GradeWheel-Input"
           },
           "highlights": {
-            "$ref": "#/components/schemas/GradeWheel"
+            "$ref": "#/components/schemas/GradeWheel-Input"
           },
           "global": {
-            "$ref": "#/components/schemas/GradeWheel"
+            "$ref": "#/components/schemas/GradeWheel-Input"
+          },
+          "blending": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Blending",
+            "description": "Overlap between the tonal ranges.",
+            "default": 50
+          },
+          "balance": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Balance",
+            "description": "Shift the shadows/highlights split point.",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ColorGrading"
+      },
+      "ColorGrading-Output": {
+        "properties": {
+          "shadows": {
+            "$ref": "#/components/schemas/GradeWheel-Output"
+          },
+          "midtones": {
+            "$ref": "#/components/schemas/GradeWheel-Output"
+          },
+          "highlights": {
+            "$ref": "#/components/schemas/GradeWheel-Output"
+          },
+          "global": {
+            "$ref": "#/components/schemas/GradeWheel-Output"
           },
           "blending": {
             "type": "number",
@@ -1074,7 +1284,43 @@
         ],
         "title": "CropAnchor"
       },
-      "CropRect": {
+      "CropRect-Input": {
+        "properties": {
+          "left": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Left",
+            "default": 0
+          },
+          "top": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Top",
+            "default": 0
+          },
+          "right": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Right",
+            "default": 1
+          },
+          "bottom": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Bottom",
+            "default": 1
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CropRect",
+        "description": "Crop rectangle in normalized image coordinates (0..1), applied after rotation."
+      },
+      "CropRect-Output": {
         "properties": {
           "left": {
             "type": "number",
@@ -1141,13 +1387,26 @@
         ],
         "title": "CurvePoint"
       },
-      "Detail": {
+      "Detail-Input": {
         "properties": {
           "sharpening": {
-            "$ref": "#/components/schemas/Sharpening"
+            "$ref": "#/components/schemas/Sharpening-Input"
           },
           "noise_reduction": {
-            "$ref": "#/components/schemas/NoiseReduction"
+            "$ref": "#/components/schemas/NoiseReduction-Input"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Detail"
+      },
+      "Detail-Output": {
+        "properties": {
+          "sharpening": {
+            "$ref": "#/components/schemas/Sharpening-Output"
+          },
+          "noise_reduction": {
+            "$ref": "#/components/schemas/NoiseReduction-Output"
           }
         },
         "additionalProperties": false,
@@ -1241,13 +1500,26 @@
         ],
         "title": "DirListing"
       },
-      "Effects": {
+      "Effects-Input": {
         "properties": {
           "vignette": {
-            "$ref": "#/components/schemas/Vignette"
+            "$ref": "#/components/schemas/Vignette-Input"
           },
           "grain": {
-            "$ref": "#/components/schemas/Grain"
+            "$ref": "#/components/schemas/Grain-Input"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Effects"
+      },
+      "Effects-Output": {
+        "properties": {
+          "vignette": {
+            "$ref": "#/components/schemas/Vignette-Output"
+          },
+          "grain": {
+            "$ref": "#/components/schemas/Grain-Output"
           }
         },
         "additionalProperties": false,
@@ -1257,6 +1529,30 @@
           "grain"
         ],
         "title": "Effects"
+      },
+      "EngineInfo": {
+        "properties": {
+          "render_identity": {
+            "type": "string",
+            "title": "Render Identity"
+          },
+          "later_phase_parameters": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Later Phase Parameters",
+            "description": "Parameter (or group) prefixes that can't be set yet, with the phase that adds them."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "render_identity",
+          "later_phase_parameters"
+        ],
+        "title": "EngineInfo",
+        "description": "What the render engine can do in this version."
       },
       "ExportPreset": {
         "properties": {
@@ -1551,10 +1847,51 @@
         ],
         "title": "FileSettings"
       },
-      "Geometry": {
+      "Geometry-Input": {
         "properties": {
           "crop": {
-            "$ref": "#/components/schemas/CropRect"
+            "$ref": "#/components/schemas/CropRect-Input"
+          },
+          "aspect": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\d+(\\.\\d+)?:\\d+(\\.\\d+)?$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aspect",
+            "description": "Locked aspect ratio such as '4:5'. None = free."
+          },
+          "angle": {
+            "type": "number",
+            "maximum": 45.0,
+            "minimum": -45.0,
+            "title": "Angle",
+            "description": "Straighten / rotate angle in degrees.",
+            "default": 0
+          },
+          "flip_horizontal": {
+            "type": "boolean",
+            "title": "Flip Horizontal",
+            "default": false
+          },
+          "flip_vertical": {
+            "type": "boolean",
+            "title": "Flip Vertical",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Geometry"
+      },
+      "Geometry-Output": {
+        "properties": {
+          "crop": {
+            "$ref": "#/components/schemas/CropRect-Output"
           },
           "aspect": {
             "anyOf": [
@@ -1599,7 +1936,38 @@
         ],
         "title": "Geometry"
       },
-      "GradeWheel": {
+      "GradeWheel-Input": {
+        "properties": {
+          "hue": {
+            "type": "number",
+            "exclusiveMaximum": 360.0,
+            "minimum": 0.0,
+            "title": "Hue",
+            "description": "Tint hue in degrees.",
+            "default": 0
+          },
+          "saturation": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Saturation",
+            "description": "Tint strength.",
+            "default": 0
+          },
+          "luminance": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Luminance",
+            "description": "Brightness of this tonal range.",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "GradeWheel"
+      },
+      "GradeWheel-Output": {
         "properties": {
           "hue": {
             "type": "number",
@@ -1635,7 +2003,38 @@
         ],
         "title": "GradeWheel"
       },
-      "Grain": {
+      "Grain-Input": {
+        "properties": {
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Amount",
+            "description": "Film grain strength (planned for Phase 9).",
+            "default": 0
+          },
+          "size": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Size",
+            "description": "Grain size.",
+            "default": 25
+          },
+          "roughness": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Roughness",
+            "description": "Grain irregularity.",
+            "default": 50
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Grain"
+      },
+      "Grain-Output": {
         "properties": {
           "amount": {
             "type": "number",
@@ -1702,31 +2101,62 @@
         ],
         "title": "Health"
       },
-      "Hsl": {
+      "Hsl-Input": {
         "properties": {
           "red": {
-            "$ref": "#/components/schemas/HslBand"
+            "$ref": "#/components/schemas/HslBand-Input"
           },
           "orange": {
-            "$ref": "#/components/schemas/HslBand"
+            "$ref": "#/components/schemas/HslBand-Input"
           },
           "yellow": {
-            "$ref": "#/components/schemas/HslBand"
+            "$ref": "#/components/schemas/HslBand-Input"
           },
           "green": {
-            "$ref": "#/components/schemas/HslBand"
+            "$ref": "#/components/schemas/HslBand-Input"
           },
           "aqua": {
-            "$ref": "#/components/schemas/HslBand"
+            "$ref": "#/components/schemas/HslBand-Input"
           },
           "blue": {
-            "$ref": "#/components/schemas/HslBand"
+            "$ref": "#/components/schemas/HslBand-Input"
           },
           "purple": {
-            "$ref": "#/components/schemas/HslBand"
+            "$ref": "#/components/schemas/HslBand-Input"
           },
           "magenta": {
-            "$ref": "#/components/schemas/HslBand"
+            "$ref": "#/components/schemas/HslBand-Input"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Hsl"
+      },
+      "Hsl-Output": {
+        "properties": {
+          "red": {
+            "$ref": "#/components/schemas/HslBand-Output"
+          },
+          "orange": {
+            "$ref": "#/components/schemas/HslBand-Output"
+          },
+          "yellow": {
+            "$ref": "#/components/schemas/HslBand-Output"
+          },
+          "green": {
+            "$ref": "#/components/schemas/HslBand-Output"
+          },
+          "aqua": {
+            "$ref": "#/components/schemas/HslBand-Output"
+          },
+          "blue": {
+            "$ref": "#/components/schemas/HslBand-Output"
+          },
+          "purple": {
+            "$ref": "#/components/schemas/HslBand-Output"
+          },
+          "magenta": {
+            "$ref": "#/components/schemas/HslBand-Output"
           }
         },
         "additionalProperties": false,
@@ -1743,7 +2173,38 @@
         ],
         "title": "Hsl"
       },
-      "HslBand": {
+      "HslBand-Input": {
+        "properties": {
+          "hue": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Hue",
+            "description": "Shift hue of this color band.",
+            "default": 0
+          },
+          "saturation": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Saturation",
+            "description": "Saturation of this color band.",
+            "default": 0
+          },
+          "luminance": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Luminance",
+            "description": "Brightness of this color band.",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "HslBand"
+      },
+      "HslBand-Output": {
         "properties": {
           "hue": {
             "type": "number",
@@ -2020,7 +2481,25 @@
         ],
         "title": "JobStatus"
       },
-      "Lens": {
+      "Lens-Input": {
+        "properties": {
+          "profile_corrections": {
+            "type": "boolean",
+            "title": "Profile Corrections",
+            "description": "Apply lens distortion/vignetting profile.",
+            "default": false
+          },
+          "remove_chromatic_aberration": {
+            "type": "boolean",
+            "title": "Remove Chromatic Aberration",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Lens"
+      },
+      "Lens-Output": {
         "properties": {
           "profile_corrections": {
             "type": "boolean",
@@ -2257,7 +2736,30 @@
         ],
         "title": "NamingSettings"
       },
-      "NoiseReduction": {
+      "NoiseReduction-Input": {
+        "properties": {
+          "luminance": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Luminance",
+            "description": "Luminance noise reduction (planned for Phase 9).",
+            "default": 0
+          },
+          "color": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Color",
+            "description": "Color noise reduction (planned for Phase 9).",
+            "default": 25
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "NoiseReduction"
+      },
+      "NoiseReduction-Output": {
         "properties": {
           "luminance": {
             "type": "number",
@@ -2578,13 +3080,25 @@
           },
           "edit": {
             "$ref": "#/components/schemas/PhotoEdit"
+          },
+          "as_shot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AsShot"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None if the camera recorded no white balance."
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "photo",
-          "edit"
+          "edit",
+          "as_shot"
         ],
         "title": "PhotoDetail"
       },
@@ -2606,7 +3120,7 @@
             "title": "Style Id"
           },
           "adjustments": {
-            "$ref": "#/components/schemas/AdjustmentParams",
+            "$ref": "#/components/schemas/AdjustmentParams-Output",
             "description": "Effective adjustments (style + overrides)."
           },
           "overridden": {
@@ -2616,6 +3130,12 @@
             "type": "array",
             "title": "Overridden",
             "description": "Dotted parameter names that are overridden per photo, e.g. 'tone.exposure'."
+          },
+          "revision": {
+            "type": "string",
+            "title": "Revision",
+            "description": "Changes whenever the edit changes.",
+            "default": ""
           }
         },
         "additionalProperties": false,
@@ -2624,7 +3144,8 @@
           "photo_id",
           "style_id",
           "adjustments",
-          "overridden"
+          "overridden",
+          "revision"
         ],
         "title": "PhotoEdit",
         "description": "The edit of one photo: an optional style plus per-photo overrides. Overrides always win."
@@ -2638,7 +3159,54 @@
         ],
         "title": "PhotoSort"
       },
-      "Presence": {
+      "Presence-Input": {
+        "properties": {
+          "vibrance": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Vibrance",
+            "description": "Saturation boost weighted toward muted colors.",
+            "default": 0
+          },
+          "saturation": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Saturation",
+            "description": "Uniform saturation.",
+            "default": 0
+          },
+          "clarity": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Clarity",
+            "description": "Midtone local contrast (planned for Phase 9).",
+            "default": 0
+          },
+          "texture": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Texture",
+            "description": "Fine-detail local contrast (planned for Phase 9).",
+            "default": 0
+          },
+          "dehaze": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Dehaze",
+            "description": "Remove (+) or add (-) atmospheric haze (planned for Phase 9).",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Presence"
+      },
+      "Presence-Output": {
         "properties": {
           "vibrance": {
             "type": "number",
@@ -2723,7 +3291,46 @@
         ],
         "title": "SharpenFor"
       },
-      "Sharpening": {
+      "Sharpening-Input": {
+        "properties": {
+          "amount": {
+            "type": "number",
+            "maximum": 150.0,
+            "minimum": 0.0,
+            "title": "Amount",
+            "description": "Sharpening strength.",
+            "default": 40
+          },
+          "radius": {
+            "type": "number",
+            "maximum": 3.0,
+            "minimum": 0.5,
+            "title": "Radius",
+            "description": "Edge width in pixels.",
+            "default": 1.0
+          },
+          "detail": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Detail",
+            "description": "How much fine detail is sharpened.",
+            "default": 25
+          },
+          "masking": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Masking",
+            "description": "Limit sharpening to edges (higher = fewer areas).",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Sharpening"
+      },
+      "Sharpening-Output": {
         "properties": {
           "amount": {
             "type": "number",
@@ -3128,7 +3735,7 @@
             "description": "Scenes/subjects the style handles badly."
           },
           "adjustments": {
-            "$ref": "#/components/schemas/AdjustmentParams"
+            "$ref": "#/components/schemas/AdjustmentParams-Output"
           },
           "samples": {
             "items": {
@@ -3185,7 +3792,62 @@
         ],
         "title": "TiffCompression"
       },
-      "Tone": {
+      "Tone-Input": {
+        "properties": {
+          "exposure": {
+            "type": "number",
+            "maximum": 5.0,
+            "minimum": -5.0,
+            "title": "Exposure",
+            "description": "Exposure in EV stops.",
+            "default": 0
+          },
+          "contrast": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Contrast",
+            "description": "Global contrast.",
+            "default": 0
+          },
+          "highlights": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Highlights",
+            "description": "Recover (-) or boost (+) bright areas.",
+            "default": 0
+          },
+          "shadows": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Shadows",
+            "description": "Deepen (-) or lift (+) dark areas.",
+            "default": 0
+          },
+          "whites": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Whites",
+            "description": "White point.",
+            "default": 0
+          },
+          "blacks": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Blacks",
+            "description": "Black point.",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Tone"
+      },
+      "Tone-Output": {
         "properties": {
           "exposure": {
             "type": "number",
@@ -3248,7 +3910,82 @@
         ],
         "title": "Tone"
       },
-      "ToneCurve": {
+      "ToneCurve-Input": {
+        "properties": {
+          "highlights": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Highlights",
+            "description": "Parametric curve: highlights region.",
+            "default": 0
+          },
+          "lights": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Lights",
+            "description": "Parametric curve: lights region.",
+            "default": 0
+          },
+          "darks": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Darks",
+            "description": "Parametric curve: darks region.",
+            "default": 0
+          },
+          "shadows": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Shadows",
+            "description": "Parametric curve: shadows region.",
+            "default": 0
+          },
+          "rgb": {
+            "items": {
+              "$ref": "#/components/schemas/CurvePoint"
+            },
+            "type": "array",
+            "maxItems": 16,
+            "minItems": 2,
+            "title": "Rgb"
+          },
+          "red": {
+            "items": {
+              "$ref": "#/components/schemas/CurvePoint"
+            },
+            "type": "array",
+            "maxItems": 16,
+            "minItems": 2,
+            "title": "Red"
+          },
+          "green": {
+            "items": {
+              "$ref": "#/components/schemas/CurvePoint"
+            },
+            "type": "array",
+            "maxItems": 16,
+            "minItems": 2,
+            "title": "Green"
+          },
+          "blue": {
+            "items": {
+              "$ref": "#/components/schemas/CurvePoint"
+            },
+            "type": "array",
+            "maxItems": 16,
+            "minItems": 2,
+            "title": "Blue"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ToneCurve"
+      },
+      "ToneCurve-Output": {
         "properties": {
           "highlights": {
             "type": "number",
@@ -3373,7 +4110,46 @@
         ],
         "title": "ValidationError"
       },
-      "Vignette": {
+      "Vignette-Input": {
+        "properties": {
+          "amount": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Amount",
+            "description": "Darken (-) or lighten (+) the corners.",
+            "default": 0
+          },
+          "midpoint": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Midpoint",
+            "description": "How far the vignette reaches toward the center.",
+            "default": 50
+          },
+          "roundness": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Roundness",
+            "description": "Shape: rectangular (-) to circular (+).",
+            "default": 0
+          },
+          "feather": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Feather",
+            "description": "Softness of the vignette edge.",
+            "default": 50
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Vignette"
+      },
+      "Vignette-Output": {
         "properties": {
           "amount": {
             "type": "number",
@@ -3418,7 +4194,42 @@
         ],
         "title": "Vignette"
       },
-      "WhiteBalance": {
+      "WhiteBalance-Input": {
+        "properties": {
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 50000.0,
+                "minimum": 2000.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature",
+            "description": "Color temperature in Kelvin. None = as shot."
+          },
+          "tint": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 150.0,
+                "minimum": -150.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tint",
+            "description": "Green (-) / magenta (+) tint. None = as shot."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "WhiteBalance"
+      },
+      "WhiteBalance-Output": {
         "properties": {
           "temperature": {
             "anyOf": [
