@@ -385,7 +385,7 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
     **rejected with a clear error** when set to a non-default value, instead of being silently ignored (golden rule 5).
 
 ### Engine
-- [ ] **P3.2** Add `opencv-python-headless` (blur/resize for sharpening and previews) and `scipy` (least-squares fitting
+- [x] **P3.2** Add `opencv-python-headless` (blur/resize for sharpening and previews) and `scipy` (least-squares fitting
   of the camera profile; reused for style fitting in Phase 8). Commit `uv.lock`.
 - [ ] **P3.3** `core/color.py`: the color math, all float64-exact and tested against published reference values:
   sRGB/Rec.2020/XYZ matrices and transfer functions; OKLab/OKLCh (Ottosson's reference values); Kelvin + tint ↔
