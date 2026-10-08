@@ -38,8 +38,13 @@ class Env:
     workspace: Path
 
     def run_import(self, folder: Path | None = None, **kwargs: bool) -> object:
+        """Import and wait, including the thumbnail job it starts (which reads the photos)."""
         job = self.library.import_folder(folder or self.photos, **kwargs)
-        return self.library.jobs.wait(job.id, TIMEOUT)
+        done = self.library.jobs.wait(job.id, TIMEOUT)
+        for other in self.library.jobs.list():
+            if other.kind == "render" and other.finished_at is None:
+                self.library.jobs.wait(other.id, TIMEOUT)
+        return done
 
     def reopen(self) -> Library:
         catalog = Catalog(self.workspace / "catalog.sqlite", self.guard)

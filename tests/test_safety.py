@@ -208,3 +208,24 @@ def test_prefixed_realpath_still_counts_as_inside_the_root(
         safety.os.path, "realpath", lambda p: "\\\\?\\" + real(p) if "thumbs" in str(p) else real(p)
     )
     assert guard.is_writable(out / "thumbs" / "a.jpg")
+
+
+def test_unresolvable_paths_are_never_writable(
+    roots: tuple[Path, Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """realpath can raise for an unreachable network share under load: that must deny, not crash."""
+    from photoedit import safety
+
+    out, _, _ = roots
+    guard = PathGuard(writable_roots=[out])
+    real = os.path.realpath
+
+    def flaky(path: object) -> str:
+        if "server" in str(path):
+            raise OSError(121, "The semaphore timeout period has expired")
+        return real(path)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(safety.os.path, "realpath", flaky)
+    assert not guard.is_writable(Path(r"\server\share\x.jpg"))
+    with pytest.raises(WriteNotAllowedError, match="can't be resolved"):
+        guard.assert_writable(Path(r"\server\share\x.jpg"))

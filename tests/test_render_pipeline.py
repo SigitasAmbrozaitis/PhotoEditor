@@ -110,3 +110,18 @@ def test_render_is_bit_identical_across_runs_and_threads() -> None:
 def test_render_identity_names_engine_and_libraries() -> None:
     identity = pipeline.render_identity()
     assert f"-eng{pipeline.ENGINE_VERSION}-" in identity and "numpy" in identity and "opencv" in identity
+
+
+def test_strip_rendering_equals_one_strip(monkeypatch: pytest.MonkeyPatch) -> None:
+    base = raw_base(height=300, width=200, seed=9)
+    edit = params(
+        tone={"contrast": 25},
+        hsl={"red": {"saturation": 30}},
+        effects={"vignette": {"amount": -50}},
+        detail={"sharpening": {"amount": 80}},
+    )
+    strips = render(base, edit, GENERIC, original_width=200)
+    assert len(pipeline._strips(300)) > 1
+    monkeypatch.setattr(pipeline, "_STRIP_THREADS", 1)
+    assert len(pipeline._strips(300)) == 1
+    np.testing.assert_array_equal(strips, render(base, edit, GENERIC, original_width=200))

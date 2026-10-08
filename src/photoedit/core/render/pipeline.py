@@ -6,6 +6,8 @@ Anything that changes pixels for given inputs must bump ``ENGINE_VERSION``.
 
 from __future__ import annotations
 
+import itertools
+from concurrent.futures import ThreadPoolExecutor
 from importlib.metadata import version as package_version
 
 import numpy as np
@@ -21,6 +23,11 @@ from photoedit.core.render.stages import F32
 from photoedit.models.adjustments import AdjustmentParams, Hsl
 
 ENGINE_VERSION = 1
+
+# numpy releases the GIL in its array loops, so a few threads render strips of one image in parallel.
+_STRIP_THREADS = 8
+_MIN_STRIP_ROWS = 64
+_POOL = ThreadPoolExecutor(max_workers=_STRIP_THREADS, thread_name_prefix="render")
 
 # Parameters that exist in the model but whose rendering arrives in a later phase (decided 2026-10-08: setting
 # them is an error, not a silent no-op).
@@ -80,27 +87,43 @@ def render(
     """
     check_supported(params)
     image = resize_linear(base, long_edge) if long_edge is not None else base
-    rgb = stages.white_balance(image, params.white_balance)
+    matrix = stages.white_balance_matrix(image, params.white_balance)
     baseline = 0.0
     if profile is not None:
         if profile.matrix != IDENTITY:
-            rgb = color.apply_matrix(rgb, np.array(profile.matrix, dtype=np.float64))
+            matrix = np.array(profile.matrix, dtype=np.float64) @ matrix
         baseline = profile.baseline_exposure
-    rgb = stages.exposure(rgb, params.tone.exposure + baseline)
-    rgb = stages.tone(rgb, params.tone)
-    if profile is not None:
-        encoded = stages.base_curve(rgb, profile)
-    else:
-        encoded = color.srgb_encode(np.clip(rgb, 0, 1)).astype(np.float32, copy=False)
-    encoded = stages.curves(encoded, params.tone_curve)
-    display = stages.to_display_linear(encoded)
-    display = stages.color_adjust(
-        display,
-        profile.hsl if profile is not None else Hsl(),
-        params.hsl,
-        params.color_grading,
-        params.presence,
-    )
-    display = stages.vignette(display, params.effects.vignette)
-    out = stages.output_srgb(display)
+    skip_matrix = not image.is_raw and np.array_equal(matrix, np.eye(3))
+    exposure = params.tone.exposure + baseline
+    profile_hsl = profile.hsl if profile is not None else Hsl()
+    height, width = image.pixels.shape[:2]
+    vignette = params.effects.vignette
+    mask = stages.vignette_mask(height, width, vignette) if vignette.amount else None
+
+    def pointwise(rows: slice) -> F32:
+        # Every stage here works pixel by pixel, so rendering in strips gives exactly the full-frame result.
+        rgb = image.pixels[rows]
+        if not skip_matrix:
+            rgb = color.apply_matrix(rgb, matrix)
+        rgb = stages.exposure(rgb, exposure)
+        rgb = stages.tone(rgb, params.tone)
+        if profile is not None:
+            encoded = stages.base_curve(rgb, profile)
+        else:
+            encoded = color.srgb_encode(np.clip(rgb, 0, 1)).astype(np.float32, copy=False)
+        encoded = stages.curves(encoded, params.tone_curve)
+        display = stages.to_display_linear(encoded)
+        display = stages.color_adjust(display, profile_hsl, params.hsl, params.color_grading, params.presence)
+        display = stages.vignette(display, vignette, None if mask is None else mask[rows])
+        return stages.output_srgb(display)
+
+    strips = _strips(height)
+    parts = list(_POOL.map(pointwise, strips)) if len(strips) > 1 else [pointwise(strips[0])]
+    out = np.concatenate(parts, axis=0) if len(parts) > 1 else parts[0]
     return stages.sharpen(out, params.detail.sharpening, out.shape[1] / original_width)
+
+
+def _strips(height: int) -> list[slice]:
+    count = max(1, min(_STRIP_THREADS, height // _MIN_STRIP_ROWS))
+    edges = [round(i * height / count) for i in range(count + 1)]
+    return [slice(a, b) for a, b in itertools.pairwise(edges)]

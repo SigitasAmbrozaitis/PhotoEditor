@@ -42,8 +42,8 @@ def luminance(rgb: F32) -> F32:
 # ----------------------------------------------------------------- white balance
 
 
-def white_balance(image: LinearImage, wb: WhiteBalance) -> F32:
-    """Apply the white balance and convert to linear Rec.2020.
+def white_balance_matrix(image: LinearImage, wb: WhiteBalance) -> npt.NDArray[np.float64]:
+    """The 3×3 matrix taking ``image.pixels`` to white-balanced linear Rec.2020.
 
     ``None`` means "as shot" for that component. RAWs are rebalanced in camera space (new ÷ as-shot
     multipliers, then the camera matrix); JPEG/TIFF originals, which are already balanced for D65, get a
@@ -60,12 +60,20 @@ def white_balance(image: LinearImage, wb: WhiteBalance) -> F32:
                 color.camera_multipliers(image.cam_from_xyz, temperature, tint) / image.as_shot_multipliers
             )
             matrix = matrix @ np.diag(gains)
-        return color.apply_matrix(image.pixels, matrix)
+        return matrix
     if unchanged:
-        return image.pixels
+        return np.eye(3)
     # "The light was this white": adapt from it to D65, the white the JPEG was already balanced for.
     adapt = color.bradford(color.temperature_tint_to_xy(temperature, tint), color.D65)
-    matrix = color.REC2020_FROM_XYZ @ adapt @ color.XYZ_FROM_REC2020
+    out: npt.NDArray[np.float64] = color.REC2020_FROM_XYZ @ adapt @ color.XYZ_FROM_REC2020
+    return out
+
+
+def white_balance(image: LinearImage, wb: WhiteBalance) -> F32:
+    """Apply the white balance and convert to linear Rec.2020 (see ``white_balance_matrix``)."""
+    matrix = white_balance_matrix(image, wb)
+    if not image.is_raw and np.array_equal(matrix, np.eye(3)):
+        return image.pixels
     return color.apply_matrix(image.pixels, matrix)
 
 
@@ -116,6 +124,20 @@ def quantize(encoded: F32, bits: int = 8) -> npt.NDArray[np.uint8] | npt.NDArray
     if bits == 8:
         return scaled.astype(np.uint8)
     return scaled.astype(np.uint16)
+
+
+def uniform_lookup(values: F32, start: float, step: float, table: npt.NDArray[np.float64]) -> F32:
+    """Linear interpolation in ``table`` sampled every ``step`` from ``start`` (clamped at both ends).
+
+    The same result as ``np.interp`` on a uniform grid, but O(1) per value instead of a binary search, which
+    matters at millions of pixels per render.
+    """
+    position = np.clip((values - np.float32(start)) / np.float32(step), 0, table.size - 1)
+    index = np.minimum(position.astype(np.int32), table.size - 2)
+    fraction = position - index.astype(np.float32)  # int32 - float32 would promote to float64
+    lut = table.astype(np.float32)
+    out: F32 = lut[index] * (1 - fraction) + lut[index + 1] * fraction
+    return out
 
 
 # ----------------------------------------------------------------- tone (exposure-relative luminance curve)
@@ -169,7 +191,7 @@ def tone(rgb: F32, params: Tone) -> F32:
         return rgb
     curve = tone_curve_stops(params)
     stops = np.log2(np.maximum(luminance(rgb), _EPSILON) / np.float32(MID_GRAY))
-    new_stops = np.interp(stops, TONE_GRID, curve)
+    new_stops = uniform_lookup(stops, _STOPS_MIN, 1 / _STEPS_PER_STOP, curve)
     gain = np.exp2(new_stops - stops).astype(np.float32)
     out: F32 = rgb * gain[..., None]
     return out
@@ -199,7 +221,7 @@ def base_curve(rgb: F32, profile: CameraProfile) -> F32:
     """
     lut = base_curve_lut(profile)
     stops = np.log2(np.maximum(rgb, _EPSILON) / np.float32(MID_GRAY))
-    return np.interp(stops, TONE_GRID, lut).astype(np.float32)
+    return uniform_lookup(stops, _STOPS_MIN, 1 / _STEPS_PER_STOP, lut)
 
 
 def curve_luts(params: ToneCurve) -> list[npt.NDArray[np.float64]] | None:
@@ -223,7 +245,7 @@ def curves(encoded: F32, params: ToneCurve) -> F32:
         return encoded
     out = np.empty_like(encoded)
     for channel, lut in enumerate(luts):
-        out[..., channel] = np.interp(encoded[..., channel], _CURVE_GRID, lut)
+        out[..., channel] = uniform_lookup(encoded[..., channel], 0.0, 1 / (_CURVE_GRID.size - 1), lut)
     return out
 
 
@@ -263,41 +285,48 @@ def _smoothstep(edge0: float, edge1: float, x: F32) -> F32:
     return out
 
 
-def band_weights(hue: F32) -> dict[str, F32]:
-    """Weight of each HSL band for every hue (degrees). Neighbouring bands cross-fade; weights sum to 1.
-
-    Each hue falls in exactly one segment between two adjacent band centers (found by search, so float
-    rounding can't put a hue in two segments) and is shared between those two bands only.
-    """
-    names = sorted(BAND_HUES, key=BAND_HUES.__getitem__)
-    centers = np.array([BAND_HUES[n] for n in names], dtype=np.float32)
-    count = len(names)
+def _segments(hue: F32, centers: npt.NDArray[np.float32]) -> tuple[npt.NDArray[np.intp], F32]:
+    """For each hue: the segment between adjacent band centers it falls in, and the smooth 0..1 position in
+    it. Found by search, so float rounding can't put a hue in two segments."""
+    count = centers.size
     wrapped = hue % np.float32(360)
     segment = (np.searchsorted(centers, wrapped, side="right") - 1) % count
     start = centers[segment]
     span = (centers[(segment + 1) % count] - start) % np.float32(360)
     t = np.clip(((wrapped - start) % np.float32(360)) / span, 0, 1)
-    s = (t * t * (3 - 2 * t)).astype(np.float32)
+    return segment, (t * t * (3 - 2 * t)).astype(np.float32)
+
+
+def band_weights(hue: F32) -> dict[str, F32]:
+    """Weight of each HSL band for every hue (degrees). Neighbouring bands cross-fade; weights sum to 1."""
+    names = sorted(BAND_HUES, key=BAND_HUES.__getitem__)
+    centers = np.array([BAND_HUES[n] for n in names], dtype=np.float32)
+    segment, s = _segments(hue, centers)
     weights: dict[str, F32] = {}
     for k, name in enumerate(names):
         mine = np.where(segment == k, 1 - s, 0)
-        from_previous = np.where(segment == (k - 1) % count, s, 0)
+        from_previous = np.where(segment == (k - 1) % len(names), s, 0)
         weights[name] = (mine + from_previous).astype(np.float32)
     return weights
 
 
 def _apply_hsl(lightness: F32, chroma: F32, hue: F32, params: Hsl) -> tuple[F32, F32, F32]:
-    weights = band_weights(hue)
-    shift = np.zeros_like(hue)
-    scale = np.zeros_like(hue)
-    lift = np.zeros_like(hue)
-    for name, w in weights.items():
-        band = getattr(params, name)
-        shift += w * np.float32(band.hue / 100 * _HSL_HUE_SHIFT)
-        scale += w * np.float32(1 + band.saturation / 100)
-        lift += w * np.float32(band.luminance / 100 * _HSL_LUMINANCE)
+    # Same result as summing band_weights() × band values, but each pixel only ever touches its two
+    # neighbouring bands, so gather those from 8-entry tables instead of eight full-image passes.
+    names = sorted(BAND_HUES, key=BAND_HUES.__getitem__)
+    centers = np.array([BAND_HUES[n] for n in names], dtype=np.float32)
+    bands = [getattr(params, n) for n in names]
+    shift_table = np.array([b.hue / 100 * _HSL_HUE_SHIFT for b in bands], dtype=np.float32)
+    scale_table = np.array([1 + b.saturation / 100 for b in bands], dtype=np.float32)
+    lift_table = np.array([b.luminance / 100 * _HSL_LUMINANCE for b in bands], dtype=np.float32)
+    segment, s = _segments(hue, centers)
+    following = (segment + 1) % len(names)
+    shift = shift_table[segment] * (1 - s) + shift_table[following] * s
+    scale = scale_table[segment] * (1 - s) + scale_table[following] * s
+    lift = lift_table[segment] * (1 - s) + lift_table[following] * s
     colorful = _smoothstep(0, 0.12, chroma)  # grays have no hue: leave their brightness alone
-    return lightness + lift * colorful, chroma * scale, (hue + shift) % 360
+    new_lightness: F32 = (lightness + lift * colorful).astype(np.float32, copy=False)
+    return new_lightness, chroma * scale, (hue + shift) % 360
 
 
 def _wheel_direction(hsv_hue: float) -> tuple[float, float]:
@@ -370,16 +399,19 @@ def color_adjust(
     ):
         return display_linear
     lab = color.rec2020_to_oklab(display_linear)
+    lch: F32 | None = None
     for params in (profile_hsl, hsl):
         if params != neutral_hsl:
-            lch = color.oklab_to_oklch(lab)
+            lch = color.oklab_to_oklch(lab) if lch is None else lch
             lch[..., 0], lch[..., 1], lch[..., 2] = _apply_hsl(lch[..., 0], lch[..., 1], lch[..., 2], params)
-            lab = color.oklch_to_oklab(lch)
     if grading != neutral_grading:
+        lab = color.oklch_to_oklab(lch) if lch is not None else lab
+        lch = None
         lab = _apply_grading(lab, grading)
     if presence.vibrance or presence.saturation:
-        lch = color.oklab_to_oklch(lab)
+        lch = color.oklab_to_oklch(lab) if lch is None else lch
         lch[..., 1] = _apply_presence(lch[..., 1], lch[..., 2], presence)
+    if lch is not None:
         lab = color.oklch_to_oklab(lch)
     return color.oklab_to_rec2020(lab).astype(np.float32, copy=False)
 
@@ -412,11 +444,16 @@ def vignette_mask(height: int, width: int, params: Vignette) -> F32:
     return _smoothstep(start, middle + width_ / 2, rho.astype(np.float32))
 
 
-def vignette(display_linear: F32, params: Vignette) -> F32:
-    """Darken (negative amount) or lighten (positive) toward the corners; the center is never changed."""
+def vignette(display_linear: F32, params: Vignette, mask: F32 | None = None) -> F32:
+    """Darken (negative amount) or lighten (positive) toward the corners; the center is never changed.
+
+    ``mask`` (from ``vignette_mask``) lets a caller rendering in strips pass each strip its part of the mask.
+    """
     if not params.amount:
         return display_linear
-    mask = vignette_mask(display_linear.shape[0], display_linear.shape[1], params)[..., None]
+    if mask is None:
+        mask = vignette_mask(display_linear.shape[0], display_linear.shape[1], params)
+    mask = mask[..., None]
     amount = np.float32(params.amount / 100)
     if amount < 0:
         out: F32 = display_linear * np.exp2(amount * np.float32(_VIGNETTE_DARKEN_EV) * mask)

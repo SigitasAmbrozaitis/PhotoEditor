@@ -29,3 +29,21 @@ pass.
 - Suggested default for batch export (Phase 5): about 10 workers (4.2 min per 100, 6.2 GiB), which leaves room for the
   browser and other apps on a 16 GB machine. Phase 3/9 can lower the cost further (float16 or tiled processing, GPU).
 - Previews are not affected: the half-size decode takes about 1.3 s per photo single-threaded, and is cached.
+
+# Preview speed (Phase 3, 2026-10-08)
+
+A full render through the Phase 3 pipeline from the cached 2048 px linear base of `DSCF5437.RAF` (portrait),
+X-T3 Provia profile, median of 5 runs (P3.18). Target: ≤ 0.5 s at 1600 px.
+
+| Edit | 1600 px | 800 px |
+|---|---:|---:|
+| Unedited (default look) | 0.24 s | 0.07 s |
+| "Busy" edit (WB, every tone slider, curves, HSL, grading, vignette, sharpening) | 0.37 s | 0.12 s |
+
+The first view of a photo also decodes it once (≈ 0.45 s, LibRaw half-size); after that only renders run.
+
+How it got there (first version: 1.2 s / 2.1 s): a float32 → float64 promotion in a curve lookup doubled every
+later stage; uniform-grid lookups replace `np.interp`'s binary search; HSL gathers its two neighbouring bands
+from 8-entry tables instead of eight full-image passes; matrices use `einsum` and the white-balance and profile
+matrices are fused; and the per-pixel stages run on 8 horizontal strips in parallel threads (bit-identical to a
+single strip, which a test checks).

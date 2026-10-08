@@ -64,9 +64,14 @@ def _wait(client: TestClient, job_id: str) -> Job:
 
 
 def _import(client: TestClient, folder: Path, **extra: object) -> Job:
+    """Import and wait, including the thumbnail job it starts (which reads the photos)."""
     r = client.post("/api/library/import", json={"folder": str(folder), **extra})
     assert r.status_code == 201, r.text
-    return _wait(client, Job.model_validate(r.json()).id)
+    done = _wait(client, Job.model_validate(r.json()).id)
+    for job in TypeAdapter(list[Job]).validate_python(client.get("/api/jobs").json()):
+        if job.kind == "render" and job.finished_at is None:
+            _wait(client, job.id)
+    return done
 
 
 def _photo_ids(client: TestClient) -> list[str]:

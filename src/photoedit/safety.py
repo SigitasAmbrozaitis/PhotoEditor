@@ -20,8 +20,17 @@ class WriteNotAllowedError(PermissionError):
 
 
 def _normalize(path: Path) -> Path:
-    """Absolute, symlink-resolved path (works for paths that don't exist yet)."""
-    real = os.path.realpath(path.expanduser())
+    """Absolute, symlink-resolved path (works for paths that don't exist yet).
+
+    Raises ``WriteNotAllowedError`` if the path can't be resolved (e.g. an unreachable network share under
+    load): a path whose real location is unknown is never writable.
+    """
+    try:
+        real = os.path.realpath(path.expanduser())
+    except OSError as exc:
+        raise WriteNotAllowedError(
+            f"Refusing to write to a path that can't be resolved: {path} ({exc})"
+        ) from exc
     # On Windows, realpath sometimes keeps the extended-length prefix (seen while another thread creates the
     # same folder at that moment). Strip it so the path compares equal to the roots.
     if real.startswith("\\\\?\\UNC\\"):
@@ -77,7 +86,10 @@ class PathGuard:
             self._protected.append(normalized)
 
     def is_writable(self, path: Path) -> bool:
-        target = _normalize(path)
+        try:
+            target = _normalize(path)
+        except WriteNotAllowedError:
+            return False
         if any(_is_within(target, root) for root in self._protected):
             return False
         return any(_is_within(target, root) for root in self._writable)
