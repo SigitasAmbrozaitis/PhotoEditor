@@ -21,6 +21,8 @@ config_app = typer.Typer(help="Inspect configuration.", no_args_is_help=True)
 app.add_typer(config_app, name="config")
 cache_app = typer.Typer(help="Manage the thumbnail/preview cache.", no_args_is_help=True)
 app.add_typer(cache_app, name="cache")
+profile_app = typer.Typer(help="Camera profiles (the default look of unedited photos).", no_args_is_help=True)
+app.add_typer(profile_app, name="profile")
 
 ConfigOption = Annotated[
     Path | None,
@@ -174,6 +176,63 @@ def cache_clear(config: ConfigOption = None) -> None:
     typer.echo(f"Removed {removed} cached file{'s' if removed != 1 else ''} from {settings.cache_dir}")
 
 
+@profile_app.command("fit")
+def profile_fit(
+    folder: Annotated[Path, typer.Argument(help="Folder with RAW files and their camera JPEGs (read-only).")],
+    profile_id: Annotated[
+        str | None, typer.Option("--id", help="Profile id (default: from the camera).")
+    ] = None,
+    workers: Annotated[int, typer.Option(min=1, help="Processes for decoding.")] = 8,
+    config: ConfigOption = None,
+) -> None:
+    """Fit a camera profile from RAW + camera JPEG pairs. Writes output/profiles/<id>.json and a report."""
+    from photoedit.core.decode import read_raw_info
+    from photoedit.core.metadata import read_metadata_from_bytes
+    from photoedit.core.profile_fit import fit_and_evaluate, format_report
+    from photoedit.core.render.profile import GENERIC
+    from photoedit.core.scan import ScanError, SourceKind, scan_folder
+    from photoedit.safety import guard_from_settings
+
+    settings = load_settings(config)
+    try:
+        scanned = scan_folder(folder.expanduser().absolute())
+    except ScanError as exc:
+        raise typer.BadParameter(str(exc), param_hint="FOLDER") from None
+    pairs = [(p.path, p.sidecar_jpeg) for p in scanned.photos if p.kind is SourceKind.RAW and p.sidecar_jpeg]
+    if len(pairs) < 8:
+        raise typer.BadParameter(f"need at least 8 RAW + JPEG pairs, found {len(pairs)}", param_hint="FOLDER")
+    embedded = read_raw_info(pairs[0][0]).embedded_jpeg
+    meta = read_metadata_from_bytes(embedded) if embedded else None
+    camera = meta.camera if meta and meta.camera else "Unknown camera"
+    make, _, model = camera.partition(" ")
+    film = meta.film_simulation if meta else None
+    name = f"{camera} · {film}" if film else camera
+    slug = profile_id or "-".join(part for part in (camera, film) if part).lower().replace(" ", "-").replace(
+        ".", ""
+    )
+    template = GENERIC.model_copy(
+        update={
+            "id": slug,
+            "name": name,
+            "make": make or None,
+            "model": model or None,
+            "film_simulation": film,
+        }
+    )
+    typer.echo(f"Fitting '{name}' from {len(pairs)} pairs...")
+    report = fit_and_evaluate(pairs, template, workers=workers, progress=typer.echo)
+    guard = guard_from_settings(settings)
+    guard.protect(scanned.folder)
+    out_dir = settings.output_dir / "profiles"
+    json_path = guard.write_atomic(
+        out_dir / f"{slug}.json", report.profile.model_dump_json(indent=2).encode()
+    )
+    text = format_report(report)
+    guard.write_atomic(out_dir / f"{slug}.md", text.encode("utf-8"))
+    typer.echo(text)
+    typer.echo(f"Profile written to {json_path}")
+
+
 @app.command()
 def openapi() -> None:
     """Print the HTTP API's OpenAPI schema (UTF-8 JSON). Used to generate the UI's TypeScript types."""
@@ -187,4 +246,8 @@ def openapi() -> None:
 
 
 def main() -> None:
+    # Redirected output on Windows defaults to the ANSI code page, which can't encode "ΔE", "…" or "·".
+    for stream in (sys.stdout, sys.stderr):
+        if not stream.isatty() and hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     app()

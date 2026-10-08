@@ -6,6 +6,8 @@ then its tone curve takes scene-linear values to display values, and its HSL twe
 
 from __future__ import annotations
 
+import functools
+from importlib import resources
 from itertools import pairwise
 from typing import Literal, Self
 
@@ -77,3 +79,30 @@ GENERIC = CameraProfile(
         ]
     ),
 )
+
+
+# ----------------------------------------------------------------- shipped profiles
+
+_PROFILE_PACKAGE = "photoedit.profiles"
+
+
+@functools.cache
+def builtin_profiles() -> tuple[CameraProfile, ...]:
+    """Profiles shipped with the tool (``src/photoedit/profiles/*.json``), sorted by id."""
+    folder = resources.files(_PROFILE_PACKAGE)
+    found = [
+        CameraProfile.model_validate_json(entry.read_text(encoding="utf-8"))
+        for entry in folder.iterdir()
+        if entry.name.endswith(".json")
+    ]
+    return tuple(sorted(found, key=lambda p: p.id))
+
+
+def profile_for(camera: str | None) -> CameraProfile:
+    """The shipped profile for a camera ("FUJIFILM X-T3"), or the generic one."""
+    if camera:
+        wanted = camera.casefold()
+        for profile in builtin_profiles():
+            if f"{profile.make or ''} {profile.model or ''}".strip().casefold() == wanted:
+                return profile
+    return GENERIC
