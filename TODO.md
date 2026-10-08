@@ -12,7 +12,7 @@ Derived from [PLAN.md](PLAN.md) v0.3. This checklist is written for an AI to fol
 - ⛔ **STOP** = halt and wait for the user. Never continue past a STOP without the user's explicit go-ahead.
 - 🧑 **Human test** = steps the user runs by hand at the end of a phase, with the expected result for each step.
 - If something is ambiguous or the plan seems wrong, **ask**. Don't guess. Plan changes go into PLAN.md first.
-- **Phases 0–2 are detailed.** Later phases are an outline and get detailed at the start of each phase. Writing that detail is the first item in each phase.
+- **Phases 0–3 are detailed.** Later phases are an outline and get detailed at the start of each phase. Writing that detail is the first item in each phase.
 - Golden rules: originals are read-only; never write outside `C:\Work\PhotoEditing` (except export destinations the user
   chose); commit as `SigitasAmbrozaitis`.
 
@@ -343,13 +343,122 @@ underexposes the RAW to protect highlights).
 
 ### ⛔ STOP: user approves Phase 2
 
-## Phase 3: Edit engine, MVP parameters (outline)
-- [ ] **P3.0** Detail this phase. ⛔ STOP for review.
-- [ ] Render pipeline stages (PLAN 4.3), each with exact-math unit tests on synthetic images.
-- [ ] Per-photo edit JSON in the workspace. Deterministic render plus a golden-image test setup.
-- [ ] Property tests: every valid parameter combination renders with no NaN and no out-of-range values.
-- [ ] Enable the UI sliders and the live preview. Generate a slider contact sheet (−/0/+ for each parameter).
-- 🧑 Human test + ⛔ STOP.
+## Phase 3: Edit engine, MVP parameters
+
+Goal: real, deterministic rendering of every MVP parameter (PLAN 4.2/4.3), saved per photo as edit JSON, with live
+sliders in the Photo view. Geometry (crop/rotate) stays in Phase 6; clarity/texture/dehaze, noise reduction, grain and
+lens corrections stay in Phase 9. Styles stay mock (Phase 4).
+
+Facts from a probe of 9 X-T3 RAFs (2026-10-08): LibRaw's linear camera-space decode + our own camera→sRGB matrix
+(built from `rgb_xyz_matrix`, LibRaw's method) reproduces LibRaw's sRGB output exactly (mean diff 0.00001), so the
+pipeline can own white balance and color conversion. "As shot" Kelvin + tint can be recovered from the camera
+multipliers (fit residual < 0.01; these shots ≈ 4950–5025 K). There is **no constant exposure offset** to the camera
+JPEGs (−1.2 to +1.1 EV depending on scene and tone range), so the default look is a design choice (P3.1). Numpy
+pipeline math at preview size runs in ~100–200 ms, so live sliders are feasible.
+
+**Engine design** (fixed order, float32):
+- Working space: **linear Rec.2020, D65**. Hue/saturation work (HSL, color grading, vibrance) uses **OKLab/OKLCh**
+  (perceptually uniform, so a hue shift doesn't change brightness). Tone curves work on display-encoded values (0..1).
+- White balance: RAWs are decoded once in camera space with the camera's WB; a new temperature/tint rescales the
+  camera channels (`new / as-shot` multipliers from Kelvin via the camera matrix) before the camera→Rec.2020 matrix.
+  JPEG/TIFF originals count as "as shot" = 6500 K, tint 0, and use a Bradford adaptation.
+- Highlights/shadows/whites/blacks/contrast are **global** luminance curves (ratio-preserving, so colors don't shift).
+  Local, Lightroom-style versions arrive with clarity in Phase 9.
+- Sharpening default (amount 40) is applied, like Lightroom's default input sharpening; its radius scales with the
+  output size, so previews and exports look alike.
+
+- [x] **P3.0** Detail this phase into items. ⛔ STOP for the user to review it.
+
+### Decisions to confirm at phase start (ask the user)
+- [ ] **P3.1** Confirm (defaults proposed; recorded in PLAN.md §0 once confirmed):
+  - **Default look** of an unedited photo: a generic base tone curve (gentle S, like Adobe's default) plus a per-camera
+    baseline exposure measured from the X-T3 camera JPEGs. Matching the camera's film simulations exactly is style
+    fitting from RAW + JPEG pairs, which is Phase 8 (it could become a "Camera standard" style there).
+  - **Thumbnails** go through the same pipeline as the Photo view: after an import, a background job re-renders them
+    (≈ 15 s per 67 photos with parallel workers), and a photo's thumbnail is re-rendered when its edit changes. Until
+    then, the embedded JPEG thumbnail is shown.
+  - **Golden images of your real photos stay local** (git-ignored, regenerated with a command); only synthetic golden
+    images are committed. (Committing renders of personal photos to GitHub needs your explicit OK.)
+  - **Parameters planned for later phases** (geometry, clarity, texture, dehaze, noise reduction, grain, lens) are
+    **rejected with a clear error** when set to a non-default value, instead of being silently ignored (golden rule 5).
+
+### Engine
+- [ ] **P3.2** Add `opencv-python-headless` (blur/resize for sharpening and previews). Commit `uv.lock`.
+- [ ] **P3.3** `core/color.py`: the color math, all float64-exact and tested against published reference values:
+  sRGB/Rec.2020/XYZ matrices and transfer functions; OKLab/OKLCh (Ottosson's reference values); Kelvin + tint ↔
+  chromaticity (Planckian/daylight locus, tint perpendicular to it); Bradford adaptation; camera WB multipliers from
+  Kelvin + tint (given the camera matrix) and the inverse "as shot" estimate.
+- [ ] **P3.4** `decode.decode_linear(path, size)`: RAW → demosaiced, camera-space, camera-WB, linear float data plus the
+  camera matrix and as-shot multipliers; JPEG/TIFF → linear Rec.2020. `DECODER_VERSION` → 2. Golden test: our matrix
+  path matches LibRaw's sRGB output within 1e-4.
+- [ ] **P3.5** Linear base cache: the decoded linear image at preview working size (long edge 2048) as float16 on disk
+  (`cache/linear/`) plus a small in-memory LRU, keyed by render identity; full resolution is decoded on demand (exports).
+- [ ] **P3.6** Render stages in `core/render/` (pure functions on arrays; exact-math tests on synthetic images, and each
+  stage is the identity at its neutral value):
+  - white balance + camera → Rec.2020; exposure (+1 EV doubles linear values); output transform (Rec.2020 → sRGB,
+    gamut clip, sRGB encoding, 8/16-bit)
+- [ ] **P3.7** Tone stages: whites/blacks, highlights/shadows, contrast (18 % gray stays fixed; ratio-preserving).
+- [ ] **P3.8** Curves: base curve, parametric regions (highlights/lights/darks/shadows), point curves for RGB/R/G/B
+  (monotone cubic, so curves never overshoot).
+- [ ] **P3.9** Color stages: HSL (8 overlapping hue bands in OKLCh), color grading (shadows/midtones/highlights/global
+  wheels with blending and balance), vibrance (weighted toward muted colors) and saturation (−100 = gray with the same
+  luminance).
+- [ ] **P3.10** Effects + detail: post-crop vignette (amount/midpoint/roundness/feather; the center stays unchanged) and
+  sharpening (luminance unsharp mask: amount/radius/detail/masking).
+- [ ] **P3.11** `render.pipeline`: `render(base, params, size)` runs the stages in PLAN 4.3 order. `ENGINE_VERSION` joins
+  the render identity. Determinism: the same input gives identical bytes (OpenCV thread count pinned; tested twice in a
+  row and across threads). Rejects later-phase parameters (P3.1).
+- [ ] **P3.12** Property tests (hypothesis): any valid `AdjustmentParams` renders a small synthetic image with no NaN, no
+  out-of-range values, and identical output on a second run; invalid parameters are rejected by the models.
+- [ ] **P3.13** Default look (P3.1): base tone curve + per-camera baseline exposure. A script fits the X-T3 baseline from
+  the camera JPEG pairs; the value and method are written down in `docs/default-look.md`.
+
+### Edits, previews, golden images
+- [ ] **P3.14** `core/edits.py`: per-photo edit JSON `workspace/edits/<photo-id>.json` (`schema_version`, `photo_id`,
+  `style_id` (unused until Phase 4), sparse `overrides` such as `{"tone.exposure": 0.5}`); load/save/reset, effective
+  parameters = defaults ← style ← overrides; atomic writes through the path guard. Catalog schema v2 (the migration hook's
+  first use): `has_edits`, as-shot temperature/tint (filled lazily for photos imported before).
+- [ ] **P3.15** Previews and thumbnails through the pipeline: `before` = default look, `after` = the photo's edit; the cache
+  key adds a hash of the edit; thumbnails per P3.1 (background job after import, re-render on edit).
+- [ ] **P3.16** Golden images (P3.1): a committed synthetic reference (color chart + gradients rendered with fixed
+  parameters, compared exactly), plus `photoedit golden update` writing local references for a few real RAFs into
+  `tests/golden-local/` (git-ignored), compared by `@pytest.mark.golden` tests within a small ΔE tolerance.
+- [ ] **P3.17** Contact sheet: `photoedit contact-sheet PHOTO [--group tone]` → `output/contact-sheets/…jpg`, every
+  implemented parameter at −/0/+ (min/neutral/max where that's more useful), labeled.
+- [ ] **P3.18** Preview speed: time a full render at 1600 px from the cached base on a real RAF (target ≤ 0.5 s); add the
+  result to `docs/benchmark.md`.
+
+### API + UI
+- [ ] **P3.19** API: `PUT /api/photos/{id}/edit` (full `AdjustmentParams`; validated, saved as overrides, returns
+  `PhotoDetail` with an edit revision), `DELETE /api/photos/{id}/edit` (reset); preview URLs carry the revision for cache
+  busting; `PhotoDetail` adds the as-shot WB and which parameters are live in this phase. Regenerate the TS types.
+- [ ] **P3.20** Photo view: sliders enabled for live parameters (later-phase ones stay disabled, labeled "Phase 6/9");
+  numeric entry; double-click a slider to reset it; reset group / reset all; WB shows the as-shot values; changes save
+  automatically (debounced) and the preview updates, keeping the old image until the new one arrives; Before = default
+  look; Ctrl+Z / Ctrl+Shift+Z undo/redo within the session.
+- [ ] **P3.21** Tone curve editor: an SVG point editor for RGB/R/G/B (drag points, click to add, double-click to remove)
+  next to the parametric sliders.
+- [ ] **P3.22** Tests: Vitest for slider edit/reset/undo and the curve editor; Playwright: move a slider → the preview
+  changes and the edit survives a reload; screenshots.
+- [ ] **P3.23** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e) and update README.
+
+### 🧑 Human test: Phase 3
+0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`.
+1. `uv run photoedit ui` → the Library. Within a short while the thumbnails switch to the pipeline's default look
+   (a background job on Jobs).
+2. Open a photo → the Adjust panel's sliders are live (geometry and Phase 9 ones stay disabled, labeled). Move
+   **Exposure** → the preview updates within about half a second. Try every group: white balance (temperature/tint start
+   at the as-shot values), tone, presence, tone curve (drag a point), HSL, color grading, sharpening, vignette.
+3. **Before/After/Split** compare against the default look. Double-click a slider → it resets. **Reset all** works.
+   Ctrl+Z / Ctrl+Shift+Z undo and redo.
+4. Go back to the Library → the edited photo's thumbnail shows the edit. Restart `photoedit ui` → the edit is still there.
+5. Extreme values (every slider at its end) never produce broken colors, black frames or errors.
+6. `uv run photoedit contact-sheet DSCF5437` → open the images in `output/contact-sheets/`: each parameter at −/0/+
+   looks like what its name says.
+7. The `2026-08-11` folder is still unchanged (Explorer, Date modified). `uv run pytest -m golden` passes.
+8. **Give feedback on the default look and on how each slider feels** (too strong, too weak, wrong direction).
+
+### ⛔ STOP: user approves Phase 3
 
 ## Phase 4: Styles (outline)
 - [ ] **P4.0** Detail this phase. ⛔ STOP for review.
