@@ -2002,6 +2002,7 @@
         "type": "string",
         "enum": [
           "import",
+          "render",
           "apply_style",
           "export",
           "apply_and_export"
@@ -2536,6 +2537,12 @@
             ],
             "title": "Sidecar Jpeg",
             "description": "Camera JPEG saved next to a RAW original (read-only), if any."
+          },
+          "image_version": {
+            "type": "string",
+            "title": "Image Version",
+            "description": "Changes whenever the photo renders differently; add it to image URLs.",
+            "default": ""
           }
         },
         "additionalProperties": false,
@@ -2558,7 +2565,8 @@
           "rating",
           "style_id",
           "has_overrides",
-          "sidecar_jpeg"
+          "sidecar_jpeg",
+          "image_version"
         ],
         "title": "Photo",
         "description": "A source photo known to the catalog. The file itself is never modified."

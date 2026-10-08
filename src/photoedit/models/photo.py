@@ -35,6 +35,9 @@ class Photo(BaseModel):
     sidecar_jpeg: str | None = Field(
         default=None, description="Camera JPEG saved next to a RAW original (read-only), if any."
     )
+    image_version: str = Field(
+        default="", description="Changes whenever the photo renders differently; add it to image URLs."
+    )
 
 
 class PhotoEdit(BaseModel):

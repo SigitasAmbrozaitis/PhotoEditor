@@ -74,16 +74,6 @@ def test_small_images_are_not_enlarged(setup: tuple[ImageCache, Path, Path]) -> 
     assert _size(cache.thumbnail(photo)) == (120, 90)
 
 
-def test_preview_base_is_half_size_and_resized_on_request(setup: tuple[ImageCache, Path, Path]) -> None:
-    cache, _, photos = setup
-    photo = _jpeg_photo(photos, size=(1200, 800))
-    assert _size(cache.preview(photo)) == (600, 400)
-    assert cache.preview_path(photo.id).is_file()
-    assert _size(cache.preview(photo, 300)) == (300, 200)
-    assert cache.preview(photo, 300) == cache.preview(photo, 300)  # served from memory
-    assert _size(cache.preview(photo, 4096)) == (600, 400)  # never enlarged
-
-
 def test_render_identity_change_invalidates(tmp_path: Path) -> None:
     cache_dir, photos = tmp_path / "cache", tmp_path / "photos"
     guard = PathGuard(writable_roots=[cache_dir])
@@ -117,7 +107,6 @@ def test_originals_are_untouched(setup: tuple[ImageCache, Path, Path]) -> None:
     photo = _jpeg_photo(photos)
     before = (photo.path.read_bytes(), photo.path.stat().st_mtime_ns)
     cache.thumbnail(photo)
-    cache.preview(photo, 200)
     assert (photo.path.read_bytes(), photo.path.stat().st_mtime_ns) == before
     assert [p.name for p in photos.iterdir()] == ["a.jpg"]
 
@@ -128,14 +117,14 @@ def test_concurrent_requests_decode_once(
     cache, _, photos = setup
     photo = _jpeg_photo(photos)
     calls: list[int] = []
-    real_decode = cache_module.decode
+    real_source = cache_module._thumbnail_source
 
-    def counting_decode(path: Path, options: object) -> object:
+    def counting(path: Path) -> Image.Image:
         calls.append(1)
-        return real_decode(path, options)  # type: ignore[arg-type]
+        return real_source(path)
 
-    monkeypatch.setattr(cache_module, "decode", counting_decode)
-    threads = [threading.Thread(target=cache.preview, args=(photo,)) for _ in range(4)]
+    monkeypatch.setattr(cache_module, "_thumbnail_source", counting)
+    threads = [threading.Thread(target=cache.thumbnail, args=(photo,)) for _ in range(4)]
     for thread in threads:
         thread.start()
     for thread in threads:
@@ -147,14 +136,13 @@ def test_clear_removes_everything(setup: tuple[ImageCache, Path, Path]) -> None:
     cache, cache_dir, photos = setup
     photo = _jpeg_photo(photos)
     cache.thumbnail(photo)
-    cache.preview(photo, 100)
-    assert cache.clear() == 2
-    assert not (cache_dir / "thumbs").exists() and not (cache_dir / "previews").exists()
+    assert cache.clear() == 1
+    assert not (cache_dir / "thumbs").exists()
     assert cache.clear() == 0
 
 
 @pytest.mark.golden
-def test_real_raf_thumbnail_and_preview(sample_raw: Path, tmp_path: Path) -> None:
+def test_real_raf_embedded_thumbnail(sample_raw: Path, tmp_path: Path) -> None:
     sha = hashlib.sha256(sample_raw.read_bytes()).hexdigest()
     photo = CatalogPhoto(
         id=photo_id(sha),
@@ -169,9 +157,7 @@ def test_real_raf_thumbnail_and_preview(sample_raw: Path, tmp_path: Path) -> Non
     guard = PathGuard(writable_roots=[tmp_path], protected_roots=[sample_raw.parent])
     cache = ImageCache(tmp_path / "cache", guard)
     thumb = _size(cache.thumbnail(photo))
-    preview = _size(cache.preview(photo, 1600))
-    assert max(thumb) == THUMBNAIL_LONG_EDGE and max(preview) == 1600
-    assert (thumb[0] < thumb[1]) == (preview[0] < preview[1])  # both upright the same way
+    assert max(thumb) == THUMBNAIL_LONG_EDGE and thumb[0] < thumb[1]  # the portrait shot is upright
     assert hashlib.sha256(sample_raw.read_bytes()).hexdigest() == sha
 
 

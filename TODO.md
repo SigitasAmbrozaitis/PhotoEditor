@@ -434,7 +434,7 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
   `style_id` (unused until Phase 4), sparse `overrides` such as `{"tone.exposure": 0.5}`); load/save/reset, effective
   parameters = defaults ← style ← overrides; atomic writes through the path guard. Catalog schema v2 (the migration hook's
   first use): `has_edits`, as-shot temperature/tint (filled lazily for photos imported before).
-- [ ] **P3.15** Previews and thumbnails through the pipeline: `before` = default look, `after` = the photo's edit; the cache
+- [x] **P3.15** Previews and thumbnails through the pipeline: `before` = default look, `after` = the photo's edit; the cache
   key adds a hash of the edit; thumbnails per P3.1 (background job after import, re-render on edit).
 - [ ] **P3.16** Golden images (P3.1): a committed synthetic reference (color chart + gradients rendered with fixed
   parameters, compared exactly), plus `photoedit golden update` writing local references for a few real RAFs into

@@ -85,6 +85,7 @@ export function makePhoto(i: number, overrides: Partial<Photo> = {}): Photo {
     style_id: null,
     has_overrides: false,
     sidecar_jpeg: `${FOLDER}/DSCF${1000 + i}.JPG`,
+    image_version: `v${i}`,
     ...overrides,
   }
 }

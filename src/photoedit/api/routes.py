@@ -113,7 +113,7 @@ def photo_preview(
     ] = False,
     size: Annotated[int, Query(ge=256, le=4096, description="Long edge in pixels.")] = 1600,
 ) -> Response:
-    data = svc.library.preview(photo_id, size)
+    data = svc.library.preview(photo_id, size, before=before)
     return Response(content=data, media_type=JPEG, headers=IMAGE_CACHE)
 
 

@@ -169,10 +169,12 @@ def import_(
 def cache_clear(config: ConfigOption = None) -> None:
     """Delete all cached thumbnails and previews (they are rebuilt on demand)."""
     from photoedit.core.cache import ImageCache
+    from photoedit.core.renderer import Renderer
     from photoedit.safety import guard_from_settings
 
     settings = load_settings(config)
-    removed = ImageCache(settings.cache_dir, guard_from_settings(settings)).clear()
+    guard = guard_from_settings(settings)
+    removed = ImageCache(settings.cache_dir, guard).clear() + Renderer(settings.cache_dir, guard).clear()
     typer.echo(f"Removed {removed} cached file{'s' if removed != 1 else ''} from {settings.cache_dir}")
 
 

@@ -146,7 +146,7 @@ def test_photo_detail_thumbnail_preview(client: TestClient, photos: Path) -> Non
     assert thumb.status_code == 200 and thumb.headers["content-type"] == "image/jpeg"
     assert "max-age" in thumb.headers["cache-control"]
     preview = client.get(f"/api/photos/{pid}/preview", params={"size": 256})
-    assert Image.open(io.BytesIO(preview.content)).size == (160, 100)  # half of 320×200, never enlarged
+    assert Image.open(io.BytesIO(preview.content)).size == (256, 160)
     before = client.get(f"/api/photos/{pid}/preview", params={"size": 256, "before": True})
     assert before.content == preview.content  # no edits until Phase 3
     assert client.get(f"/api/photos/{pid}/preview", params={"size": 10}).status_code == 422
@@ -244,7 +244,7 @@ def test_apply_and_export_job_on_real_photos(client: TestClient, photos: Path) -
         "C:/Users/ambro/Pictures/Exports/b.jpg",
     ]
     listed = TypeAdapter(list[Job]).validate_python(client.get("/api/jobs").json())
-    assert [j.kind for j in listed] == ["apply_and_export", "import"]  # newest first
+    assert [j.kind for j in listed] == ["apply_and_export", "render", "import"]  # newest first
 
 
 def test_cancel_job_endpoint(client: TestClient, photos: Path) -> None:

@@ -275,7 +275,7 @@ def test_v1_catalog_is_migrated(workspace: Path) -> None:
 
 def test_has_edits_flag_survives_reimport(catalog: Catalog) -> None:
     catalog.upsert(_photo(1, film_simulation="Provia", dynamic_range=100, as_shot_temperature=5000.0))
-    catalog.set_has_edits(photo_id(_sha(1)), True)
+    catalog.set_edit(photo_id(_sha(1)), "rev1")
     catalog.upsert(_photo(1, film_simulation="Provia", dynamic_range=100, as_shot_temperature=5000.0))
     stored = catalog.get(photo_id(_sha(1)))
     assert stored is not None and stored.has_edits

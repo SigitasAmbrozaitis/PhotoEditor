@@ -18,6 +18,7 @@ from photoedit.core.edits import EditStore, EffectiveEdit
 from photoedit.core.errors import NotFoundError
 from photoedit.core.jobs import ItemResult, ItemSpec, JobManager
 from photoedit.core.metadata import MetadataError, PhotoMetadata, read_metadata, read_metadata_from_bytes
+from photoedit.core.renderer import Renderer
 from photoedit.core.scan import ScannedPhoto, SourceKind, scan_folder
 from photoedit.models import (
     AdjustmentParams,
@@ -36,6 +37,7 @@ from photoedit.safety import PathGuard
 
 CURRENT_FOLDER = "current_folder"
 IMPORT_THREADS = 4  # hashing and JPEG decoding release the GIL, so a few threads overlap disk and CPU
+RENDER_THREADS = 4  # LibRaw and the numpy stages also release the GIL for most of their work
 _HASH_CHUNK = 1 << 20
 
 type Clock = Callable[[], datetime]
@@ -58,10 +60,12 @@ class Library:
         suggested_folder: Path | None = None,
         clock: Clock | None = None,
         edits: EditStore | None = None,
+        renderer: Renderer | None = None,
     ) -> None:
         self.catalog = catalog
         # Edits live next to the catalog in the workspace unless told otherwise.
         self.edits = edits or EditStore(catalog.path.parent / "edits", guard)
+        self.renderer = renderer or Renderer(cache.root, guard)
         self.cache = cache
         self.jobs = jobs
         self._guard = guard
@@ -105,6 +109,7 @@ class Library:
             self.catalog.save_folder(
                 FolderRecord(path=root, include_subfolders=include_subfolders, last_imported_at=self._clock())
             )
+            self.render_thumbnails([pid for pid, _ in outcomes.values()])
             return _summary(
                 Counter(o for _, o in outcomes.values()), len(scan.photos), len(scan.skipped), missing
             )
@@ -234,7 +239,8 @@ class Library:
             offset=offset,
             limit=limit,
         )
-        return Page[Photo](items=[p.to_photo() for p in items], total=total, offset=offset, limit=limit)
+        photos = [p.to_photo(self.image_version(p)) for p in items]
+        return Page[Photo](items=photos, total=total, offset=offset, limit=limit)
 
     def photo(self, photo_id: str) -> CatalogPhoto:
         photo = self.catalog.get(photo_id)
@@ -246,7 +252,7 @@ class Library:
         photo = self.photo(photo_id)
         edit = self.edits.effective(photo)
         return PhotoDetail(
-            photo=photo.to_photo(),
+            photo=photo.to_photo(self.image_version(photo)),
             edit=PhotoEdit(
                 photo_id=photo.id,
                 style_id=edit.style_id,
@@ -263,27 +269,72 @@ class Library:
     def save_edit(self, photo_id: str, adjustments: AdjustmentParams) -> EffectiveEdit:
         photo = self.photo(photo_id)
         result = self.edits.save(photo, adjustments)
-        self.catalog.set_has_edits(photo.id, bool(result.overridden))
+        self._record_edit(photo, result)
         return result
 
     def reset_edit(self, photo_id: str) -> EffectiveEdit:
         photo = self.photo(photo_id)
         self.edits.reset(photo.id)
-        self.catalog.set_has_edits(photo.id, False)
-        return self.edits.effective(photo)
+        result = self.edits.effective(photo)
+        self._record_edit(photo, result)
+        return result
+
+    def _record_edit(self, photo: CatalogPhoto, edit: EffectiveEdit) -> None:
+        default = self.edits.default(photo).revision
+        self.catalog.set_edit(photo.id, edit.revision if edit.revision != default else None)
+        # Renders of older edits are dead weight now; keep the current edit and the unedited "before".
+        self.renderer.prune(photo.id, keep={edit.revision, default})
+
+    def image_version(self, photo: CatalogPhoto) -> str:
+        """Changes whenever the photo renders differently (new edit, new engine or library version)."""
+        key = f"{self.renderer.identity}|{photo.edit_revision or 'unedited'}"
+        return hashlib.sha256(key.encode()).hexdigest()[:10]
+
+    # ---- images
 
     def thumbnail(self, photo_id: str) -> bytes:
+        """The rendered thumbnail; for an unedited photo not rendered yet, the camera's embedded one meanwhile
+        (the thumbnail job renders them after an import)."""
         photo = self.photo(photo_id)
-        if self.cache.has_thumbnail(photo.id):
+        edit = self.edits.effective(photo)
+        if self.renderer.has_thumbnail(photo, edit):
+            return self.renderer.thumbnail(photo, edit)
+        if photo.edit_revision is None and self.cache.has_thumbnail(photo.id):
             return self.cache.thumbnail(photo)
         self._require_original(photo)
-        return self.cache.thumbnail(photo)
+        return self.renderer.thumbnail(photo, edit)
 
-    def preview(self, photo_id: str, long_edge: int) -> bytes:
+    def preview(self, photo_id: str, long_edge: int, *, before: bool = False) -> bytes:
+        """The photo with its edit (``before`` = unedited) at ``long_edge`` px."""
         photo = self.photo(photo_id)
-        if not self.cache.preview_path(photo.id).is_file():
+        edit = self.edits.default(photo) if before else self.edits.effective(photo)
+        if not self.renderer.preview_path(photo, edit, long_edge).is_file():
             self._require_original(photo)
-        return self.cache.preview(photo, long_edge)
+        return self.renderer.preview(photo, edit, long_edge)
+
+    def render_thumbnails(self, photo_ids: list[str]) -> Job | None:
+        """Background job rendering the thumbnails that aren't rendered yet. None if nothing to do."""
+        todo: list[CatalogPhoto] = []
+        for pid in photo_ids:
+            photo = self.catalog.get(pid)
+            if photo is not None and not self.renderer.has_thumbnail(photo, self.edits.effective(photo)):
+                todo.append(photo)
+        if not todo:
+            return None
+
+        def work(index: int) -> ItemResult:
+            photo = todo[index]
+            self.renderer.thumbnail(photo, self.edits.effective(photo))
+            return ItemResult(photo_id=photo.id)
+
+        noun = "photo" if len(todo) == 1 else "photos"
+        return self.jobs.submit(
+            JobKind.RENDER,
+            f"Render thumbnails for {len(todo)} {noun}",
+            [ItemSpec(filename=p.path.name, photo_id=p.id) for p in todo],
+            work,
+            parallel=RENDER_THREADS,
+        )
 
     def _require_original(self, photo: CatalogPhoto) -> None:
         if not photo.path.is_file():

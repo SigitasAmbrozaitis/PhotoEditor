@@ -52,7 +52,7 @@ function PhotoTile({
     >
       <div className="checker flex aspect-square items-center justify-center">
         <img
-          src={imageUrls.thumbnail(photo.id)}
+          src={imageUrls.thumbnail(photo.id, photo.image_version)}
           alt=""
           loading="lazy"
           draggable={false}

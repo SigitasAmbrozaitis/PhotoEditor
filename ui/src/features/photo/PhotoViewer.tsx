@@ -40,7 +40,7 @@ export function PhotoViewer({ photo, mode, crop }: { photo: Photo; mode: ViewMod
   const box = useElementSize(boxRef)
   const fitted = fitInside(box, photo.width / photo.height)
   const [split, setSplit] = useState(50)
-  const after = imageUrls.preview(photo.id, { size: 1600 })
+  const after = imageUrls.preview(photo.id, { size: 1600, version: photo.image_version })
   const before = imageUrls.preview(photo.id, { size: 1600, before: true })
   const shown = mode === 'before' ? before : after
   // The first preview of a RAW takes a second or two to render; show a spinner until the image arrives.

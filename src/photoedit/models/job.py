@@ -13,6 +13,7 @@ from photoedit.models.export import ExportSettings
 
 class JobKind(StrEnum):
     IMPORT = "import"
+    RENDER = "render"
     APPLY_STYLE = "apply_style"
     EXPORT = "export"
     APPLY_AND_EXPORT = "apply_and_export"

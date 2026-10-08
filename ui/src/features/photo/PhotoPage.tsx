@@ -67,7 +67,7 @@ function Filmstrip({ photos, currentId }: { photos: Photo[]; currentId: string }
             p.id === currentId ? 'border-accent ring-2 ring-accent' : 'border-line opacity-70 hover:opacity-100',
           )}
         >
-          <img src={imageUrls.thumbnail(p.id)} alt="" loading="lazy" className="max-h-full max-w-full object-contain" />
+          <img src={imageUrls.thumbnail(p.id, p.image_version)} alt="" loading="lazy" className="max-h-full max-w-full object-contain" />
         </Link>
       ))}
     </nav>

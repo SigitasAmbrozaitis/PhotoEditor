@@ -56,6 +56,7 @@ CREATE TABLE photos (
     style_id TEXT,
     missing INTEGER NOT NULL DEFAULT 0,
     has_edits INTEGER NOT NULL DEFAULT 0,
+    edit_revision TEXT,
     as_shot_temperature REAL,
     as_shot_tint REAL,
     film_simulation TEXT,
@@ -71,6 +72,7 @@ def _v1_to_v2(db: sqlite3.Connection) -> None:
     # new facts on their next (incremental) re-import; until then they read as unknown.
     for column in (
         "has_edits INTEGER NOT NULL DEFAULT 0",
+        "edit_revision TEXT",
         "as_shot_temperature REAL",
         "as_shot_tint REAL",
         "film_simulation TEXT",
@@ -120,12 +122,13 @@ class CatalogPhoto(BaseModel):
     style_id: str | None = None
     missing: bool = False
     has_edits: bool = False
+    edit_revision: str | None = None
     as_shot_temperature: float | None = None
     as_shot_tint: float | None = None
     film_simulation: str | None = None
     dynamic_range: int | None = None
 
-    def to_photo(self) -> Photo:
+    def to_photo(self, image_version: str = "") -> Photo:
         return Photo(
             id=self.id,
             path=self.path.as_posix(),
@@ -144,6 +147,7 @@ class CatalogPhoto(BaseModel):
             rating=self.rating,
             style_id=self.style_id,
             has_overrides=self.has_edits,
+            image_version=image_version,
             sidecar_jpeg=self.sidecar_jpeg.as_posix() if self.sidecar_jpeg else None,
         )
 
@@ -199,7 +203,9 @@ class Catalog:
         columns = ", ".join(values)
         placeholders = ", ".join(f":{name}" for name in values)
         updates = ", ".join(
-            f"{name} = excluded.{name}" for name in values if name not in ("id", "rating", "has_edits")
+            f"{name} = excluded.{name}"
+            for name in values
+            if name not in ("id", "rating", "has_edits", "edit_revision")
         )
         with self._transaction() as db:
             # Another row may hold this path with older content (the file was edited elsewhere): replace it.
@@ -210,9 +216,13 @@ class Catalog:
                 values,
             )
 
-    def set_has_edits(self, photo_id: str, value: bool) -> None:
+    def set_edit(self, photo_id: str, revision: str | None) -> None:
+        """Record a photo's current edit revision (None = unedited)."""
         with self._transaction() as db:
-            db.execute("UPDATE photos SET has_edits = ? WHERE id = ?", (int(value), photo_id))
+            db.execute(
+                "UPDATE photos SET has_edits = ?, edit_revision = ? WHERE id = ?",
+                (int(revision is not None), revision, photo_id),
+            )
 
     def mark_missing(self, folder: Path, *, recursive: bool, present_ids: set[str]) -> int:
         """Flag photos in ``folder`` that weren't seen by the last import. Returns how many were flagged."""
@@ -373,6 +383,7 @@ def _row_values(photo: CatalogPhoto) -> dict[str, Any]:
         "style_id": photo.style_id,
         "missing": int(photo.missing),
         "has_edits": int(photo.has_edits),
+        "edit_revision": photo.edit_revision,
         "as_shot_temperature": photo.as_shot_temperature,
         "as_shot_tint": photo.as_shot_tint,
         "film_simulation": photo.film_simulation,

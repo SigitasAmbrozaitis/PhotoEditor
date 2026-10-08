@@ -838,7 +838,7 @@ export interface components {
          * JobKind
          * @enum {string}
          */
-        JobKind: "import" | "apply_style" | "export" | "apply_and_export";
+        JobKind: "import" | "render" | "apply_style" | "export" | "apply_and_export";
         /**
          * JobStatus
          * @enum {string}
@@ -1082,6 +1082,12 @@ export interface components {
              * @description Camera JPEG saved next to a RAW original (read-only), if any.
              */
             sidecar_jpeg: string | null;
+            /**
+             * Image Version
+             * @description Changes whenever the photo renders differently; add it to image URLs.
+             * @default
+             */
+            image_version: string;
         };
         /** PhotoDetail */
         PhotoDetail: {

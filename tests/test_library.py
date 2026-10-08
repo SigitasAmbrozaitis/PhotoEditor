@@ -84,7 +84,7 @@ def test_first_import(env: Env) -> None:
     thumb = Image.open(io.BytesIO(env.library.thumbnail(first.id)))
     assert thumb.size == (320, 200)  # small originals are not enlarged
     preview = Image.open(io.BytesIO(env.library.preview(first.id, 1600)))
-    assert preview.size == (160, 100)  # the half-size preview
+    assert preview.size == (320, 200)  # rendered at its own size: never enlarged
     assert env.library.photo_detail(first.id).edit.style_id is None
 
 
@@ -293,3 +293,40 @@ def test_jpeg_originals_default_to_no_sharpening(env: Env) -> None:
     env.run_import()
     pid = env.library.list_photos().items[0].id
     assert env.library.edit(pid).adjustments.detail.sharpening.amount == 0
+
+
+def test_image_version_changes_with_the_edit(env: Env) -> None:
+    fill_folder(env.photos)
+    env.run_import()
+    first = env.library.list_photos(sort=PhotoSort.NAME).items[0]
+    edited = env.library.edit(first.id).adjustments.model_copy(deep=True)
+    edited.tone.exposure = 0.5
+    env.library.save_edit(first.id, edited)
+    after = env.library.list_photos(sort=PhotoSort.NAME).items[0]
+    assert after.image_version != first.image_version
+    env.library.reset_edit(first.id)
+    assert env.library.list_photos(sort=PhotoSort.NAME).items[0].image_version == first.image_version
+
+
+def test_import_renders_thumbnails_in_the_background(env: Env) -> None:
+    fill_folder(env.photos)
+    env.run_import()
+    render_job = next(j for j in env.library.jobs.list() if j.kind == "render")
+    done = env.library.jobs.wait(render_job.id, TIMEOUT)
+    assert done.status == JobStatus.DONE and done.total == 3
+    for photo in env.library.list_photos().items:
+        stored = env.library.photo(photo.id)
+        assert env.library.renderer.has_thumbnail(stored, env.library.edit(photo.id))
+    env.run_import()  # nothing left to render: no new render job
+    assert sum(1 for j in env.library.jobs.list() if j.kind == "render") == 1
+
+
+def test_before_and_after_previews(env: Env) -> None:
+    fill_folder(env.photos)
+    env.run_import()
+    pid = env.library.list_photos(sort=PhotoSort.NAME).items[0].id
+    assert env.library.preview(pid, 256) == env.library.preview(pid, 256, before=True)
+    edited = env.library.edit(pid).adjustments.model_copy(deep=True)
+    edited.presence.saturation = -100
+    env.library.save_edit(pid, edited)
+    assert env.library.preview(pid, 256) != env.library.preview(pid, 256, before=True)

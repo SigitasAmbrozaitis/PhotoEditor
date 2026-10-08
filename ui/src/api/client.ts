@@ -49,12 +49,15 @@ export const api = {
   put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
 }
 
-// Image URLs (served as JPEG by the backend).
+// Image URLs (served as JPEG by the backend). `version` (Photo.image_version) changes whenever the photo renders
+// differently, so the browser never shows a stale cached image after an edit.
 export const imageUrls = {
-  thumbnail: (photoId: string) => `/api/photos/${encodeURIComponent(photoId)}/thumbnail`,
-  preview: (photoId: string, opts: { before?: boolean; size?: number } = {}) =>
+  thumbnail: (photoId: string, version?: string) =>
+    buildUrl(`/api/photos/${encodeURIComponent(photoId)}/thumbnail`, { v: version }),
+  preview: (photoId: string, opts: { before?: boolean; size?: number; version?: string } = {}) =>
     buildUrl(`/api/photos/${encodeURIComponent(photoId)}/preview`, {
       before: opts.before ? true : undefined,
       size: opts.size,
+      v: opts.before ? undefined : opts.version,
     }),
 }

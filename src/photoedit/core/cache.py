@@ -1,6 +1,8 @@
-"""Disk cache of thumbnails and previews (disposable: deleting ``cache/`` only costs time).
+"""Caches (disposable: deleting ``cache/`` only costs time): the camera's embedded thumbnails on disk, shown
+until a photo's rendered thumbnail exists, and decoded linear bases in RAM. Rendered previews and
+thumbnails are cached by ``core.renderer``.
 
-Files live under a folder named after the decoder's render identity, so a LibRaw/Pillow upgrade or a
+Embedded thumbnails live under a folder named after the decoder's identity, so a LibRaw/Pillow upgrade or a
 ``DECODER_VERSION`` bump never serves pixels made by an older decoder.
 """
 
@@ -33,9 +35,6 @@ from photoedit.safety import PathGuard
 
 THUMBNAIL_LONG_EDGE = 400
 THUMBNAIL_QUALITY = 85
-PREVIEW_QUALITY = 92
-RESIZED_QUALITY = 90
-_MEMORY_ITEMS = 64  # resized previews kept in RAM (about 0.2 to 0.5 MB each)
 
 
 class ImageCache:
@@ -43,10 +42,12 @@ class ImageCache:
         self._root = cache_dir
         self._guard = guard
         self.identity = identity or render_identity()
-        self._memory: OrderedDict[tuple[str, int], bytes] = OrderedDict()
-        self._memory_lock = threading.Lock()
         self._build_locks: dict[Path, threading.Lock] = {}
         self._build_locks_lock = threading.Lock()
+
+    @property
+    def root(self) -> Path:
+        return self._root
 
     # ---- thumbnails
 
@@ -69,44 +70,10 @@ class ImageCache:
                 return path.read_bytes()
             return self.put_thumbnail(photo.id, _thumbnail_source(photo.path))
 
-    # ---- previews
-
-    def preview_path(self, photo_id: str) -> Path:
-        return self._root / "previews" / self.identity / f"{photo_id}.jpg"
-
-    def preview(self, photo: CatalogPhoto, long_edge: int | None = None) -> bytes:
-        """The half-size preview, scaled down to ``long_edge`` when that is smaller."""
-        base = self._base_preview(photo)
-        if long_edge is None:
-            return base
-        key = (photo.id, long_edge)
-        with self._memory_lock:
-            if key in self._memory:
-                self._memory.move_to_end(key)
-                return self._memory[key]
-        with Image.open(io.BytesIO(base)) as image:
-            if max(image.size) <= long_edge:
-                return base
-            data = _encode(_fit(image, long_edge), RESIZED_QUALITY)
-        with self._memory_lock:
-            self._memory[key] = data
-            while len(self._memory) > _MEMORY_ITEMS:
-                self._memory.popitem(last=False)
-        return data
-
-    def _base_preview(self, photo: CatalogPhoto) -> bytes:
-        path = self.preview_path(photo.id)
-        with self._build_lock(path):
-            if path.is_file():
-                return path.read_bytes()
-            data = _encode(Image.fromarray(decode(photo.path, PREVIEW)), PREVIEW_QUALITY)
-            self._guard.write_atomic(path, data)
-            return data
-
     # ---- maintenance
 
     def clear(self) -> int:
-        """Delete every cached file. Returns how many were removed."""
+        """Delete every cached embedded thumbnail (plus Phase 2 previews, if any). Returns files removed."""
         removed = 0
         for sub in ("thumbs", "previews"):
             folder = self._root / sub
@@ -114,12 +81,10 @@ class ImageCache:
                 self._guard.assert_writable(folder)
                 removed += sum(1 for p in folder.rglob("*") if p.is_file())
                 shutil.rmtree(folder)
-        with self._memory_lock:
-            self._memory.clear()
         return removed
 
     def _build_lock(self, path: Path) -> threading.Lock:
-        """One lock per file, so two requests for the same preview decode the RAW once, not twice."""
+        """One lock per file, so two requests for the same thumbnail decode the RAW once, not twice."""
         with self._build_locks_lock:
             return self._build_locks.setdefault(path, threading.Lock())
 
@@ -186,6 +151,11 @@ class LinearCache:
                 while len(self._memory) > self._items:
                     self._memory.popitem(last=False)
             return image
+
+    def peek(self, photo_id: str) -> LinearImage | None:
+        """The cached base if it's in memory, without decoding or changing the LRU order."""
+        with self._lock:
+            return self._memory.get(photo_id)
 
     def clear(self) -> None:
         with self._lock:
