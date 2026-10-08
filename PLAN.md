@@ -23,6 +23,10 @@
 | Photo identity | **Content hash (SHA-256).** Moved/renamed folders keep their edits; identical copies are one photo | 2026-10-07 |
 | Phase 2 preview | **LibRaw half-size, camera WB, sRGB, auto-brightness on** (temporary until the Phase 3 pipeline) | 2026-10-07 |
 | LibRaw threading | **Single-threaded LibRaw; parallelism via worker processes.** LibRaw's OpenMP decode of X-T3 RAFs is not deterministic (two decodes differed by up to 184 levels); 1 thread is bit-identical but ~5× slower per photo (full-size ≈ 13 s) | 2026-10-07 |
+| Default look (Phase 3) | **Match the camera JPEGs**: a per-camera profile (baseline EV, 3×3 matrix, tone curve, 8-band HSL) fitted from RAF + camera JPEG pairs; first profile "X-T3 · Provia" (all samples: Provia, DR100). Generic profile for other cameras; none for JPEG/TIFF originals | 2026-10-08 |
+| Thumbnails (Phase 3) | **Rendered by the pipeline** (background job after import; re-render on edit), embedded JPEG only until then | 2026-10-08 |
+| Golden images | **Real-photo references stay local** (git-ignored); only synthetic references are committed | 2026-10-08 |
+| Later-phase parameters | **Rejected with a clear error** when set to non-default values before their phase | 2026-10-08 |
 | ExifTool / OpenCV timing | **ExifTool joins in Phase 5** (writing export metadata); Phase 2 reads EXIF with Pillow. **OpenCV joins in Phase 3** | 2026-10-07 |
 
 **Target machine**: i7-12700H (14 cores / 20 threads), 16 GB RAM, RTX 3060 Laptop (6 GB), Windows 11.

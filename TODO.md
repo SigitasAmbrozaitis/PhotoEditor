@@ -353,7 +353,8 @@ Facts from a probe of 9 X-T3 RAFs (2026-10-08): LibRaw's linear camera-space dec
 (built from `rgb_xyz_matrix`, LibRaw's method) reproduces LibRaw's sRGB output exactly (mean diff 0.00001), so the
 pipeline can own white balance and color conversion. "As shot" Kelvin + tint can be recovered from the camera
 multipliers (fit residual < 0.01; these shots ≈ 4950–5025 K). There is **no constant exposure offset** to the camera
-JPEGs (−1.2 to +1.1 EV depending on scene and tone range), so the default look is a design choice (P3.1). Numpy
+JPEGs (−1.2 to +1.1 EV depending on scene and tone range): the camera's tone curve differs, so matching it needs a
+fitted curve, not just an exposure value (P3.13). Numpy
 pipeline math at preview size runs in ~100–200 ms, so live sliders are feasible.
 
 **Engine design** (fixed order, float32):
@@ -370,20 +371,22 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
 - [x] **P3.0** Detail this phase into items. ⛔ STOP for the user to review it.
 
 ### Decisions to confirm at phase start (ask the user)
-- [ ] **P3.1** Confirm (defaults proposed; recorded in PLAN.md §0 once confirmed):
-  - **Default look** of an unedited photo: a generic base tone curve (gentle S, like Adobe's default) plus a per-camera
-    baseline exposure measured from the X-T3 camera JPEGs. Matching the camera's film simulations exactly is style
-    fitting from RAW + JPEG pairs, which is Phase 8 (it could become a "Camera standard" style there).
+- [x] **P3.1** Confirmed 2026-10-08 (recorded in PLAN.md §0):
+  - **Default look = match the camera JPEGs.** An unedited photo renders through a **camera profile** fitted from the
+    RAF + camera JPEG pairs (P3.13). All 67 samples were shot with **Provia/Standard at DR100** (read from the Fuji maker
+    notes), so the first profile is "FUJIFILM X-T3 · Provia". Cameras without a profile get a generic profile (gentle
+    S-curve, no color change). JPEG/TIFF originals are already rendered and get no profile.
   - **Thumbnails** go through the same pipeline as the Photo view: after an import, a background job re-renders them
     (≈ 15 s per 67 photos with parallel workers), and a photo's thumbnail is re-rendered when its edit changes. Until
     then, the embedded JPEG thumbnail is shown.
   - **Golden images of your real photos stay local** (git-ignored, regenerated with a command); only synthetic golden
-    images are committed. (Committing renders of personal photos to GitHub needs your explicit OK.)
+    images are committed.
   - **Parameters planned for later phases** (geometry, clarity, texture, dehaze, noise reduction, grain, lens) are
     **rejected with a clear error** when set to a non-default value, instead of being silently ignored (golden rule 5).
 
 ### Engine
-- [ ] **P3.2** Add `opencv-python-headless` (blur/resize for sharpening and previews). Commit `uv.lock`.
+- [ ] **P3.2** Add `opencv-python-headless` (blur/resize for sharpening and previews) and `scipy` (least-squares fitting
+  of the camera profile; reused for style fitting in Phase 8). Commit `uv.lock`.
 - [ ] **P3.3** `core/color.py`: the color math, all float64-exact and tested against published reference values:
   sRGB/Rec.2020/XYZ matrices and transfer functions; OKLab/OKLCh (Ottosson's reference values); Kelvin + tint ↔
   chromaticity (Planckian/daylight locus, tint perpendicular to it); Bradford adaptation; camera WB multipliers from
@@ -410,8 +413,20 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
   row and across threads). Rejects later-phase parameters (P3.1).
 - [ ] **P3.12** Property tests (hypothesis): any valid `AdjustmentParams` renders a small synthetic image with no NaN, no
   out-of-range values, and identical output on a second run; invalid parameters are rejected by the models.
-- [ ] **P3.13** Default look (P3.1): base tone curve + per-camera baseline exposure. A script fits the X-T3 baseline from
-  the camera JPEG pairs; the value and method are written down in `docs/default-look.md`.
+- [ ] **P3.13** Camera profile = the default look (P3.1). A profile is the first render stage after white balance, so
+  user adjustments work on top of it, like Lightroom's camera profiles:
+  - `CameraProfile` model (versioned JSON): camera make/model, film simulation, baseline exposure, a 3×3 color matrix
+    (linear Rec.2020), a monotone tone curve, and 8-band hue/saturation/luminance tweaks (OKLCh). Shipped profiles live
+    in the package (`src/photoedit/profiles/`); selection by camera, otherwise the generic profile.
+  - Fujifilm DR200/DR400 shots are underexposed 1/2 EV by the camera on purpose; the profile adds that back (DR read from
+    the maker notes at import). Only DR100 can be checked against the samples.
+  - `photoedit profile fit FOLDER` fits a profile from RAF + camera JPEG pairs: both downscaled (~512 px, center 90 % to
+    avoid the JPEG's lens corrections), clipped and near-black pixels excluded, least squares on OKLab differences, every
+    4th pair held out. It writes `output/profiles/<camera>.json` plus a report; the result is reviewed and copied into the
+    package by hand (the tool never writes into `src/`).
+  - Acceptance: mean ΔE2000 on the held-out pairs ≤ 3 (≈ "barely noticeable side by side"). If the parametric model
+    can't reach that, stop and discuss (fallback: a 3D LUT inside the profile, i.e. Phase 8's F3 pulled forward).
+  - `docs/default-look.md`: method, the fitted numbers, and ΔE before/after per held-out photo.
 
 ### Edits, previews, golden images
 - [ ] **P3.14** `core/edits.py`: per-photo edit JSON `workspace/edits/<photo-id>.json` (`schema_version`, `photo_id`,
@@ -435,7 +450,8 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
 - [ ] **P3.20** Photo view: sliders enabled for live parameters (later-phase ones stay disabled, labeled "Phase 6/9");
   numeric entry; double-click a slider to reset it; reset group / reset all; WB shows the as-shot values; changes save
   automatically (debounced) and the preview updates, keeping the old image until the new one arrives; Before = default
-  look; Ctrl+Z / Ctrl+Shift+Z undo/redo within the session.
+  look; a **Camera JPEG** view mode (when the photo has a sidecar) to compare the default look with what the camera
+  made; Ctrl+Z / Ctrl+Shift+Z undo/redo within the session.
 - [ ] **P3.21** Tone curve editor: an SVG point editor for RGB/R/G/B (drag points, click to add, double-click to remove)
   next to the parametric sliders.
 - [ ] **P3.22** Tests: Vitest for slider edit/reset/undo and the curve editor; Playwright: move a slider → the preview
@@ -445,7 +461,10 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
 ### 🧑 Human test: Phase 3
 0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`.
 1. `uv run photoedit ui` → the Library. Within a short while the thumbnails switch to the pipeline's default look
-   (a background job on Jobs).
+   (a background job on Jobs). They should look very close to the camera JPEGs (Provia).
+1b. Open a few photos and switch between **After** and **Camera JPEG**: colors, contrast and brightness match closely
+   (small differences in sharpening, noise and the very corners are expected; `docs/default-look.md` lists the measured
+   difference per photo).
 2. Open a photo → the Adjust panel's sliders are live (geometry and Phase 9 ones stay disabled, labeled). Move
    **Exposure** → the preview updates within about half a second. Try every group: white balance (temperature/tint start
    at the as-shot values), tone, presence, tone curve (drag a point), HSL, color grading, sharpening, vignette.
