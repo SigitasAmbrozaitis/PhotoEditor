@@ -156,3 +156,55 @@ def test_guard_from_settings_protects_sample_photos(tmp_path: Path) -> None:
     guard = guard_from_settings(s)
     assert guard.is_writable(tmp_path / "output" / "x.jpg")
     assert not guard.is_writable(tmp_path / "output" / "p" / "x.RAF")
+
+
+def test_write_atomic_writes_inside_writable_root(roots: tuple[Path, Path, Path]) -> None:
+    out, _, _ = roots
+    guard = PathGuard(writable_roots=[out])
+    target = guard.write_atomic(out / "sub" / "a.bin", b"hello")
+    assert target.read_bytes() == b"hello"
+    guard.write_atomic(out / "sub" / "a.bin", b"replaced")
+    assert target.read_bytes() == b"replaced"
+    assert [p.name for p in target.parent.iterdir()] == ["a.bin"]  # no temp files left behind
+
+
+def test_write_atomic_refuses_protected_and_outside(roots: tuple[Path, Path, Path]) -> None:
+    out, photos, other = roots
+    guard = PathGuard(writable_roots=[out, photos], protected_roots=[photos])
+    with pytest.raises(WriteNotAllowedError):
+        guard.write_atomic(photos / "x.jpg", b"x")
+    with pytest.raises(WriteNotAllowedError):
+        guard.write_atomic(other / "x.jpg", b"x")
+    assert list(photos.iterdir()) == [] and list(other.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    ("returned", "expected"),
+    [
+        (r"\\?\C:\work\cache\thumbs\a.jpg", r"C:\work\cache\thumbs\a.jpg"),
+        (r"\\?\UNC\server\share\a.jpg", r"\\server\share\a.jpg"),
+        (r"C:\work\cache\a.jpg", r"C:\work\cache\a.jpg"),
+    ],
+)
+def test_extended_length_prefix_is_stripped(
+    monkeypatch: pytest.MonkeyPatch, returned: str, expected: str
+) -> None:
+    """Windows realpath can keep the extended-length prefix while another thread creates the folder."""
+    from photoedit import safety
+
+    monkeypatch.setattr(safety.os.path, "realpath", lambda p: returned)
+    assert safety._normalize(Path("anything")) == Path(expected)
+
+
+def test_prefixed_realpath_still_counts_as_inside_the_root(
+    roots: tuple[Path, Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from photoedit import safety
+
+    out, _, _ = roots
+    guard = PathGuard(writable_roots=[out])
+    real = os.path.realpath
+    monkeypatch.setattr(
+        safety.os.path, "realpath", lambda p: "\\\\?\\" + real(p) if "thumbs" in str(p) else real(p)
+    )
+    assert guard.is_writable(out / "thumbs" / "a.jpg")

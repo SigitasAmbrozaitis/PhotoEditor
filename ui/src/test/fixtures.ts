@@ -1,8 +1,10 @@
 /** Typed test data. Shapes are checked against the generated API schema by the TypeScript compiler. */
 import type {
   AdjustmentParams,
+  DirListing,
   ExportPreset,
   Job,
+  LibraryFolder,
   LibraryInfo,
   Photo,
   PhotoDetail,
@@ -82,6 +84,7 @@ export function makePhoto(i: number, overrides: Partial<Photo> = {}): Photo {
     rating: i % 6,
     style_id: null,
     has_overrides: false,
+    sidecar_jpeg: `${FOLDER}/DSCF${1000 + i}.JPG`,
     ...overrides,
   }
 }
@@ -95,7 +98,37 @@ export const photos: Photo[] = [
   makePhoto(6),
 ]
 
-export const library: LibraryInfo = { folder: FOLDER, photo_count: photos.length }
+export const library: LibraryInfo = {
+  folder: FOLDER,
+  include_subfolders: false,
+  photo_count: photos.length,
+  suggested_folder: FOLDER,
+}
+
+export const emptyLibrary: LibraryInfo = {
+  folder: null,
+  include_subfolders: false,
+  photo_count: 0,
+  suggested_folder: 'C:/Users/me/Pictures/2026-08-11',
+}
+
+export const folders: LibraryFolder[] = [
+  { path: FOLDER, include_subfolders: false, photo_count: photos.length, last_imported_at: '2026-10-07T09:00:00Z' },
+  { path: 'C:/Photos/Older', include_subfolders: true, photo_count: 12, last_imported_at: '2026-10-06T09:00:00Z' },
+]
+
+export function dirListing(path: string | null): DirListing {
+  if (path === null) {
+    return { path: null, parent: null, photo_count: 0, entries: [{ name: 'C:', path: 'C:/', photo_count: null }] }
+  }
+  const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) || null : null
+  return {
+    path,
+    parent,
+    photo_count: path.endsWith('day1') ? 12 : 0,
+    entries: path.endsWith('day1') ? [] : [{ name: 'day1', path: `${path}/day1`, photo_count: 12 }],
+  }
+}
 
 function warmAdjustments(): AdjustmentParams {
   const a = neutralAdjustments()
@@ -221,10 +254,29 @@ export function makeJob(overrides: Partial<Job> = {}): Job {
     style_id: 'warm-film',
     preset_id: 'instagram-portrait',
     destination: 'C:/Exports/ig',
+    folder: null,
+    summary: null,
     items: [
       { photo_id: 'p001', filename: 'DSCF1001.RAF', status: 'done', message: null, output_path: 'C:/Exports/ig/DSCF1001.jpg' },
       { photo_id: 'p002', filename: 'DSCF1002.RAF', status: 'done', message: null, output_path: 'C:/Exports/ig/DSCF1002.jpg' },
     ],
     ...overrides,
   }
+}
+
+export function makeImportJob(overrides: Partial<Job> = {}): Job {
+  return makeJob({
+    id: 'j0009',
+    kind: 'import',
+    title: 'Import 67 photos from Test',
+    style_id: null,
+    preset_id: null,
+    destination: null,
+    folder: FOLDER,
+    total: 67,
+    completed: 67,
+    summary: '67 photos: 67 new; 1 other file skipped',
+    items: [{ photo_id: 'p001', filename: 'DSCF1001.RAF', status: 'done', message: 'new', output_path: null }],
+    ...overrides,
+  })
 }

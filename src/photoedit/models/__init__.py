@@ -16,7 +16,17 @@ from photoedit.models.job import (
     JobRequest,
     JobStatus,
 )
-from photoedit.models.photo import LibraryInfo, Photo, PhotoDetail, PhotoEdit, PhotoSort, SortOrder
+from photoedit.models.photo import (
+    ImportRequest,
+    LibraryFolder,
+    LibraryInfo,
+    OpenFolderRequest,
+    Photo,
+    PhotoDetail,
+    PhotoEdit,
+    PhotoSort,
+    SortOrder,
+)
 from photoedit.models.style import Style, StyleSample, StyleSummary, StyleView, style_view
 
 
@@ -39,12 +49,15 @@ __all__ = [
     "ExportPreset",
     "ExportRequest",
     "ExportSettings",
+    "ImportRequest",
     "Job",
     "JobItem",
     "JobKind",
     "JobRequest",
     "JobStatus",
+    "LibraryFolder",
     "LibraryInfo",
+    "OpenFolderRequest",
     "Page",
     "Photo",
     "PhotoDetail",

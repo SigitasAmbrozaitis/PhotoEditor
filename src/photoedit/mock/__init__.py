@@ -1,5 +1,5 @@
-"""Mock backend with fake data for the Phase 1 UI skeleton. Replaced by the real core in later phases."""
+"""Mock parts of the backend (fake styles, simulated apply/export jobs). Replaced in later phases."""
 
-from photoedit.mock.backend import MockBackend, NotFoundError
+from photoedit.mock.backend import MockBackend
 
-__all__ = ["MockBackend", "NotFoundError"]
+__all__ = ["MockBackend"]

@@ -17,6 +17,14 @@ def test_version() -> None:
     assert result.stdout.strip() == __version__
 
 
+def test_version_command_lists_native_libraries() -> None:
+    result = runner.invoke(cli.app, ["version"])
+    assert result.exit_code == 0, result.output
+    assert f"photoedit {__version__}" in result.stdout
+    assert "LibRaw 0." in result.stdout
+    assert "numpy" in result.stdout
+
+
 def test_version_is_semver() -> None:
     assert __version__.count(".") == 2
 
@@ -64,3 +72,31 @@ def test_openapi_prints_schema() -> None:
     schema = json.loads(result.stdout)
     assert "/api/health" in schema["paths"]
     assert "/api/jobs" in schema["paths"]
+
+
+def _config(tmp_path: Path) -> Path:
+    cfg = tmp_path / "c.toml"
+    cfg.write_text(f'project_root = "{(tmp_path / "project").as_posix()}"\n', encoding="utf-8")
+    return cfg
+
+
+def test_import_command(tmp_path: Path) -> None:
+    from helpers import fill_folder
+
+    photos = tmp_path / "photos"
+    fill_folder(photos)
+    cfg = _config(tmp_path)
+    result = runner.invoke(cli.app, ["import", str(photos), "--config", str(cfg)])
+    assert result.exit_code == 0, result.output
+    assert "3 photos: 3 new; 1 other file skipped" in result.stdout
+    assert (tmp_path / "project" / "workspace" / "catalog.sqlite").is_file()
+    again = runner.invoke(cli.app, ["import", str(photos), "--config", str(cfg)])
+    assert "3 unchanged" in again.stdout
+
+    cleared = runner.invoke(cli.app, ["cache", "clear", "--config", str(cfg)])
+    assert cleared.exit_code == 0 and "Removed 3 cached files" in cleared.stdout
+
+
+def test_import_command_rejects_missing_folder(tmp_path: Path) -> None:
+    result = runner.invoke(cli.app, ["import", str(tmp_path / "nope"), "--config", str(_config(tmp_path))])
+    assert result.exit_code != 0 and "folder not found" in result.output

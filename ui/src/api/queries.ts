@@ -2,9 +2,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import type {
+  DirListing,
   ExportPreset,
+  ImportRequest,
   Job,
   JobRequest,
+  LibraryFolder,
   LibraryInfo,
   PhotoDetail,
   PhotoPage,
@@ -25,6 +28,8 @@ export interface PhotoQuery {
 
 export const queryKeys = {
   library: ['library'] as const,
+  folders: ['library', 'folders'] as const,
+  dirs: (path: string | null) => ['dirs', path] as const,
   photos: (q: PhotoQuery) => ['photos', q] as const,
   photo: (id: string) => ['photo', id] as const,
   styles: ['styles'] as const,
@@ -36,14 +41,68 @@ export const queryKeys = {
 
 /** Poll quickly while something is running, otherwise not at all. */
 export const JOB_POLL_MS = 500
-const isActive = (job: Job) => job.status === 'queued' || job.status === 'running'
+export const isActive = (job: Job) => job.status === 'queued' || job.status === 'running'
+/** While an import runs, the grid refreshes this often so thumbnails fill in as they arrive. */
+export const IMPORT_REFRESH_MS = 1000
 
 export function useLibrary() {
   return useQuery({ queryKey: queryKeys.library, queryFn: () => api.get<LibraryInfo>('/api/library') })
 }
 
-export function usePhotos(q: PhotoQuery = {}) {
+export function useLibraryFolders() {
+  return useQuery({ queryKey: queryKeys.folders, queryFn: () => api.get<LibraryFolder[]>('/api/library/folders') })
+}
+
+/** Folder browser listing; `null` lists the drives. */
+export function useDirListing(path: string | null, enabled = true) {
   return useQuery({
+    queryKey: queryKeys.dirs(path),
+    queryFn: () => api.get<DirListing>('/api/fs/dirs', { path: path ?? undefined }),
+    enabled,
+    staleTime: 0,
+  })
+}
+
+/** Refresh everything that shows library contents (after an import, or when switching folders). */
+function invalidateLibrary(client: ReturnType<typeof useQueryClient>) {
+  void client.invalidateQueries({ queryKey: queryKeys.library })
+  void client.invalidateQueries({ queryKey: ['photos'] })
+  void client.invalidateQueries({ queryKey: ['photo'] })
+}
+
+export function useImportFolder() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (request: ImportRequest) => api.post<Job>('/api/library/import', request),
+    onSuccess: (job) => {
+      client.setQueryData(queryKeys.job(job.id), job)
+      void client.invalidateQueries({ queryKey: queryKeys.jobs })
+      invalidateLibrary(client)
+    },
+  })
+}
+
+export function useOpenFolder() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (folder: string) => api.put<LibraryInfo>('/api/library/current', { folder }),
+    onSuccess: (info) => {
+      client.setQueryData(queryKeys.library, info)
+      invalidateLibrary(client)
+    },
+  })
+}
+
+/** The newest import job, and whether it is still running. Polls via useJobs while one is active. */
+export function useLatestImport() {
+  const jobs = useJobs()
+  const latest = jobs.data?.find((j) => j.kind === 'import')
+  return { job: latest, running: latest ? isActive(latest) : false }
+}
+
+export function usePhotos(q: PhotoQuery = {}, { refetchInterval }: { refetchInterval?: number | false } = {}) {
+  return useQuery({
+    refetchInterval,
     queryKey: queryKeys.photos(q),
     queryFn: ({ signal }) =>
       api.get<PhotoPage>(

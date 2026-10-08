@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
+import * as fx from '../../test/fixtures'
 import { mockApi, renderApp } from '../../test/render'
 
 async function grid() {
@@ -13,9 +14,77 @@ describe('Library', () => {
     const photos = await grid()
     expect(photos.getAllByRole('option')).toHaveLength(6)
     expect(screen.getByRole('navigation', { name: 'Main' })).toBeInTheDocument()
-    expect(screen.getByText('DEMO DATA')).toBeInTheDocument()
+    expect(screen.queryByText('DEMO DATA')).not.toBeInTheDocument() // the Library shows real photos
     expect(await screen.findByText('backend v0.1.0')).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Photo folder' })).toHaveValue('C:/Photos/Test')
+  })
+
+  it('shows an empty state with the suggested folder when nothing is open', async () => {
+    mockApi({
+      'GET /api/library': () => fx.emptyLibrary,
+      'GET /api/library/folders': () => [],
+      'GET /api/photos': () => ({ items: [], total: 0, offset: 0, limit: 500 }),
+      'GET /api/jobs': () => [],
+    })
+    renderApp('/library')
+    expect(await screen.findByText('Open a folder')).toBeInTheDocument()
+    expect(screen.getByText('No folder open')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Photo folder' })).toHaveValue('C:/Users/me/Pictures/2026-08-11')
+    expect(screen.queryByRole('combobox', { name: 'Recent folders' })).not.toBeInTheDocument()
+  })
+
+  it('browses folders and picks one', async () => {
+    const calls = mockApi()
+    const { user } = renderApp('/library')
+    await grid()
+    await user.click(screen.getByRole('button', { name: /browse/i }))
+    const dialog = within(await screen.findByRole('dialog', { name: 'Choose a photo folder' }))
+    await user.click(await dialog.findByRole('button', { name: /day1/ }))
+    expect(await dialog.findByText('12 photos in this folder')).toBeInTheDocument()
+    expect(calls.filter((c) => c.path === '/api/fs/dirs').map((c) => c.query.get('path'))).toEqual([
+      'C:/Photos/Test',
+      'C:/Photos/Test/day1',
+    ])
+    await user.click(dialog.getByRole('button', { name: 'Up one level' }))
+    await user.click(await dialog.findByRole('button', { name: /day1/ }))
+    await user.click(await dialog.findByRole('button', { name: 'Choose this folder' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.getByRole('textbox', { name: 'Photo folder' })).toHaveValue('C:/Photos/Test/day1')
+  })
+
+  it('imports a folder and shows progress', async () => {
+    const calls = mockApi({ 'GET /api/jobs': () => [fx.makeImportJob({ status: 'running', completed: 3, progress: 3 / 67, finished_at: null, summary: null })] })
+    const { user } = renderApp('/library')
+    await grid()
+    const field = screen.getByRole('textbox', { name: 'Photo folder' })
+    await user.clear(field)
+    await user.type(field, 'D:/Shoots/2026')
+    await user.click(screen.getByRole('switch', { name: 'Include subfolders' }))
+    await user.click(screen.getByRole('button', { name: 'Open' }))
+    await waitFor(() => {
+      const post = calls.find((c) => c.method === 'POST' && c.path === '/api/library/import')
+      expect(post?.body).toEqual({ folder: 'D:/Shoots/2026', include_subfolders: true })
+    })
+    expect(await screen.findByText(/Importing… 3 \/ 67/)).toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: 'Import progress' })).toHaveAttribute('aria-valuenow', '4')
+  })
+
+  it('shows the last import result above the grid', async () => {
+    mockApi({ 'GET /api/jobs': () => [fx.makeImportJob()] })
+    renderApp('/library')
+    await grid()
+    expect(await screen.findByText('Last import: 67 photos: 67 new; 1 other file skipped')).toBeInTheDocument()
+  })
+
+  it('switches to a recently imported folder', async () => {
+    const calls = mockApi()
+    const { user } = renderApp('/library')
+    await grid()
+    await user.selectOptions(await screen.findByRole('combobox', { name: 'Recent folders' }), 'C:/Photos/Older')
+    await waitFor(() => {
+      const put = calls.find((c) => c.method === 'PUT' && c.path === '/api/library/current')
+      expect(put?.body).toEqual({ folder: 'C:/Photos/Older' })
+    })
   })
 
   it('shows style badges on styled photos', async () => {

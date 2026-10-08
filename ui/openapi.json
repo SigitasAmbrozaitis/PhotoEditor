@@ -47,6 +47,164 @@
         }
       }
     },
+    "/api/library/folders": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Library Folders",
+        "operationId": "library_folders_api_library_folders_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LibraryFolder"
+                  },
+                  "type": "array",
+                  "title": "Response Library Folders Api Library Folders Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/current": {
+      "put": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Open Folder",
+        "operationId": "open_folder_api_library_current_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenFolderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/import": {
+      "post": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Import Folder",
+        "operationId": "import_folder_api_library_import_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fs/dirs": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Fs Dirs",
+        "operationId": "fs_dirs_api_fs_dirs_get",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Folder to list; omit for the drives.",
+              "title": "Path"
+            },
+            "description": "Folder to list; omit for the drives."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirListing"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/photos": {
       "get": {
         "tags": [
@@ -254,11 +412,11 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Show the unedited photo.",
+              "description": "Show the unedited photo (same as after until Phase 3).",
               "default": false,
               "title": "Before"
             },
-            "description": "Show the unedited photo."
+            "description": "Show the unedited photo (same as after until Phase 3)."
           },
           {
             "name": "size",
@@ -1000,6 +1158,89 @@
         ],
         "title": "Detail"
       },
+      "DirEntry": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "photo_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Count",
+            "description": "Photos directly in this folder; None if it can't be read."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "path",
+          "photo_count"
+        ],
+        "title": "DirEntry"
+      },
+      "DirListing": {
+        "properties": {
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path",
+            "description": "The listed folder; None for the list of drives."
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent",
+            "description": "Folder one level up; None at a drive root or the drive list."
+          },
+          "photo_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Photo Count",
+            "description": "Photos directly in the listed folder."
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/DirEntry"
+            },
+            "type": "array",
+            "title": "Entries"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "path",
+          "parent",
+          "photo_count",
+          "entries"
+        ],
+        "title": "DirListing"
+      },
       "Effects": {
         "properties": {
           "vignette": {
@@ -1538,6 +1779,27 @@
         ],
         "title": "HslBand"
       },
+      "ImportRequest": {
+        "properties": {
+          "folder": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Folder",
+            "description": "Absolute path of the photo folder to import (read-only)."
+          },
+          "include_subfolders": {
+            "type": "boolean",
+            "title": "Include Subfolders",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "folder"
+        ],
+        "title": "ImportRequest"
+      },
       "Job": {
         "properties": {
           "id": {
@@ -1627,6 +1889,30 @@
             ],
             "title": "Destination"
           },
+          "folder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder",
+            "description": "Photo folder an import job reads (read-only)."
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary",
+            "description": "Outcome in one line, e.g. '67 new, 1 skipped'."
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/JobItem"
@@ -1651,6 +1937,8 @@
           "style_id",
           "preset_id",
           "destination",
+          "folder",
+          "summary",
           "items"
         ],
         "title": "Job"
@@ -1658,8 +1946,16 @@
       "JobItem": {
         "properties": {
           "photo_id": {
-            "type": "string",
-            "title": "Photo Id"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Id",
+            "description": "None while an import hasn't identified the file yet."
           },
           "filename": {
             "type": "string",
@@ -1705,6 +2001,7 @@
       "JobKind": {
         "type": "string",
         "enum": [
+          "import",
           "apply_style",
           "export",
           "apply_and_export"
@@ -1744,6 +2041,45 @@
         ],
         "title": "Lens"
       },
+      "LibraryFolder": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "include_subfolders": {
+            "type": "boolean",
+            "title": "Include Subfolders"
+          },
+          "photo_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Photo Count"
+          },
+          "last_imported_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Imported At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "path",
+          "include_subfolders",
+          "photo_count",
+          "last_imported_at"
+        ],
+        "title": "LibraryFolder",
+        "description": "A folder that has been imported into the catalog."
+      },
       "LibraryInfo": {
         "properties": {
           "folder": {
@@ -1758,17 +2094,37 @@
             "title": "Folder",
             "description": "Currently opened photo folder."
           },
+          "include_subfolders": {
+            "type": "boolean",
+            "title": "Include Subfolders",
+            "description": "The Library also shows photos in subfolders.",
+            "default": false
+          },
           "photo_count": {
             "type": "integer",
             "minimum": 0.0,
             "title": "Photo Count"
+          },
+          "suggested_folder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Folder",
+            "description": "Folder to offer when nothing is open yet (the configured sample folder)."
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "folder",
-          "photo_count"
+          "include_subfolders",
+          "photo_count",
+          "suggested_folder"
         ],
         "title": "LibraryInfo"
       },
@@ -1926,6 +2282,22 @@
           "color"
         ],
         "title": "NoiseReduction"
+      },
+      "OpenFolderRequest": {
+        "properties": {
+          "folder": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Folder",
+            "description": "An already imported folder to show in the Library."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "folder"
+        ],
+        "title": "OpenFolderRequest"
       },
       "Orientation": {
         "type": "string",
@@ -2152,6 +2524,18 @@
             "title": "Has Overrides",
             "description": "Per-photo adjustments on top of the style.",
             "default": false
+          },
+          "sidecar_jpeg": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sidecar Jpeg",
+            "description": "Camera JPEG saved next to a RAW original (read-only), if any."
           }
         },
         "additionalProperties": false,
@@ -2173,7 +2557,8 @@
           "height",
           "rating",
           "style_id",
-          "has_overrides"
+          "has_overrides",
+          "sidecar_jpeg"
         ],
         "title": "Photo",
         "description": "A source photo known to the catalog. The file itself is never modified."

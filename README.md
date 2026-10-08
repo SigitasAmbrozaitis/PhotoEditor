@@ -6,8 +6,9 @@ PhotoEditor is a non-destructive RAW photo editor meant to replace Lightroom for
 cropping, zooming and centering. An **AI agent** (Claude Code, through MCP) drives it. You describe the look you want, the AI
 applies it, and the tool's code enforces the rules. A small web UI lets you browse, compare and approve.
 
-> **Status: early development (Phase 1, UI skeleton).** The web UI is clickable end to end, but runs on **demo data**:
-> no real photos are read or edited yet.
+> **Status: early development (Phase 2, import & decode).** The Library shows your real photos: folders are imported
+> read-only into a local catalog (EXIF, thumbnails, neutral previews). Editing, styles and export are not real yet:
+> styles are demo data and apply/export jobs are simulated.
 > See [PLAN.md](PLAN.md) for the full plan and [TODO.md](TODO.md) for progress.
 
 ---
@@ -37,7 +38,7 @@ Out of scope: local or spot edits (healing, cloning, masks) and generative edits
 
 | Part | Technology |
 |---|---|
-| Core / backend | Python 3.12, rawpy (LibRaw), NumPy, OpenCV, Pydantic |
+| Core / backend | Python 3.12, rawpy (LibRaw), NumPy, Pillow, SQLite, Pydantic (OpenCV from Phase 3) |
 | AI interface | MCP server (used from Claude Code) |
 | Web UI | FastAPI + React + TypeScript + Vite |
 | CLI | Typer |
@@ -95,6 +96,23 @@ uv run photoedit ui
 
 This opens http://127.0.0.1:8765 in the browser (backend plus built UI). Stop it with Ctrl+C.
 
+In the Library, type or paste a folder path (or use **Browse…**) and press **Open**. The folder is imported read-only:
+RAW + JPEG pairs become one photo, and opening a folder again only re-reads files that changed.
+
+From the command line:
+
+```bash
+uv run photoedit import "C:\Users\you\Pictures\2026\2026-08-11"
+```
+```bash
+uv run photoedit benchmark
+```
+
+`photoedit benchmark` times full-resolution decoding of a RAW folder (default: `sample_photos_dir`) with several
+worker counts and writes a report to `output/benchmark/`. Results for the X-T3 sample folder are in
+[docs/benchmark.md](docs/benchmark.md). `photoedit cache clear` deletes cached thumbnails and previews, and
+`photoedit version` shows the library versions that decide how photos render.
+
 For UI development with hot reload (backend plus Vite dev server on http://localhost:5173):
 
 ```bash
@@ -110,8 +128,12 @@ uv run pytest
 npm --prefix ui test
 ```
 
+Tests marked `golden` read the real photos in `sample_photos_dir` (read-only) and are skipped without it. Add
+`-m "not slow"` for a quick run, or `-m golden` to run only the real-photo tests.
+
 End-to-end smoke test in a real browser (uses your installed Google Chrome with a temporary profile; build the UI
-first). Screenshots of every screen are saved to `output/screenshots/`:
+first). It runs on synthetic photos written to `output/e2e/` and never touches your real catalog. Screenshots of
+every screen are saved to `output/screenshots/`:
 
 ```bash
 npm --prefix ui run test:e2e
@@ -128,10 +150,11 @@ CLAUDE.md          rules for AI agents working on this repo
 src/photoedit/     Python package: CLI, config, safety (write guard), API, core, MCP server
 ui/                web UI (React + TypeScript + Vite)
 tests/             Python tests
-scripts/           dev helpers (dev.cmd starts backend + UI dev server)
+scripts/           dev helpers (dev.cmd starts backend + UI dev server; e2e_setup.py makes e2e test photos)
+docs/              benchmark results
 styles/            saved styles: style.json + README + sample images (from Phase 4)
 export-presets/    export settings presets (from Phase 5)
-workspace/         local catalog, edits (git-ignored)
+workspace/         local catalog (catalog.sqlite), later edits (git-ignored)
 cache/             previews and thumbnails (git-ignored)
 output/            development test exports (git-ignored)
 ```

@@ -38,6 +38,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/library/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Library Folders */
+        get: operations["library_folders_api_library_folders_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Open Folder */
+        put: operations["open_folder_api_library_current_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Folder */
+        post: operations["import_folder_api_library_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/fs/dirs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fs Dirs */
+        get: operations["fs_dirs_api_fs_dirs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photos": {
         parameters: {
             query?: never;
@@ -408,6 +476,38 @@ export interface components {
             sharpening: components["schemas"]["Sharpening"];
             noise_reduction: components["schemas"]["NoiseReduction"];
         };
+        /** DirEntry */
+        DirEntry: {
+            /** Name */
+            name: string;
+            /** Path */
+            path: string;
+            /**
+             * Photo Count
+             * @description Photos directly in this folder; None if it can't be read.
+             */
+            photo_count: number | null;
+        };
+        /** DirListing */
+        DirListing: {
+            /**
+             * Path
+             * @description The listed folder; None for the list of drives.
+             */
+            path: string | null;
+            /**
+             * Parent
+             * @description Folder one level up; None at a drive root or the drive list.
+             */
+            parent: string | null;
+            /**
+             * Photo Count
+             * @description Photos directly in the listed folder.
+             */
+            photo_count: number;
+            /** Entries */
+            entries: components["schemas"]["DirEntry"][];
+        };
         /** Effects */
         Effects: {
             vignette: components["schemas"]["Vignette"];
@@ -658,6 +758,19 @@ export interface components {
              */
             luminance: number;
         };
+        /** ImportRequest */
+        ImportRequest: {
+            /**
+             * Folder
+             * @description Absolute path of the photo folder to import (read-only).
+             */
+            folder: string;
+            /**
+             * Include Subfolders
+             * @default false
+             */
+            include_subfolders: boolean;
+        };
         /** Job */
         Job: {
             /** Id */
@@ -693,13 +806,26 @@ export interface components {
             preset_id: string | null;
             /** Destination */
             destination: string | null;
+            /**
+             * Folder
+             * @description Photo folder an import job reads (read-only).
+             */
+            folder: string | null;
+            /**
+             * Summary
+             * @description Outcome in one line, e.g. '67 new, 1 skipped'.
+             */
+            summary: string | null;
             /** Items */
             items: components["schemas"]["JobItem"][];
         };
         /** JobItem */
         JobItem: {
-            /** Photo Id */
-            photo_id: string;
+            /**
+             * Photo Id
+             * @description None while an import hasn't identified the file yet.
+             */
+            photo_id: string | null;
             /** Filename */
             filename: string;
             status: components["schemas"]["JobStatus"];
@@ -712,7 +838,7 @@ export interface components {
          * JobKind
          * @enum {string}
          */
-        JobKind: "apply_style" | "export" | "apply_and_export";
+        JobKind: "import" | "apply_style" | "export" | "apply_and_export";
         /**
          * JobStatus
          * @enum {string}
@@ -732,6 +858,20 @@ export interface components {
              */
             remove_chromatic_aberration: boolean;
         };
+        /**
+         * LibraryFolder
+         * @description A folder that has been imported into the catalog.
+         */
+        LibraryFolder: {
+            /** Path */
+            path: string;
+            /** Include Subfolders */
+            include_subfolders: boolean;
+            /** Photo Count */
+            photo_count: number;
+            /** Last Imported At */
+            last_imported_at: string | null;
+        };
         /** LibraryInfo */
         LibraryInfo: {
             /**
@@ -739,8 +879,19 @@ export interface components {
              * @description Currently opened photo folder.
              */
             folder: string | null;
+            /**
+             * Include Subfolders
+             * @description The Library also shows photos in subfolders.
+             * @default false
+             */
+            include_subfolders: boolean;
             /** Photo Count */
             photo_count: number;
+            /**
+             * Suggested Folder
+             * @description Folder to offer when nothing is open yet (the configured sample folder).
+             */
+            suggested_folder: string | null;
         };
         /**
          * MetadataPolicy
@@ -811,6 +962,14 @@ export interface components {
              * @default 25
              */
             color: number;
+        };
+        /** OpenFolderRequest */
+        OpenFolderRequest: {
+            /**
+             * Folder
+             * @description An already imported folder to show in the Library.
+             */
+            folder: string;
         };
         /**
          * Orientation
@@ -918,6 +1077,11 @@ export interface components {
              * @default false
              */
             has_overrides: boolean;
+            /**
+             * Sidecar Jpeg
+             * @description Camera JPEG saved next to a RAW original (read-only), if any.
+             */
+            sidecar_jpeg: string | null;
         };
         /** PhotoDetail */
         PhotoDetail: {
@@ -1386,6 +1550,124 @@ export interface operations {
             };
         };
     };
+    library_folders_api_library_folders_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryFolder"][];
+                };
+            };
+        };
+    };
+    open_folder_api_library_current_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenFolderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_folder_api_library_import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fs_dirs_api_fs_dirs_get: {
+        parameters: {
+            query?: {
+                /** @description Folder to list; omit for the drives. */
+                path?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirListing"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_photos_api_photos_get: {
         parameters: {
             query?: {
@@ -1488,7 +1770,7 @@ export interface operations {
     photo_preview_api_photos__photo_id__preview_get: {
         parameters: {
             query?: {
-                /** @description Show the unedited photo. */
+                /** @description Show the unedited photo (same as after until Phase 3). */
                 before?: boolean;
                 /** @description Long edge in pixels. */
                 size?: number;
