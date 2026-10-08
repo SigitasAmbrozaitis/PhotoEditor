@@ -6,16 +6,29 @@ Files live under a folder named after the decoder's render identity, so a LibRaw
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import shutil
 import threading
 from collections import OrderedDict
+from collections.abc import Callable
 from pathlib import Path
 
+import cv2
+import numpy as np
 from PIL import Image, ImageOps
 
 from photoedit.core.catalog import CatalogPhoto
-from photoedit.core.decode import PREVIEW, decode, is_raw, oriented_image, read_raw_info, render_identity
+from photoedit.core.decode import (
+    PREVIEW,
+    LinearImage,
+    decode,
+    decode_linear,
+    is_raw,
+    oriented_image,
+    read_raw_info,
+    render_identity,
+)
 from photoedit.safety import PathGuard
 
 THUMBNAIL_LONG_EDGE = 400
@@ -134,3 +147,57 @@ def _encode(image: Image.Image, quality: int) -> bytes:
     buf = io.BytesIO()
     image.convert("RGB").save(buf, "JPEG", quality=quality, optimize=True)
     return buf.getvalue()
+
+
+# ----------------------------------------------------------------- linear bases (render input)
+
+LINEAR_LONG_EDGE = 2048
+_LINEAR_ITEMS = 8  # ≈ 33 MB each at 2048 px: the open photo and its neighbours
+
+
+class LinearCache:
+    """Decoded scene-linear images at preview working size, kept in RAM only.
+
+    A disk copy would cost ~16 MB per photo even as float16; rendered previews are cached on disk instead, so
+    reopening a photo is instant and only editing it needs this base (decoded once, ~1.3 s for an X-T3 RAF).
+    """
+
+    def __init__(
+        self, items: int = _LINEAR_ITEMS, decoder: Callable[..., LinearImage] = decode_linear
+    ) -> None:
+        self._items = items
+        self._decoder = decoder
+        self._memory: OrderedDict[str, LinearImage] = OrderedDict()
+        self._lock = threading.Lock()
+        self._build_locks: dict[str, threading.Lock] = {}
+
+    def get(self, photo: CatalogPhoto) -> LinearImage:
+        with self._lock:
+            build_lock = self._build_locks.setdefault(photo.id, threading.Lock())
+        with build_lock:
+            with self._lock:
+                if photo.id in self._memory:
+                    self._memory.move_to_end(photo.id)
+                    return self._memory[photo.id]
+            # RAWs: LibRaw's half-size decode (no demosaic interpolation) is already larger than the base.
+            image = resize_linear(self._decoder(photo.path, half_size=is_raw(photo.path)), LINEAR_LONG_EDGE)
+            with self._lock:
+                self._memory[photo.id] = image
+                while len(self._memory) > self._items:
+                    self._memory.popitem(last=False)
+            return image
+
+    def clear(self) -> None:
+        with self._lock:
+            self._memory.clear()
+
+
+def resize_linear(image: LinearImage, long_edge: int) -> LinearImage:
+    """Scale down so the long edge is at most ``long_edge`` (area averaging: correct on linear data)."""
+    height, width = image.pixels.shape[:2]
+    scale = long_edge / max(height, width)
+    if scale >= 1:
+        return image
+    size = (max(1, round(width * scale)), max(1, round(height * scale)))
+    pixels = cv2.resize(image.pixels, size, interpolation=cv2.INTER_AREA)
+    return dataclasses.replace(image, pixels=np.ascontiguousarray(pixels, dtype=np.float32))

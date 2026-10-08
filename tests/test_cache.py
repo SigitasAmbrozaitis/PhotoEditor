@@ -5,6 +5,7 @@ import io
 import threading
 from pathlib import Path
 
+import numpy as np
 import pytest
 from PIL import Image
 
@@ -172,3 +173,86 @@ def test_real_raf_thumbnail_and_preview(sample_raw: Path, tmp_path: Path) -> Non
     assert max(thumb) == THUMBNAIL_LONG_EDGE and max(preview) == 1600
     assert (thumb[0] < thumb[1]) == (preview[0] < preview[1])  # both upright the same way
     assert hashlib.sha256(sample_raw.read_bytes()).hexdigest() == sha
+
+
+# ----------------------------------------------------------------- linear bases
+
+
+def _linear(height: int, width: int, value: float = 0.25) -> object:
+    from photoedit.core.decode import LinearImage
+
+    return LinearImage(
+        pixels=np.full((height, width, 3), value, dtype=np.float32), to_rec2020=np.eye(3), is_raw=False
+    )
+
+
+def test_linear_cache_decodes_once_and_resizes(tmp_path: Path) -> None:
+    from photoedit.core.cache import LINEAR_LONG_EDGE, LinearCache
+
+    photo = _jpeg_photo(tmp_path / "photos")
+    calls: list[tuple[Path, bool]] = []
+
+    def decoder(path: Path, *, half_size: bool) -> object:
+        calls.append((path, half_size))
+        return _linear(3000, 4500)
+
+    cache = LinearCache(decoder=decoder)  # type: ignore[arg-type]
+    first = cache.get(photo)
+    assert first.pixels.shape == (1365, LINEAR_LONG_EDGE, 3)
+    np.testing.assert_allclose(first.pixels, 0.25, atol=1e-6)  # area averaging keeps flat areas exact
+    assert cache.get(photo) is first
+    assert calls == [(photo.path, False)]  # JPEG originals decode at full size, then scale down
+
+
+def test_linear_cache_evicts_least_recently_used(tmp_path: Path) -> None:
+    from photoedit.core.cache import LinearCache
+
+    photos = [_jpeg_photo(tmp_path / "photos", f"{i}.jpg", size=(64 + i, 48)) for i in range(3)]
+    decoded: list[str] = []
+
+    def decoder(path: Path, *, half_size: bool) -> object:
+        decoded.append(path.name)
+        return _linear(10, 10)
+
+    cache = LinearCache(items=2, decoder=decoder)  # type: ignore[arg-type]
+    cache.get(photos[0])
+    cache.get(photos[1])
+    cache.get(photos[0])  # 0 is now the most recent
+    cache.get(photos[2])  # evicts 1
+    cache.get(photos[0])
+    cache.get(photos[1])
+    assert decoded == ["0.jpg", "1.jpg", "2.jpg", "1.jpg"]
+
+
+def test_resize_linear_keeps_mean_and_never_enlarges() -> None:
+    from photoedit.core.cache import resize_linear
+
+    rng = np.random.default_rng(1)
+    image = _linear(400, 600)
+    image = type(image)(
+        pixels=rng.uniform(0, 1, (400, 600, 3)).astype(np.float32), to_rec2020=np.eye(3), is_raw=False
+    )  # type: ignore[call-arg, attr-defined]
+    small = resize_linear(image, 300)  # type: ignore[arg-type]
+    assert small.pixels.shape == (200, 300, 3) and small.pixels.dtype == np.float32
+    assert float(small.pixels.mean()) == pytest.approx(float(image.pixels.mean()), abs=1e-4)  # type: ignore[attr-defined]
+    assert resize_linear(image, 5000) is image  # type: ignore[arg-type]
+
+
+@pytest.mark.golden
+def test_real_raf_linear_base(sample_raw: Path) -> None:
+    from photoedit.core.cache import LINEAR_LONG_EDGE, LinearCache
+
+    photo = CatalogPhoto(
+        id="x",
+        sha256="0" * 64,
+        path=sample_raw,
+        kind=SourceKind.RAW,
+        file_size=1,
+        mtime_ns=1,
+        width=4170,
+        height=6246,
+    )
+    base = LinearCache().get(photo)
+    height, width = base.pixels.shape[:2]
+    assert max(height, width) == LINEAR_LONG_EDGE and height > width  # portrait shot stays upright
+    assert base.is_raw and float(base.pixels.min()) >= 0 and float(base.pixels.max()) <= 1

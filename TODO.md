@@ -394,8 +394,9 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
 - [x] **P3.4** `decode.decode_linear(path, size)`: RAW → demosaiced, camera-space, camera-WB, linear float data plus the
   camera matrix and as-shot multipliers; JPEG/TIFF → linear Rec.2020. `DECODER_VERSION` → 2. Golden test: our matrix
   path matches LibRaw's sRGB output within 1e-4.
-- [ ] **P3.5** Linear base cache: the decoded linear image at preview working size (long edge 2048) as float16 on disk
-  (`cache/linear/`) plus a small in-memory LRU, keyed by render identity; full resolution is decoded on demand (exports).
+- [x] **P3.5** Linear base cache: the decoded linear image at preview working size (long edge 2048) in an in-memory
+  LRU (8 photos, ~33 MB each); no disk copy (~16 MB per photo even as float16): rendered previews are disk-cached
+  instead (P3.15). Full resolution is decoded on demand (exports).
 - [ ] **P3.6** Render stages in `core/render/` (pure functions on arrays; exact-math tests on synthetic images, and each
   stage is the identity at its neutral value):
   - white balance + camera → Rec.2020; exposure (+1 EV doubles linear values); output transform (Rec.2020 → sRGB,
