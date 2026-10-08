@@ -311,3 +311,102 @@ def test_saturation_and_vibrance() -> None:
     gain_vivid, gain_muted = boosted[0, 1] / original[0, 1], boosted[1, 1] / original[1, 1]
     assert gain_muted > gain_vivid > 1  # vibrance favours muted colors
     np.testing.assert_allclose(boosted[2, :2], original[2, :2], atol=1e-5)  # gray stays gray (hue: noise)
+
+
+# ----------------------------------------------------------------- vignette
+
+
+def flat(height: int = 41, width: int = 61, value: float = 0.5) -> np.ndarray:
+    return np.full((height, width, 3), value, dtype=np.float32)
+
+
+def test_neutral_vignette_returns_the_same_array() -> None:
+    from photoedit.models.adjustments import Vignette
+
+    image = flat()
+    assert stages.vignette(image, Vignette()) is image
+
+
+@pytest.mark.parametrize("roundness", [-100, 0, 100])
+@pytest.mark.parametrize("midpoint", [0, 50, 100])
+def test_vignette_darkens_corners_and_never_the_center(roundness: float, midpoint: float) -> None:
+    from photoedit.models.adjustments import Vignette
+
+    image = flat()
+    out = stages.vignette(image, Vignette(amount=-100, roundness=roundness, midpoint=midpoint))
+    assert out[20, 30, 0] == image[20, 30, 0]
+    assert out[0, 0, 0] < image[0, 0, 0] * 0.5
+    np.testing.assert_allclose(out, out[::-1, ::-1], atol=1e-6)  # symmetric
+
+
+def test_positive_vignette_lightens_toward_white() -> None:
+    from photoedit.models.adjustments import Vignette
+
+    out = stages.vignette(flat(), Vignette(amount=100))
+    assert 0.5 < out[0, 0, 0] <= 1.0 and out[20, 30, 0] == pytest.approx(0.5)
+
+
+def test_feather_controls_the_transition_width() -> None:
+    from photoedit.models.adjustments import Vignette
+
+    hard = stages.vignette_mask(101, 101, Vignette(amount=-100, feather=0))
+    soft = stages.vignette_mask(101, 101, Vignette(amount=-100, feather=100))
+    partial = lambda m: int(((m > 0.01) & (m < 0.99)).sum())  # noqa: E731
+    assert partial(hard) < partial(soft)
+
+
+# ----------------------------------------------------------------- sharpening
+
+
+def edge(width: int = 40) -> np.ndarray:
+    image = np.full((8, width, 3), 0.3, dtype=np.float32)
+    image[:, width // 2 :] = 0.6
+    return image
+
+
+def test_no_sharpening_cases_return_the_same_array() -> None:
+    from photoedit.models.adjustments import Sharpening
+
+    image = edge()
+    assert stages.sharpen(image, Sharpening(amount=0), 1.0) is image
+    assert stages.sharpen(image, Sharpening(amount=100, radius=1.0), 0.1) is image  # tiny thumbnails
+
+
+def test_sharpening_adds_contrast_at_edges_only() -> None:
+    from photoedit.models.adjustments import Sharpening
+
+    image = edge()
+    out = stages.sharpen(image, Sharpening(amount=100, radius=1.5), 1.0)
+    assert out[4, 20, 0] > 0.6 and out[4, 19, 0] < 0.3  # overshoot on both sides of the edge
+    np.testing.assert_allclose(out[:, :5], image[:, :5], atol=1e-6)  # flat areas stay flat
+    np.testing.assert_allclose(stages.sharpen(flat(), Sharpening(amount=150), 1.0), flat(), atol=1e-6)
+
+
+def test_detail_limits_halos() -> None:
+    from photoedit.models.adjustments import Sharpening
+
+    image = edge()
+    low = stages.sharpen(image, Sharpening(amount=100, radius=1.5, detail=0), 1.0)
+    high = stages.sharpen(image, Sharpening(amount=100, radius=1.5, detail=100), 1.0)
+    assert high[4, 20, 0] - 0.6 > low[4, 20, 0] - 0.6 > 0
+
+
+def test_masking_skips_low_contrast_texture() -> None:
+    from photoedit.models.adjustments import Sharpening
+
+    rng = np.random.default_rng(3)
+    texture = (0.5 + rng.normal(0, 0.005, (32, 32, 1)).repeat(3, -1)).astype(np.float32)
+    unmasked = stages.sharpen(texture, Sharpening(amount=150, masking=0), 1.0)
+    masked = stages.sharpen(texture, Sharpening(amount=150, masking=100), 1.0)
+    assert np.abs(masked - texture).mean() < np.abs(unmasked - texture).mean() / 4
+
+
+def test_sharpening_is_deterministic_and_luminance_only() -> None:
+    from photoedit.models.adjustments import Sharpening
+
+    image = edge()
+    image[..., 0] += 0.1  # colored
+    first = stages.sharpen(image, Sharpening(amount=80), 1.0)
+    np.testing.assert_array_equal(first, stages.sharpen(image, Sharpening(amount=80), 1.0))
+    change = first - image
+    np.testing.assert_allclose(change[..., 0], change[..., 1], atol=1e-6)  # same delta on every channel

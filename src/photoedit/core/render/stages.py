@@ -8,6 +8,7 @@ OKLab and back; the output stage converts to the target RGB space and encodes it
 
 from __future__ import annotations
 
+import cv2
 import numpy as np
 import numpy.typing as npt
 
@@ -15,7 +16,16 @@ from photoedit.core import color
 from photoedit.core.decode import LinearImage
 from photoedit.core.render.curves import pchip
 from photoedit.core.render.profile import CameraProfile
-from photoedit.models.adjustments import ColorGrading, Hsl, Presence, Tone, ToneCurve, WhiteBalance
+from photoedit.models.adjustments import (
+    ColorGrading,
+    Hsl,
+    Presence,
+    Sharpening,
+    Tone,
+    ToneCurve,
+    Vignette,
+    WhiteBalance,
+)
 
 type F32 = npt.NDArray[np.float32]
 
@@ -370,3 +380,80 @@ def color_adjust(
         lch[..., 1] = _apply_presence(lch[..., 1], lch[..., 2], presence)
         lab = color.oklch_to_oklab(lch)
     return color.oklab_to_rec2020(lab).astype(np.float32, copy=False)
+
+
+# ----------------------------------------------------------------- vignette
+
+_VIGNETTE_DARKEN_EV = 2.0  # corners at amount -100
+
+
+def vignette_mask(height: int, width: int, params: Vignette) -> F32:
+    """0 at the center, rising to 1 toward the corners, shaped by midpoint, roundness and feather."""
+    y, x = np.meshgrid(
+        np.linspace(-1, 1, height, dtype=np.float32),
+        np.linspace(-1, 1, width, dtype=np.float32),
+        indexing="ij",
+    )
+    roundness = params.roundness / 100
+    longest = max(width, height)
+    # Positive roundness bends the frame-shaped ellipse toward a circle; negative squares it off
+    # (superellipse).
+    sx = 1 + max(roundness, 0) * (width / longest - 1)
+    sy = 1 + max(roundness, 0) * (height / longest - 1)
+    power = 2 + 6 * max(-roundness, 0)
+    distance = (np.abs(x * sx) ** power + np.abs(y * sy) ** power) ** (1 / power)
+    corner = float((sx**power + sy**power) ** (1 / power))
+    rho = distance / np.float32(corner)
+    middle = 0.2 + 0.6 * params.midpoint / 100
+    width_ = 0.05 + 0.75 * params.feather / 100
+    start = max(middle - width_ / 2, 0.0)
+    return _smoothstep(start, middle + width_ / 2, rho.astype(np.float32))
+
+
+def vignette(display_linear: F32, params: Vignette) -> F32:
+    """Darken (negative amount) or lighten (positive) toward the corners; the center is never changed."""
+    if not params.amount:
+        return display_linear
+    mask = vignette_mask(display_linear.shape[0], display_linear.shape[1], params)[..., None]
+    amount = np.float32(params.amount / 100)
+    if amount < 0:
+        out: F32 = display_linear * np.exp2(amount * np.float32(_VIGNETTE_DARKEN_EV) * mask)
+        return out
+    lightened: F32 = display_linear + np.maximum(1 - display_linear, 0) * amount * mask
+    return lightened
+
+
+# ----------------------------------------------------------------- sharpening
+
+cv2.setNumThreads(1)  # determinism first; a 1600 px blur takes ~10 ms single-threaded anyway
+_REC709_LUMA = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
+_SHARPEN_GAIN = 1.2  # amount 100 → 1.2 × the detail signal
+_MIN_SIGMA = 0.25  # below this (tiny thumbnails) sharpening has nothing to work on
+
+
+def sharpen(encoded: F32, params: Sharpening, scale: float) -> F32:
+    """Unsharp mask on luminance of display-encoded pixels.
+
+    ``scale`` is output width ÷ original width, so the radius means the same at every output size. ``detail``
+    controls halos (low = large edge differences are softly limited); ``masking`` restricts the effect to
+    edges.
+    """
+    sigma = params.radius * scale
+    if not params.amount or sigma < _MIN_SIGMA:
+        return encoded
+    y = (
+        encoded[..., 0] * _REC709_LUMA[0]
+        + encoded[..., 1] * _REC709_LUMA[1]
+        + encoded[..., 2] * _REC709_LUMA[2]
+    )
+    blurred = cv2.GaussianBlur(y, (0, 0), sigma, borderType=cv2.BORDER_REFLECT)
+    detail = y - blurred
+    limit = np.float32(0.01 + 0.2 * params.detail / 100)
+    delta = limit * np.tanh(detail / limit)
+    if params.masking:
+        gy, gx = np.gradient(blurred)
+        threshold = 0.05 * params.masking / 100
+        delta = delta * _smoothstep(0, threshold, np.hypot(gx, gy).astype(np.float32))
+    gain = np.float32(params.amount / 100 * _SHARPEN_GAIN)
+    out: F32 = np.clip(encoded + (gain * delta)[..., None], 0, 1).astype(np.float32, copy=False)
+    return out

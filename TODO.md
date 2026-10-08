@@ -407,7 +407,7 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
 - [x] **P3.9** Color stages: HSL (8 overlapping hue bands in OKLCh), color grading (shadows/midtones/highlights/global
   wheels with blending and balance), vibrance (weighted toward muted colors) and saturation (−100 = gray with the same
   luminance).
-- [ ] **P3.10** Effects + detail: post-crop vignette (amount/midpoint/roundness/feather; the center stays unchanged) and
+- [x] **P3.10** Effects + detail: post-crop vignette (amount/midpoint/roundness/feather; the center stays unchanged) and
   sharpening (luminance unsharp mask: amount/radius/detail/masking).
 - [ ] **P3.11** `render.pipeline`: `render(base, params, size)` runs the stages in PLAN 4.3 order. `ENGINE_VERSION` joins
   the render identity. Determinism: the same input gives identical bytes (OpenCV thread count pinned; tested twice in a
