@@ -274,7 +274,8 @@ def camera_multipliers(
             f"{temperature:.0f} K / tint {tint:+.0f} is outside what this camera's matrix can represent"
         )
     multipliers: npt.NDArray[np.float64] = 1 / response
-    return multipliers / multipliers[1]
+    normalized: npt.NDArray[np.float64] = multipliers / multipliers[1]
+    return normalized
 
 
 def as_shot_temperature_tint(cam_from_xyz: npt.ArrayLike, multipliers: npt.ArrayLike) -> tuple[float, float]:
