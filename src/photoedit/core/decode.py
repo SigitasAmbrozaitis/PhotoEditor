@@ -82,6 +82,7 @@ class RawInfo:
     height: int
     flip: int
     embedded_jpeg: bytes | None
+    as_shot: tuple[float, float] | None = None  # temperature, tint the camera balanced for
 
 
 def render_identity() -> str:
@@ -99,7 +100,13 @@ def read_raw_info(path: Path) -> RawInfo:
     with _open_raw(path) as raw:
         sizes = raw.sizes
         width, height = (sizes.height, sizes.width) if sizes.flip in (5, 6) else (sizes.width, sizes.height)
-        return RawInfo(width=width, height=height, flip=sizes.flip, embedded_jpeg=_embedded_jpeg(raw))
+        return RawInfo(
+            width=width,
+            height=height,
+            flip=sizes.flip,
+            embedded_jpeg=_embedded_jpeg(raw),
+            as_shot=_as_shot(raw),
+        )
 
 
 def oriented_image(jpeg: bytes, fallback_flip: int = 0) -> Image.Image:
@@ -231,6 +238,17 @@ def _open_raw(path: Path) -> RawPy:
         raise DecodeError(f"cannot read {path.name}: {exc.strerror or exc}") from exc
     except LibRawError as exc:
         raise DecodeError(f"cannot decode {path.name}: {exc}") from exc
+
+
+def _as_shot(raw: RawPy) -> tuple[float, float] | None:
+    multipliers = np.asarray(raw.camera_whitebalance, dtype=np.float64)[:3]
+    cam_from_xyz = np.asarray(raw.rgb_xyz_matrix, dtype=np.float64)[:3, :3]
+    if not (multipliers > 0).all() or not np.any(cam_from_xyz):
+        return None
+    try:
+        return color.as_shot_temperature_tint(cam_from_xyz, multipliers)
+    except (ValueError, np.linalg.LinAlgError):
+        return None
 
 
 def _embedded_jpeg(raw: RawPy) -> bytes | None:

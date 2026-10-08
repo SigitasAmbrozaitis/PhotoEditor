@@ -430,7 +430,7 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
   - `docs/default-look.md`: method, the fitted numbers, and ΔE before/after per held-out photo.
 
 ### Edits, previews, golden images
-- [ ] **P3.14** `core/edits.py`: per-photo edit JSON `workspace/edits/<photo-id>.json` (`schema_version`, `photo_id`,
+- [x] **P3.14** `core/edits.py`: per-photo edit JSON `workspace/edits/<photo-id>.json` (`schema_version`, `photo_id`,
   `style_id` (unused until Phase 4), sparse `overrides` such as `{"tone.exposure": 0.5}`); load/save/reset, effective
   parameters = defaults ← style ← overrides; atomic writes through the path guard. Catalog schema v2 (the migration hook's
   first use): `has_edits`, as-shot temperature/tint (filled lazily for photos imported before).

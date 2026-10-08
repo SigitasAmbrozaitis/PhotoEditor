@@ -164,13 +164,19 @@ def test_raw_pairs_record_the_sidecar(env: Env, monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(
         library_module,
         "_read_metadata_and_thumbnail",
-        lambda path: (PhotoMetadata(width=6240, height=4160, camera="FUJIFILM X-T3"), fake_thumb),
+        lambda path: (
+            PhotoMetadata(width=6240, height=4160, camera="FUJIFILM X-T3"),
+            fake_thumb,
+            (5000.0, -5.0),
+        ),
     )
     env.run_import()
     (photo,) = env.library.list_photos().items
     assert photo.filename == "DSCF1.RAF"
     assert photo.sidecar_jpeg == (env.photos / "DSCF1.JPG").resolve().as_posix()
     assert (photo.width, photo.camera) == (6240, "FUJIFILM X-T3")
+    stored = env.library.photo(photo.id)
+    assert (stored.as_shot_temperature, stored.as_shot_tint) == (5000.0, -5.0)
 
 
 def test_unreadable_photo_fails_its_item_only(env: Env) -> None:
@@ -250,3 +256,40 @@ def test_cancelled_import_keeps_what_was_done(env: Env, monkeypatch: pytest.Monk
     assert done.status == JobStatus.CANCELLED
     assert done.summary is None  # finish() doesn't run, so nothing is flagged missing
     assert env.library.info().photo_count == 1  # the photo in progress was finished
+
+
+# ----------------------------------------------------------------- edits (Phase 3)
+
+
+def test_edits_save_show_and_reset(env: Env) -> None:
+    from photoedit.core.render.pipeline import UnsupportedParameterError
+    from photoedit.models import AdjustmentParams
+
+    fill_folder(env.photos)
+    env.run_import()
+    pid = env.library.list_photos(sort=PhotoSort.NAME).items[0].id
+    # Like the UI: start from the photo's current parameters (JPEGs default to no sharpening) and change two.
+    edited = env.library.edit(pid).adjustments.model_copy(deep=True)
+    edited.tone.exposure = 0.7
+    edited.presence.vibrance = 20
+    result = env.library.save_edit(pid, edited)
+    assert result.overridden == ["presence.vibrance", "tone.exposure"]
+    detail = env.library.photo_detail(pid)
+    assert detail.edit.adjustments.tone.exposure == 0.7 and detail.edit.overridden == result.overridden
+    assert detail.photo.has_overrides
+    assert env.library.list_photos(sort=PhotoSort.NAME).items[0].has_overrides
+    assert env.reopen().edit(pid).adjustments.tone.exposure == 0.7  # survives a restart
+
+    with pytest.raises(UnsupportedParameterError):
+        env.library.save_edit(pid, AdjustmentParams.model_validate({"lens": {"profile_corrections": True}}))
+    assert env.library.edit(pid).adjustments.tone.exposure == 0.7  # the rejected save changed nothing
+
+    reset = env.library.reset_edit(pid)
+    assert reset.overridden == [] and not env.library.photo_detail(pid).photo.has_overrides
+
+
+def test_jpeg_originals_default_to_no_sharpening(env: Env) -> None:
+    fill_folder(env.photos)
+    env.run_import()
+    pid = env.library.list_photos().items[0].id
+    assert env.library.edit(pid).adjustments.detail.sharpening.amount == 0

@@ -21,7 +21,7 @@ from photoedit.core.scan import SourceKind
 from photoedit.models import Photo, PhotoSort, SortOrder
 from photoedit.safety import PathGuard
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 ID_LENGTH = 16  # hex digits of the SHA-256 used as photo id: 64 bits, collisions are not a practical concern
 
 _SCHEMA = """
@@ -54,14 +54,33 @@ CREATE TABLE photos (
     height INTEGER NOT NULL,
     rating INTEGER NOT NULL DEFAULT 0,
     style_id TEXT,
-    missing INTEGER NOT NULL DEFAULT 0
+    missing INTEGER NOT NULL DEFAULT 0,
+    has_edits INTEGER NOT NULL DEFAULT 0,
+    as_shot_temperature REAL,
+    as_shot_tint REAL,
+    film_simulation TEXT,
+    dynamic_range INTEGER
 );
 CREATE INDEX photos_parent ON photos (parent_key);
 CREATE TABLE state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
+
+def _v1_to_v2(db: sqlite3.Connection) -> None:
+    # Phase 3: edit flag, as-shot white balance and Fujifilm look settings. Photos imported before get the
+    # new facts on their next (incremental) re-import; until then they read as unknown.
+    for column in (
+        "has_edits INTEGER NOT NULL DEFAULT 0",
+        "as_shot_temperature REAL",
+        "as_shot_tint REAL",
+        "film_simulation TEXT",
+        "dynamic_range INTEGER",
+    ):
+        db.execute(f"ALTER TABLE photos ADD COLUMN {column}")
+
+
 # Migrations from version N to N + 1, applied in order when an older catalog is opened.
-_MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {}
+_MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {1: _v1_to_v2}
 
 _SORT_SQL = {
     # NULL dates sort last in ascending order; filename breaks ties so the order is stable.
@@ -100,6 +119,11 @@ class CatalogPhoto(BaseModel):
     rating: int = Field(default=0, ge=0, le=5)
     style_id: str | None = None
     missing: bool = False
+    has_edits: bool = False
+    as_shot_temperature: float | None = None
+    as_shot_tint: float | None = None
+    film_simulation: str | None = None
+    dynamic_range: int | None = None
 
     def to_photo(self) -> Photo:
         return Photo(
@@ -119,6 +143,7 @@ class CatalogPhoto(BaseModel):
             height=self.height,
             rating=self.rating,
             style_id=self.style_id,
+            has_overrides=self.has_edits,
             sidecar_jpeg=self.sidecar_jpeg.as_posix() if self.sidecar_jpeg else None,
         )
 
@@ -173,7 +198,9 @@ class Catalog:
         values = _row_values(photo)
         columns = ", ".join(values)
         placeholders = ", ".join(f":{name}" for name in values)
-        updates = ", ".join(f"{name} = excluded.{name}" for name in values if name not in ("id", "rating"))
+        updates = ", ".join(
+            f"{name} = excluded.{name}" for name in values if name not in ("id", "rating", "has_edits")
+        )
         with self._transaction() as db:
             # Another row may hold this path with older content (the file was edited elsewhere): replace it.
             db.execute("DELETE FROM photos WHERE path_key = :path_key AND id != :id", values)
@@ -182,6 +209,10 @@ class Catalog:
                 f"ON CONFLICT(id) DO UPDATE SET {updates}",
                 values,
             )
+
+    def set_has_edits(self, photo_id: str, value: bool) -> None:
+        with self._transaction() as db:
+            db.execute("UPDATE photos SET has_edits = ? WHERE id = ?", (int(value), photo_id))
 
     def mark_missing(self, folder: Path, *, recursive: bool, present_ids: set[str]) -> int:
         """Flag photos in ``folder`` that weren't seen by the last import. Returns how many were flagged."""
@@ -341,6 +372,11 @@ def _row_values(photo: CatalogPhoto) -> dict[str, Any]:
         "rating": photo.rating,
         "style_id": photo.style_id,
         "missing": int(photo.missing),
+        "has_edits": int(photo.has_edits),
+        "as_shot_temperature": photo.as_shot_temperature,
+        "as_shot_tint": photo.as_shot_tint,
+        "film_simulation": photo.film_simulation,
+        "dynamic_range": photo.dynamic_range,
     }
 
 
@@ -349,6 +385,7 @@ def _photo(row: sqlite3.Row) -> CatalogPhoto:
     for name in ("path_key", "parent_key", "filename"):
         data.pop(name)
     data["missing"] = bool(data["missing"])
+    data["has_edits"] = bool(data["has_edits"])
     return CatalogPhoto.model_validate(data)
 
 

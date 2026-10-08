@@ -142,6 +142,8 @@ def test_oriented_image_rejects_garbage() -> None:
 class _FakeRaw:
     def __init__(self, flip: int, thumb: Any) -> None:
         self.sizes = SimpleNamespace(width=600, height=400, flip=flip)
+        self.camera_whitebalance = [0.0, 0.0, 0.0, 0.0]  # no as-shot data recorded
+        self.rgb_xyz_matrix = np.zeros((4, 3))
         self._thumb = thumb
 
     def __enter__(self) -> _FakeRaw:
@@ -231,6 +233,7 @@ def test_real_raf_info_and_embedded_jpeg(sample_raw: Path) -> None:
     before = _sha256(sample_raw)
     info = decode.read_raw_info(sample_raw)
     assert sorted((info.width, info.height)) == [4170, 6246]
+    assert info.as_shot is not None and 4000 < info.as_shot[0] < 7000
     assert info.embedded_jpeg is not None
     thumb = decode.oriented_image(info.embedded_jpeg, info.flip)
     # The embedded JPEG has the same orientation as the RAW's displayed size.
