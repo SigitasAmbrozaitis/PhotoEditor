@@ -9,6 +9,7 @@ from __future__ import annotations
 import io
 import math
 import re
+import struct
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,39 @@ _MAKE, _MODEL, _ORIENTATION, _DATETIME, _RATING = 0x010F, 0x0110, 0x0112, 0x0132
 _EXPOSURE_TIME, _FNUMBER, _ISO = 0x829A, 0x829D, 0x8827
 _DATETIME_ORIGINAL, _OFFSET_TIME_ORIGINAL = 0x9003, 0x9011
 _FOCAL_LENGTH, _LENS_MODEL = 0x920A, 0xA434
+_MAKER_NOTE = 0x927C
+
+# Fujifilm maker note tags and values (as documented by ExifTool's FujiFilm tag table).
+_FUJI_SATURATION, _FUJI_FILM_MODE, _FUJI_DEVELOPMENT_DR = 0x1003, 0x1401, 0x1403
+_FUJI_FILM_MODES = {
+    0x000: "Provia",
+    0x100: "Studio Portrait",
+    0x110: "Studio Portrait Enhanced Saturation",
+    0x120: "Astia",
+    0x130: "Studio Portrait Increased Sharpness",
+    0x200: "Velvia",
+    0x300: "Studio Portrait Ex",
+    0x400: "Velvia",
+    0x500: "Pro Neg. Std",
+    0x501: "Pro Neg. Hi",
+    0x600: "Classic Chrome",
+    0x700: "Eterna",
+    0x800: "Classic Negative",
+    0x900: "Eterna Bleach Bypass",
+    0xA00: "Nostalgic Negative",
+    0xB00: "Reala Ace",
+}
+_FUJI_MONOCHROME = {
+    0x300: "Monochrome",
+    0x301: "Monochrome + R Filter",
+    0x302: "Monochrome + Ye Filter",
+    0x303: "Monochrome + G Filter",
+    0x310: "Sepia",
+    0x500: "Acros",
+    0x501: "Acros + R Filter",
+    0x502: "Acros + Ye Filter",
+    0x503: "Acros + G Filter",
+}
 
 _XMP_RATING = re.compile(rb"xmp:Rating(?:=\"|>)\s*(-?\d+)")
 _OFFSET = re.compile(r"^([+-])(\d{2}):(\d{2})$")
@@ -47,6 +81,11 @@ class PhotoMetadata(BaseModel):
     rating: int = Field(default=0, ge=0, le=5)
     width: int = Field(ge=1, description="Displayed width (after orientation).")
     height: int = Field(ge=1, description="Displayed height (after orientation).")
+    film_simulation: str | None = Field(default=None, description="Fujifilm film simulation, e.g. 'Provia'.")
+    dynamic_range: int | None = Field(
+        default=None,
+        description="Fujifilm dynamic range setting in % (100, 200, 400): DR200/400 underexpose.",
+    )
 
 
 def read_metadata(path: Path) -> PhotoMetadata:
@@ -108,7 +147,32 @@ def _from_image(image: Image.Image) -> PhotoMetadata:
         rating=_rating(ifd0.get(_RATING), image.info.get("xmp")),
         width=width,
         height=height,
+        **_fujifilm(exif_ifd.get(_MAKER_NOTE)),
     )
+
+
+def _fujifilm(maker_note: Any) -> dict[str, Any]:
+    """Film simulation and dynamic range from a Fujifilm maker note ({} for other makes or if unreadable)."""
+    if not isinstance(maker_note, bytes) or not maker_note.startswith(b"FUJIFILM") or len(maker_note) < 14:
+        return {}
+    try:
+        offset = struct.unpack_from("<I", maker_note, 8)[0]
+        (count,) = struct.unpack_from("<H", maker_note, offset)
+        tags: dict[int, int] = {}
+        for i in range(count):
+            tag, kind, n, value = struct.unpack_from("<HHII", maker_note, offset + 2 + 12 * i)
+            if n == 1 and kind in (3, 4):  # one SHORT/LONG stored inline
+                tags[tag] = value & 0xFFFF if kind == 3 else value
+    except struct.error:
+        return {}
+    film = _FUJI_MONOCHROME.get(tags.get(_FUJI_SATURATION, -1)) or _FUJI_FILM_MODES.get(
+        tags.get(_FUJI_FILM_MODE, -1)
+    )
+    dynamic_range = tags.get(_FUJI_DEVELOPMENT_DR)
+    return {
+        "film_simulation": film,
+        "dynamic_range": dynamic_range if dynamic_range in (100, 200, 400) else None,
+    }
 
 
 def _text(value: Any) -> str | None:

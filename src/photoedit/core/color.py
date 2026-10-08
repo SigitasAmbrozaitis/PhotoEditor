@@ -292,3 +292,69 @@ def as_shot_temperature_tint(cam_from_xyz: npt.ArrayLike, multipliers: npt.Array
     neutral_camera = 1 / (m / m[1])
     xyz = np.linalg.solve(np.asarray(cam_from_xyz, dtype=np.float64)[:3, :3], neutral_camera)
     return xy_to_temperature_tint(xyz_to_xy(xyz))
+
+
+# ----------------------------------------------------------------- CIELAB + CIEDE2000 (for measuring
+# differences)
+
+_D65_XYZ = xy_to_xyz(D65)
+
+
+def xyz_to_cielab(xyz: Floats, white: npt.NDArray[np.float64] = _D65_XYZ) -> Floats:
+    """XYZ → CIE L*a*b* (L 0..100) relative to ``white``."""
+    t = xyz / white.astype(xyz.dtype)
+    delta = 6 / 29
+    f = np.where(t > delta**3, np.cbrt(t), t / (3 * delta**2) + 4 / 29)
+    out = np.empty_like(xyz)
+    out[..., 0] = 116 * f[..., 1] - 16
+    out[..., 1] = 500 * (f[..., 0] - f[..., 1])
+    out[..., 2] = 200 * (f[..., 1] - f[..., 2])
+    return out
+
+
+def delta_e_2000(lab1: Floats, lab2: Floats) -> Floats:
+    """CIEDE2000 color difference (Sharma, Wu & Dalal 2005), elementwise over the last axis. ~1 = just
+    noticeable."""
+    l1, a1, b1 = lab1[..., 0], lab1[..., 1], lab1[..., 2]
+    l2, a2, b2 = lab2[..., 0], lab2[..., 1], lab2[..., 2]
+    c_bar = (np.hypot(a1, b1) + np.hypot(a2, b2)) / 2
+    g = 0.5 * (1 - np.sqrt(c_bar**7 / (c_bar**7 + 25.0**7)))
+    a1p, a2p = (1 + g) * a1, (1 + g) * a2
+    c1p, c2p = np.hypot(a1p, b1), np.hypot(a2p, b2)
+    h1p = np.degrees(np.arctan2(b1, a1p)) % 360
+    h2p = np.degrees(np.arctan2(b2, a2p)) % 360
+    dlp = l2 - l1
+    dcp = c2p - c1p
+    dhp = h2p - h1p
+    dhp = np.where(dhp > 180, dhp - 360, np.where(dhp < -180, dhp + 360, dhp))
+    dhp = np.where(c1p * c2p == 0, 0, dhp)
+    dhp_big = 2 * np.sqrt(c1p * c2p) * np.sin(np.radians(dhp / 2))
+    lp_bar = (l1 + l2) / 2
+    cp_bar = (c1p + c2p) / 2
+    hp_sum = h1p + h2p
+    hp_bar = np.where(
+        c1p * c2p == 0,
+        hp_sum,
+        np.where(
+            np.abs(h1p - h2p) <= 180,
+            hp_sum / 2,
+            np.where(hp_sum < 360, (hp_sum + 360) / 2, (hp_sum - 360) / 2),
+        ),
+    )
+    t = (
+        1
+        - 0.17 * np.cos(np.radians(hp_bar - 30))
+        + 0.24 * np.cos(np.radians(2 * hp_bar))
+        + 0.32 * np.cos(np.radians(3 * hp_bar + 6))
+        - 0.20 * np.cos(np.radians(4 * hp_bar - 63))
+    )
+    d_theta = 30 * np.exp(-(((hp_bar - 275) / 25) ** 2))
+    r_c = 2 * np.sqrt(cp_bar**7 / (cp_bar**7 + 25.0**7))
+    s_l = 1 + 0.015 * (lp_bar - 50) ** 2 / np.sqrt(20 + (lp_bar - 50) ** 2)
+    s_c = 1 + 0.045 * cp_bar
+    s_h = 1 + 0.015 * cp_bar * t
+    r_t = -np.sin(np.radians(2 * d_theta)) * r_c
+    out: Floats = np.sqrt(
+        (dlp / s_l) ** 2 + (dcp / s_c) ** 2 + (dhp_big / s_h) ** 2 + r_t * (dcp / s_c) * (dhp_big / s_h)
+    )
+    return out

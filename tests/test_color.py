@@ -196,3 +196,34 @@ def test_warmer_light_needs_more_blue_gain() -> None:
 def test_extreme_white_balance_stays_finite() -> None:
     m = color.camera_multipliers(XT3_CAM_FROM_XYZ, 2000, 59)  # beyond what the linear matrix can model
     assert np.isfinite(m).all() and (m > 0).all() and m[1] == 1.0
+
+
+# ----------------------------------------------------------------- CIELAB + CIEDE2000
+
+
+@pytest.mark.parametrize(
+    ("lab1", "lab2", "expected"),
+    [  # Sharma, Wu & Dalal (2005) test data
+        ((50.0, 2.6772, -79.7751), (50.0, 0.0, -82.7485), 2.0425),
+        ((50.0, 3.1571, -77.2803), (50.0, 0.0, -82.7485), 2.8615),
+        ((50.0, 2.8361, -74.0200), (50.0, 0.0, -82.7485), 3.4412),
+        ((50.0, 0.0, 0.0), (50.0, -1.0, 2.0), 2.3669),
+        ((50.0, 2.4900, -0.0010), (50.0, -2.4900, 0.0009), 7.1792),
+        ((50.0, 2.5, 0.0), (73.0, 25.0, -18.0), 27.1492),
+        ((60.2574, -34.0099, 36.2677), (60.4626, -34.1751, 39.4387), 1.2644),
+        ((2.0776, 0.0795, -1.1350), (0.9033, -0.0636, -0.5514), 0.9082),
+    ],
+)
+def test_ciede2000_reference_pairs(
+    lab1: tuple[float, float, float], lab2: tuple[float, float, float], expected: float
+) -> None:
+    assert float(color.delta_e_2000(np.array(lab1), np.array(lab2))) == pytest.approx(expected, abs=1e-4)
+    assert float(color.delta_e_2000(np.array(lab2), np.array(lab1))) == pytest.approx(expected, abs=1e-4)
+
+
+def test_cielab_of_white_and_black() -> None:
+    white = color.xyz_to_cielab(color.xy_to_xyz(color.D65))
+    np.testing.assert_allclose(white, [100, 0, 0], atol=1e-9)
+    np.testing.assert_allclose(color.xyz_to_cielab(np.zeros(3)), [0, 0, 0], atol=1e-9)
+    gray = color.xyz_to_cielab(color.xy_to_xyz(color.D65, 0.18))
+    assert gray[0] == pytest.approx(49.496, abs=1e-3)
