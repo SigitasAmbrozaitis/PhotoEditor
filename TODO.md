@@ -412,7 +412,7 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
 - [x] **P3.11** `render.pipeline`: `render(base, params, size)` runs the stages in PLAN 4.3 order. `ENGINE_VERSION` joins
   the render identity. Determinism: the same input gives identical bytes (OpenCV thread count pinned; tested twice in a
   row and across threads). Rejects later-phase parameters (P3.1).
-- [ ] **P3.12** Property tests (hypothesis): any valid `AdjustmentParams` renders a small synthetic image with no NaN, no
+- [x] **P3.12** Property tests (hypothesis): any valid `AdjustmentParams` renders a small synthetic image with no NaN, no
   out-of-range values, and identical output on a second run; invalid parameters are rejected by the models.
 - [ ] **P3.13** Camera profile = the default look (P3.1). A profile is the first render stage after white balance, so
   user adjustments work on top of it, like Lightroom's camera profiles:

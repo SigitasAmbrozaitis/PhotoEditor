@@ -73,7 +73,7 @@ def test_white_balance_none_means_as_shot() -> None:
 
 def test_tone_curve_requires_increasing_x() -> None:
     ToneCurve.model_validate({"rgb": [{"x": 0, "y": 0}, {"x": 0.5, "y": 0.6}, {"x": 1, "y": 1}]})
-    with pytest.raises(ValidationError, match="strictly increasing"):
+    with pytest.raises(ValidationError, match="increase by at least"):
         ToneCurve.model_validate({"rgb": [{"x": 0, "y": 0}, {"x": 0, "y": 1}]})
     with pytest.raises(ValidationError):
         ToneCurve.model_validate({"rgb": [{"x": 0, "y": 0}]})  # too few points

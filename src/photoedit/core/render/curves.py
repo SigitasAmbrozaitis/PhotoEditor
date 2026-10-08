@@ -47,7 +47,10 @@ def _slopes(x: F64, y: F64) -> F64:
         if delta[k - 1] * delta[k] > 0:
             w1 = 2 * h[k] + h[k - 1]
             w2 = h[k] + 2 * h[k - 1]
-            m[k] = (w1 + w2) / (w1 / delta[k - 1] + w2 / delta[k])
+            # (w1 + w2) / (w1 / d0 + w2 / d1), multiplied out so tiny secants can't overflow.
+            denominator = w1 * delta[k] + w2 * delta[k - 1]
+            if denominator != 0:
+                m[k] = (w1 + w2) * delta[k - 1] * delta[k] / denominator
     m[0] = _end_slope(h[0], h[1], delta[0], delta[1])
     m[-1] = _end_slope(h[-1], h[-2], delta[-1], delta[-2])
     return m

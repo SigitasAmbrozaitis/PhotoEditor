@@ -256,7 +256,9 @@ _VIBRANCE_SKIN_HUE = BAND_HUES["orange"]
 
 
 def _smoothstep(edge0: float, edge1: float, x: F32) -> F32:
-    t = np.clip((x - np.float32(edge0)) / np.float32(edge1 - edge0), 0, 1)
+    # A minimum width keeps tiny slider values (e.g. masking 1e-300) from dividing by zero in float32.
+    width = np.float32(max(edge1 - edge0, 1e-12))
+    t = np.clip((x - np.float32(edge0)) / width, 0, 1)
     out: F32 = t * t * (3 - 2 * t)
     return out
 

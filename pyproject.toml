@@ -74,6 +74,8 @@ disallow_untyped_defs = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--strict-markers -ra"
+# Numeric warnings (overflow, divide by zero, invalid value) mean a render bug: fail instead of warning.
+filterwarnings = ["error::RuntimeWarning"]
 markers = [
     "slow: long-running tests (benchmarks, full-resolution renders)",
     "golden: golden-image comparison tests that need real sample RAW files",

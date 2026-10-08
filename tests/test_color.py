@@ -191,3 +191,8 @@ def test_warmer_light_needs_more_blue_gain() -> None:
     tungsten = color.camera_multipliers(XT3_CAM_FROM_XYZ, 3000, 0)
     daylight = color.camera_multipliers(XT3_CAM_FROM_XYZ, 5500, 0)
     assert tungsten[2] > daylight[2] and tungsten[0] < daylight[0]
+
+
+def test_extreme_white_balance_stays_finite() -> None:
+    m = color.camera_multipliers(XT3_CAM_FROM_XYZ, 2000, 59)  # beyond what the linear matrix can model
+    assert np.isfinite(m).all() and (m > 0).all() and m[1] == 1.0

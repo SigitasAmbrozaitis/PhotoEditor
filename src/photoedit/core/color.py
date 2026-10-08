@@ -278,10 +278,9 @@ def camera_multipliers(
     response = np.asarray(cam_from_xyz, dtype=np.float64)[:3, :3] @ xy_to_xyz(
         temperature_tint_to_xy(temperature, tint)
     )
-    if np.any(response <= 0):
-        raise ValueError(
-            f"{temperature:.0f} K / tint {tint:+.0f} is outside what this camera's matrix can represent"
-        )
+    # A linear camera matrix can predict a negative response for extreme lights (e.g. 2000 K with a strong
+    # magenta tint) that the sliders allow. Floor it so the gain stays large but finite instead of failing.
+    response = np.maximum(response, 1e-3 * float(response.max()))
     multipliers: npt.NDArray[np.float64] = 1 / response
     normalized: npt.NDArray[np.float64] = multipliers / multipliers[1]
     return normalized
