@@ -387,7 +387,7 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
 ### Engine
 - [x] **P3.2** Add `opencv-python-headless` (blur/resize for sharpening and previews) and `scipy` (least-squares fitting
   of the camera profile; reused for style fitting in Phase 8). Commit `uv.lock`.
-- [ ] **P3.3** `core/color.py`: the color math, all float64-exact and tested against published reference values:
+- [x] **P3.3** `core/color.py`: the color math, all float64-exact and tested against published reference values:
   sRGB/Rec.2020/XYZ matrices and transfer functions; OKLab/OKLCh (Ottosson's reference values); Kelvin + tint ↔
   chromaticity (Planckian/daylight locus, tint perpendicular to it); Bradford adaptation; camera WB multipliers from
   Kelvin + tint (given the camera matrix) and the inverse "as shot" estimate.
