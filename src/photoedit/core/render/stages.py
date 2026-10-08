@@ -13,7 +13,9 @@ import numpy.typing as npt
 
 from photoedit.core import color
 from photoedit.core.decode import LinearImage
-from photoedit.models.adjustments import Tone, WhiteBalance
+from photoedit.core.render.curves import pchip
+from photoedit.core.render.profile import CameraProfile
+from photoedit.models.adjustments import Tone, ToneCurve, WhiteBalance
 
 type F32 = npt.NDArray[np.float32]
 
@@ -160,4 +162,56 @@ def tone(rgb: F32, params: Tone) -> F32:
     new_stops = np.interp(stops, TONE_GRID, curve)
     gain = np.exp2(new_stops - stops).astype(np.float32)
     out: F32 = rgb * gain[..., None]
+    return out
+
+
+# ----------------------------------------------------------------- curves
+
+_CURVE_GRID = np.linspace(0, 1, 4097)
+# Parametric regions move fixed control points by up to ±0.1. The points are 0.25 apart, so the curve through
+# them always rises: it can flatten a region but never fold back.
+_REGION_POINTS = {"shadows": 0.125, "darks": 0.375, "lights": 0.625, "highlights": 0.875}
+_REGION_STRENGTH = 0.1
+
+
+def base_curve_lut(profile: CameraProfile) -> npt.NDArray[np.float64]:
+    """The profile's tone curve sampled on ``TONE_GRID`` (stops → display value)."""
+    stops = [p.stops for p in profile.tone_curve]
+    values = [p.value for p in profile.tone_curve]
+    return pchip(stops, values, TONE_GRID)
+
+
+def base_curve(rgb: F32, profile: CameraProfile) -> F32:
+    """Scene-linear → display-encoded, per channel, through the profile's tone curve.
+
+    Per channel (like film and most cameras), so very bright saturated colors drift toward white instead of
+    clipping into a flat patch.
+    """
+    lut = base_curve_lut(profile)
+    stops = np.log2(np.maximum(rgb, _EPSILON) / np.float32(MID_GRAY))
+    return np.interp(stops, TONE_GRID, lut).astype(np.float32)
+
+
+def curve_luts(params: ToneCurve) -> list[npt.NDArray[np.float64]] | None:
+    """Per-channel lookup tables on ``_CURVE_GRID`` for the parametric + point curves; None if all neutral."""
+    neutral = ToneCurve()
+    if params == neutral:
+        return None
+    region_y = [x + _REGION_STRENGTH * getattr(params, name) / 100 for name, x in _REGION_POINTS.items()]
+    parametric = pchip([0, *_REGION_POINTS.values(), 1], [0, *region_y, 1], _CURVE_GRID)
+    rgb = pchip([p.x for p in params.rgb], [p.y for p in params.rgb], parametric)
+    return [
+        pchip([p.x for p in points], [p.y for p in points], rgb)
+        for points in (params.red, params.green, params.blue)
+    ]
+
+
+def curves(encoded: F32, params: ToneCurve) -> F32:
+    """Parametric regions, then the RGB point curve, then the R/G/B point curves (display-encoded values)."""
+    luts = curve_luts(params)
+    if luts is None:
+        return encoded
+    out = np.empty_like(encoded)
+    for channel, lut in enumerate(luts):
+        out[..., channel] = np.interp(encoded[..., channel], _CURVE_GRID, lut)
     return out
