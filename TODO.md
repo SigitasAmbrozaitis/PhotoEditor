@@ -436,9 +436,11 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
   first use): `has_edits`, as-shot temperature/tint (filled lazily for photos imported before).
 - [x] **P3.15** Previews and thumbnails through the pipeline: `before` = default look, `after` = the photo's edit; the cache
   key adds a hash of the edit; thumbnails per P3.1 (background job after import, re-render on edit).
-- [ ] **P3.16** Golden images (P3.1): a committed synthetic reference (color chart + gradients rendered with fixed
-  parameters, compared exactly), plus `photoedit golden update` writing local references for a few real RAFs into
-  `tests/golden-local/` (git-ignored), compared by `@pytest.mark.golden` tests within a small ΔE tolerance.
+- [x] **P3.16** Golden images (P3.1): committed synthetic references (`tests/golden/`: a color chart + ramps rendered
+  with fixed edits under the generic and X-T3 profiles, compared bit-exactly; `scripts/update_golden.py` regenerates
+  them), plus `photoedit golden update` writing local references for a few real RAFs into `output/golden/`
+  (git-ignored, a tool-owned folder: `tests/` is not one), compared by `@pytest.mark.golden` tests within ΔE2000
+  mean ≤ 0.5 / p99 ≤ 2.
 - [ ] **P3.17** Contact sheet: `photoedit contact-sheet PHOTO [--group tone]` → `output/contact-sheets/…jpg`, every
   implemented parameter at −/0/+ (min/neutral/max where that's more useful), labeled.
 - [ ] **P3.18** Preview speed: time a full render at 1600 px from the cached base on a real RAF (target ≤ 0.5 s); add the

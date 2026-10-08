@@ -23,6 +23,10 @@ cache_app = typer.Typer(help="Manage the thumbnail/preview cache.", no_args_is_h
 app.add_typer(cache_app, name="cache")
 profile_app = typer.Typer(help="Camera profiles (the default look of unedited photos).", no_args_is_help=True)
 app.add_typer(profile_app, name="profile")
+golden_app = typer.Typer(
+    help="Golden reference renders of your sample photos (kept local).", no_args_is_help=True
+)
+app.add_typer(golden_app, name="golden")
 
 ConfigOption = Annotated[
     Path | None,
@@ -233,6 +237,53 @@ def profile_fit(
     guard.write_atomic(out_dir / f"{slug}.md", text.encode("utf-8"))
     typer.echo(text)
     typer.echo(f"Profile written to {json_path}")
+
+
+@golden_app.command("update")
+def golden_update(
+    folder: Annotated[
+        Path | None, typer.Argument(help="Folder with sample RAWs (default: sample_photos_dir).")
+    ] = None,
+    count: Annotated[int, typer.Option(min=1, help="How many photos (spread across the folder).")] = 4,
+    config: ConfigOption = None,
+) -> None:
+    """Render reference images of a few sample RAWs into output/golden/ (git-ignored).
+
+    The golden tests compare later renders against them; run again after an intended engine change.
+    """
+    from photoedit.core.decode import read_raw_info
+    from photoedit.core.golden import GOLDEN_EDITS, render_photo, write_manifest, write_png
+    from photoedit.core.metadata import read_metadata_from_bytes
+    from photoedit.core.scan import ScanError, SourceKind, scan_folder
+    from photoedit.safety import guard_from_settings
+
+    settings = load_settings(config)
+    source = folder or settings.sample_photos_dir
+    if source is None:
+        raise typer.BadParameter("give a FOLDER or set sample_photos_dir", param_hint="FOLDER")
+    try:
+        raws = [p.path for p in scan_folder(source.resolve()).photos if p.kind is SourceKind.RAW]
+    except ScanError as exc:
+        raise typer.BadParameter(str(exc), param_hint="FOLDER") from None
+    if not raws:
+        raise typer.BadParameter(f"no RAW files in {source}", param_hint="FOLDER")
+    picked = [raws[round(i * (len(raws) - 1) / max(count - 1, 1))] for i in range(min(count, len(raws)))]
+    guard = guard_from_settings(settings)
+    guard.protect(source)
+    out_dir = settings.output_dir / "golden"
+    entries: list[dict[str, object]] = []
+    for path in dict.fromkeys(picked):
+        info = read_raw_info(path)
+        camera = read_metadata_from_bytes(info.embedded_jpeg).camera if info.embedded_jpeg else None
+        for edit in GOLDEN_EDITS:
+            name = f"{path.stem}-{edit}.png"
+            write_png(guard, out_dir / name, render_photo(path, camera, info.width, edit))
+            entries.append(
+                {"file": name, "source": str(path), "camera": camera, "width": info.width, "edit": edit}
+            )
+            typer.echo(f"wrote {name}")
+    write_manifest(guard, out_dir, entries)
+    typer.echo(f"{len(entries)} references in {out_dir}")
 
 
 @app.command()
