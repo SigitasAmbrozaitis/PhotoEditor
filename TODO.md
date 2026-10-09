@@ -12,7 +12,7 @@ Derived from [PLAN.md](PLAN.md) v0.3. This checklist is written for an AI to fol
 - ⛔ **STOP** = halt and wait for the user. Never continue past a STOP without the user's explicit go-ahead.
 - 🧑 **Human test** = steps the user runs by hand at the end of a phase, with the expected result for each step.
 - If something is ambiguous or the plan seems wrong, **ask**. Don't guess. Plan changes go into PLAN.md first.
-- **Phases 0–3 and 3b are detailed.** Later phases are an outline and get detailed at the start of each phase. Writing that detail is the first item in each phase.
+- **Phases 0–3 and 3b (deferred, at the end) are detailed.** Later phases are an outline and get detailed at the start of each phase. Writing that detail is the first item in each phase.
 - Golden rules: originals are read-only; never write outside `C:\Work\PhotoEditing` (except export destinations the user
   chose); commit as `SigitasAmbrozaitis`.
 
@@ -519,11 +519,63 @@ curve's shoulder starts at +2. Speed → Phase 3b. Sharpening → needs the 1:1 
 
 ### ⛔ STOP: user approves Phase 3
 
-## Phase 3b: Live preview speed
+**Approved 2026-10-09.** Feedback from the human test: the tone sliders and the other groups work. Preview speed is
+better but still has a delay; acceptable for now, because the user isn't planning to move sliders by hand yet, so
+**Phase 3b is deferred** (moved below Phase 9, PLAN §0) and Phase 4 comes next.
+
+## Phase 4: Styles (outline)
+- [ ] **P4.0** Detail this phase. ⛔ STOP for review.
+- [ ] Style file format (`style.json` + README + samples). Library CRUD, schema versioning.
+- [ ] Apply to one or many photos (writes edit JSON only). Per-photo overrides. Adaptive rules (auto exposure/WB normalization).
+- [ ] The UI style screens go live with real data. A hand-written test style is applied to the sample folder.
+- 🧑 Human test + ⛔ STOP.
+
+## Phase 5: Export (outline)
+- [ ] **P5.0** Detail this phase. ⛔ STOP for review.
+- [ ] Resize modes, aspect crop, color space + embedded ICC, output sharpening, metadata policies, naming templates, collision handling.
+- [ ] Parallel batch export job with progress, cancellation, and the path guard for destinations.
+- [ ] Export tests: dimensions, ICC, EXIF, names. The UI Export dialog goes live.
+- 🧑 Human test + ⛔ STOP.
+
+## Phase 6: Geometry & centering (outline)
+- [ ] **P6.0** Detail this phase. ⛔ STOP for review.
+- [ ] Crop / rotate / straighten / flip / zoom in the pipeline. Subject detection (faces + saliency). `suggest_crop(aspect)`.
+- [ ] Crop overlay in the Photo view.
+- [ ] 1:1 zoom view (full-resolution crops of the visible area) so sharpening can be judged (deferred from Phase 3,
+  2026-10-09).
+- 🧑 Human test + ⛔ STOP.
+
+## Phase 7: MCP server (outline)
+- [ ] **P7.0** Detail this phase. ⛔ STOP for review.
+- [ ] MCP server exposing the core API (PLAN 4.4), including `render_preview` returning images.
+- [ ] Register it with Claude Code. The UI auto-refreshes when the AI changes something.
+- [ ] MCP tests: valid and invalid input for every tool.
+- 🧑 Human test (end-to-end via Claude Code) + ⛔ STOP.
+
+## Phase 8: AI style creation (outline)
+- [ ] ⛔ **STOP FIRST: ask the user for style samples** (finished photos and/or RAW + edited pairs).
+- [ ] **P8.0** Detail this phase. ⛔ STOP for review.
+- [ ] Analysis tools; parameter fitting from pairs (developed first on the X-T3 camera JPEG + RAF pairs).
+- [ ] Style creation flow: AI proposal → render → compare → iterate → save with README + samples.
+- [ ] Fallbacks as needed: F1 A/B picker, F2 statistical transfer, F3 learned 3D LUT, F5 ML (only with the user's approval).
+- 🧑 Human test + ⛔ STOP.
+
+## Phase 9: Polish (outline)
+- [ ] **P9.0** Detail this phase together with the user's feedback list. ⛔ STOP for review.
+- [ ] Performance tuning, clarity/texture/dehaze, noise reduction, lens corrections, more formats, UI refinements.
+- 🧑 Human test + ⛔ STOP.
+
+---
+
+## Phase 3b: Live preview speed (deferred 2026-10-09)
+
+Deferred after the Phase 3 human test: the AI drives the edits, and manual slider use can wait (PLAN §0). The
+detail below stays as written; when resumed, re-measure first (the engine changed in P3.24), update it, and start
+with P3b.0's review. It may be folded into Phase 9 (performance tuning).
 
 Goal: slider changes show **instantly**, like Lightroom: the image follows the mouse while dragging, and the exact image
 settles within about half a second of release. Added 2026-10-09 after the Phase 3 human test (PLAN §0, §4.3).
-Branch `phase-3b-live-preview` from `main` after Phase 3 is merged.
+Branch `phase-3b-live-preview` from `main` when resumed.
 
 Measured 2026-10-09 (DSCF5437, 1600 px, this machine):
 - A 2 s drag in the UI: **nothing renders while the slider moves**. The edit is saved only after 200 ms without motion,
@@ -602,45 +654,3 @@ CPU render stays the source of truth; exports never use the LUT.
 8. `docs/benchmark.md` "Live preview" numbers look plausible to you.
 
 ### ⛔ STOP: user approves Phase 3b
-
-## Phase 4: Styles (outline)
-- [ ] **P4.0** Detail this phase. ⛔ STOP for review.
-- [ ] Style file format (`style.json` + README + samples). Library CRUD, schema versioning.
-- [ ] Apply to one or many photos (writes edit JSON only). Per-photo overrides. Adaptive rules (auto exposure/WB normalization).
-- [ ] The UI style screens go live with real data. A hand-written test style is applied to the sample folder.
-- 🧑 Human test + ⛔ STOP.
-
-## Phase 5: Export (outline)
-- [ ] **P5.0** Detail this phase. ⛔ STOP for review.
-- [ ] Resize modes, aspect crop, color space + embedded ICC, output sharpening, metadata policies, naming templates, collision handling.
-- [ ] Parallel batch export job with progress, cancellation, and the path guard for destinations.
-- [ ] Export tests: dimensions, ICC, EXIF, names. The UI Export dialog goes live.
-- 🧑 Human test + ⛔ STOP.
-
-## Phase 6: Geometry & centering (outline)
-- [ ] **P6.0** Detail this phase. ⛔ STOP for review.
-- [ ] Crop / rotate / straighten / flip / zoom in the pipeline. Subject detection (faces + saliency). `suggest_crop(aspect)`.
-- [ ] Crop overlay in the Photo view.
-- [ ] 1:1 zoom view (full-resolution crops of the visible area) so sharpening can be judged (deferred from Phase 3,
-  2026-10-09).
-- 🧑 Human test + ⛔ STOP.
-
-## Phase 7: MCP server (outline)
-- [ ] **P7.0** Detail this phase. ⛔ STOP for review.
-- [ ] MCP server exposing the core API (PLAN 4.4), including `render_preview` returning images.
-- [ ] Register it with Claude Code. The UI auto-refreshes when the AI changes something.
-- [ ] MCP tests: valid and invalid input for every tool.
-- 🧑 Human test (end-to-end via Claude Code) + ⛔ STOP.
-
-## Phase 8: AI style creation (outline)
-- [ ] ⛔ **STOP FIRST: ask the user for style samples** (finished photos and/or RAW + edited pairs).
-- [ ] **P8.0** Detail this phase. ⛔ STOP for review.
-- [ ] Analysis tools; parameter fitting from pairs (developed first on the X-T3 camera JPEG + RAF pairs).
-- [ ] Style creation flow: AI proposal → render → compare → iterate → save with README + samples.
-- [ ] Fallbacks as needed: F1 A/B picker, F2 statistical transfer, F3 learned 3D LUT, F5 ML (only with the user's approval).
-- 🧑 Human test + ⛔ STOP.
-
-## Phase 9: Polish (outline)
-- [ ] **P9.0** Detail this phase together with the user's feedback list. ⛔ STOP for review.
-- [ ] Performance tuning, clarity/texture/dehaze, noise reduction, lens corrections, more formats, UI refinements.
-- 🧑 Human test + ⛔ STOP.
