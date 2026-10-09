@@ -268,3 +268,8 @@ def test_any_valid_style_resolves_to_valid_parameters(
         assert (
             abs(first.adjustments.tone.exposure - own_exposure) <= exposure["max_change"] + 1e-4
         )  # rounding
+
+
+def test_no_change_reads_as_plus_zero() -> None:
+    _, (result,) = _resolve(_style(rules=[{"type": "exposure", "target": STATS.middle}]))
+    assert result.summary.endswith(": +0.00 EV")

@@ -135,7 +135,7 @@ def _exposure_change(
         notes.append(f"exposure kept within {low:g}…{high:g} EV")
         final = min(max(final, low), high)
     final = round(final, 4)
-    applied = final - base
+    applied = round(final - base, 4) + 0.0  # + 0.0: never show "-0.00 EV"
     strength = f" at {rule.strength:g} %" if rule.strength != 100 else ""
     summary = f"{label}{strength}: {applied:+.2f} EV"
     return {"tone.exposure": final}, RuleResult(

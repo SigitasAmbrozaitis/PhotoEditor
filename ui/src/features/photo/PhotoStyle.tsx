@@ -23,22 +23,22 @@ export function PhotoStyle({ detail }: { detail: PhotoDetail }) {
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex items-end gap-2">
-        <Field label="Style" className="min-w-0 flex-1">
-          <Select
-            aria-label="Style"
-            value={edit.style_id ?? ''}
-            disabled={setStyle.isPending}
-            onChange={(e) => setStyle.mutate(e.target.value || null)}
-          >
-            <option value="">No style</option>
-            {usable.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
+      <Field label="Style">
+        <Select
+          aria-label="Style"
+          value={edit.style_id ?? ''}
+          disabled={setStyle.isPending}
+          onChange={(e) => setStyle.mutate(e.target.value || null)}
+        >
+          <option value="">No style</option>
+          {usable.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <div className="flex flex-wrap gap-2">
         <Button size="sm" title="Save this photo's look as a new style" onClick={() => setDialog('save')}>
           <BookmarkPlus className="size-3.5" aria-hidden /> Save as style…
         </Button>

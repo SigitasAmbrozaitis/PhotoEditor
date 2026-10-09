@@ -852,7 +852,7 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
   folder's 40 very dark indoor shots hit the 1.5 EV limit (a case to tune). The styles were created through the
   library (README + history) from hand-chosen values. Slugs now join "&" and apostrophes ("B&W" → `bw`).
   `styles/*/samples/` is git-ignored.
-- [ ] **P4.13** Tests:
+- [x] **P4.13** Tests:
   - Vitest: style detail editing, the rules editor, test set, consistency panel, history/diff/revert, delete
     confirmation, conflict handling, the Photo view style picker, Save as style, update-from-photo, the apply wizard
     with a real job and "even out".
@@ -860,6 +860,11 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
     stand in for a manual series): create a style from an edited photo → apply it to the folder with "even out" →
     the thumbnails change and the report's spread shrinks → edit the style → the thumbnails change again → revert →
     delete. Screenshots.
+  Done: 85 Vitest tests (Styles screens, Photo view style controls, Library remove/filter, wizard even out) and 5
+  Playwright tests. The e2e server now also uses `output/e2e/styles` (seeded with "E2E Moody"), so it never touches
+  the real `styles/`; e2e photos carry exposure EXIF, plus a 2-stop-darker and a 1-stop-brighter shot of scene 1.
+  Fixed from the screenshots: the Photo view's style picker was squeezed by its buttons (now its own row); a rule
+  summary showed "-0.00 EV".
 - [ ] **P4.14** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e) and update README.
 
 ### 🧑 Human test: Phase 4
