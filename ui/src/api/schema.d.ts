@@ -330,7 +330,10 @@ export interface paths {
         /** List Jobs */
         get: operations["list_jobs_api_jobs_get"];
         put?: never;
-        /** Create Job */
+        /**
+         * Create Job
+         * @description Apply a style (real), export (simulated until Phase 5), or apply then export.
+         */
         post: operations["create_job_api_jobs_post"];
         delete?: never;
         options?: never;

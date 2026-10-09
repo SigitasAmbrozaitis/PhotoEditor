@@ -15,7 +15,7 @@ from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
-from photoedit.models.adjustments import AdjustmentParams
+from photoedit.models.adjustments import AdjustmentGroup, AdjustmentParams
 
 STYLE_ID_PATTERN = r"^[a-z0-9]+(-[a-z0-9]+)*$"
 STYLE_SCHEMA_VERSION = 1
@@ -418,3 +418,82 @@ class StyleDiff(_Model):
     rules: list[RuleChange]
     fields: list[str] = Field(description="Other changed fields (name, description, test set, …).")
     same_look: bool
+
+
+# ----------------------------------------------------------------- styles from photos, samples, reports
+
+# Parameter groups a style can take from a photo. White balance and exposure have their own choices
+# (rules), geometry and lens are per photo.
+STYLE_GROUPS = (
+    AdjustmentGroup.TONE,
+    AdjustmentGroup.PRESENCE,
+    AdjustmentGroup.TONE_CURVE,
+    AdjustmentGroup.HSL,
+    AdjustmentGroup.COLOR_GRADING,
+    AdjustmentGroup.DETAIL,
+    AdjustmentGroup.EFFECTS,
+)
+
+
+def _style_groups(groups: list[AdjustmentGroup]) -> list[AdjustmentGroup]:
+    bad = [g.value for g in groups if g not in STYLE_GROUPS]
+    if bad:
+        raise ValueError(f"a style can't take these groups from a photo: {', '.join(bad)}")
+    return sorted(set(groups), key=STYLE_GROUPS.index)
+
+
+class ExposureFromPhoto(StrEnum):
+    NONE = "none"  # the style doesn't touch exposure
+    VALUE = "value"  # the photo's exposure value, as a fixed value
+    MATCH = "match"  # auto exposure that brings other photos to this photo's brightness
+
+
+class WhiteBalanceFromPhoto(StrEnum):
+    NONE = "none"  # the style doesn't touch white balance
+    OFFSET = "offset"  # the photo's white balance as an offset from its as-shot one
+
+
+class StyleFromPhoto(_Model):
+    """Create a style from a photo's current look."""
+
+    photo_id: str
+    name: str = Field(min_length=1, max_length=80)
+    description: str = Field(default="", max_length=2000)
+    groups: list[AdjustmentGroup] = Field(
+        default_factory=lambda: list(STYLE_GROUPS), description="Which parameter groups to take."
+    )
+    exposure: ExposureFromPhoto = ExposureFromPhoto.MATCH
+    white_balance: WhiteBalanceFromPhoto = WhiteBalanceFromPhoto.OFFSET
+
+    @field_validator("groups")
+    @classmethod
+    def _groups(cls, groups: list[AdjustmentGroup]) -> list[AdjustmentGroup]:
+        return _style_groups(groups)
+
+
+class StyleUpdateFromPhoto(_Model):
+    """Replace the given groups of a style with a photo's values."""
+
+    photo_id: str
+    groups: list[AdjustmentGroup] = Field(min_length=1)
+    expected_version: int = Field(ge=1)
+    change_note: str = Field(default="", max_length=500)
+
+    @field_validator("groups")
+    @classmethod
+    def _groups(cls, groups: list[AdjustmentGroup]) -> list[AdjustmentGroup]:
+        return _style_groups(groups)
+
+
+class StyleSamplesRequest(_Model):
+    photo_ids: list[str] = Field(min_length=1, max_length=12)
+
+
+class StyleReportRequest(_Model):
+    photo_ids: list[str] | None = Field(
+        default=None, max_length=500, description="None = the style's test set, else the photos using it."
+    )
+
+
+class PhotoStyleRequest(_Model):
+    style_id: str | None = Field(description="None removes the photo's style.")

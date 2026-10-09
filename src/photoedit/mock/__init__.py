@@ -1,4 +1,4 @@
-"""Mock parts of the backend (fake styles, simulated apply/export jobs). Replaced in later phases."""
+"""Mock parts of the backend (the simulated export job). Replaced in Phase 5."""
 
 from photoedit.mock.backend import MockBackend
 

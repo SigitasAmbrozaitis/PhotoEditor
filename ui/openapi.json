@@ -844,6 +844,7 @@
           "jobs"
         ],
         "summary": "Create Job",
+        "description": "Apply a style (real), export (simulated until Phase 5), or apply then export.",
         "operationId": "create_job_api_jobs_post",
         "requestBody": {
           "content": {

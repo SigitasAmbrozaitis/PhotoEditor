@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import io
+from fractions import Fraction
 from pathlib import Path
 
 from PIL import Image
+from PIL.TiffImagePlugin import IFDRational
 
 
 def write_jpeg(
@@ -15,11 +17,19 @@ def write_jpeg(
     *,
     date: str | None = None,
     camera: str | None = None,
+    exposure: tuple[float, Fraction, int] | None = None,
 ) -> Path:
+    """A one-color JPEG. ``exposure`` = (f-number, exposure time in seconds, ISO) written to EXIF."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tags = Image.Exif()
     if date is not None:
         tags.get_ifd(0x8769)[0x9003] = date
+    if exposure is not None:
+        aperture, seconds, iso = exposure
+        exif = tags.get_ifd(0x8769)
+        exif[0x829D] = IFDRational(int(aperture * 10), 10)
+        exif[0x829A] = IFDRational(seconds.numerator, seconds.denominator)
+        exif[0x8827] = iso
     if camera is not None:
         tags[0x0110] = camera
     buf = io.BytesIO()

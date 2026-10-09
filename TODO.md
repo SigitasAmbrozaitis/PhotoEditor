@@ -733,7 +733,7 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
   rules (measuring may decode). **Reset (DELETE /edit) now drops only the per-photo tweaks and keeps the style**;
   removing a style is its own action (P4.7). The catalog keeps `style_id` across re-imports (like the rating).
   When an applied style is switched, kept tweaks keep the value the photo showed.
-- [ ] **P4.7** Library operations (`core/library.py`):
+- [x] **P4.7** Library operations (`core/styling.py`, next to `core/library.py`):
   - `apply_style(photo_ids, style_id | None, even_out=False)` as a real `APPLY_STYLE` job (each item writes one edit
     JSON), followed by the thumbnail job. With `even_out`, it first measures the selection, then stores the group's
     medians (middle, white point, camera EV) in each photo's edit. Applying without it clears the group.
@@ -753,6 +753,13 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
 
   The mock styles leave `mock/backend.py`. Apply & export = a real apply + the simulated export.
   Tests on synthetic photos: every operation, jobs and their progress, thumbnails re-rendered, originals untouched.
+  Done in a new `core/styling.py` (`Styling`; `library.py` was already 400+ lines). With "even out", items measure
+  the photos and the edits are written together once the group is known. Apply & export returns the apply job;
+  the simulated export job is submitted when it finishes. Samples are 1200 px previews (JPEG q90, the preview
+  quality) rendered as a `render` job; a new rendering removes sample files no longer listed. The report measures
+  "after" in scene terms (measurements moved by exposure and WB, before tone curves), so it shows what the rules
+  did. `mock/images.py` is gone; the mock backend only serves presets and simulated exports. The existing GET
+  style routes and `POST /api/jobs` already use the real code (the rest of the API follows in P4.8).
 
 ### API + CLI
 - [ ] **P4.8** Real style endpoints (replace the mock ones; `409` on a version conflict, `404`/`422` with clear

@@ -301,6 +301,24 @@ class Catalog:
                 ),
             )
 
+    def photo_ids_with_style(self, style_id: str) -> list[str]:
+        """Every (present) photo that uses ``style_id``, in any folder."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT id FROM photos WHERE style_id = ? AND missing = 0 ORDER BY captured_at, filename",
+                (style_id,),
+            ).fetchall()
+        return [row["id"] for row in rows]
+
+    def style_counts(self) -> dict[str, int]:
+        """Number of (present) photos per style id."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT style_id, COUNT(*) AS n FROM photos WHERE style_id IS NOT NULL AND missing = 0"
+                " GROUP BY style_id"
+            ).fetchall()
+        return {row["style_id"]: row["n"] for row in rows}
+
     def set_style(self, photo_id: str, style_id: str | None) -> None:
         with self._transaction() as db:
             db.execute("UPDATE photos SET style_id = ? WHERE id = ?", (style_id, photo_id))

@@ -25,7 +25,7 @@ from photoedit.core.render.pipeline import check_supported
 from photoedit.core.scan import SourceKind
 from photoedit.core.style_rules import RuleInputs, resolve, rule_parameters
 from photoedit.core.styles import StyleLibrary
-from photoedit.models import AdjustmentParams, GroupReference, RuleResult
+from photoedit.models import AdjustmentParams, GroupReference, RuleResult, Style
 from photoedit.safety import PathGuard
 
 EDIT_SCHEMA_VERSION = 1
@@ -170,6 +170,23 @@ class EditStore:
         self._store(new.model_copy(update={"overrides": {n: v for n, v in shown.items() if base[n] != v}}))
         return self.effective(photo)
 
+    def styled_edit(
+        self, photo: CatalogPhoto, style: Style, *, group: GroupReference | None = None
+    ) -> EffectiveEdit:
+        """``style`` (any version, applied or not) on ``photo`` without its tweaks: for samples, reports and
+        comparing versions. Raises if the style can't be used."""
+        styled = self._styled_with(photo, style, group)
+        return EffectiveEdit(
+            adjustments=styled.adjustments,
+            overridden=[],
+            style_id=style.id,
+            revision=revision(style.id, {}, styled.adjustments),
+            style_values=styled.style_values,
+            rules=styled.rules,
+            style_version=style.version,
+            group=group,
+        )
+
     def reset(self, photo_id: str) -> None:
         """Forget the photo's edit entirely (style, group and tweaks)."""
         path = self.path(photo_id)
@@ -197,15 +214,17 @@ class EditStore:
         if style_id is None:
             return _Styled(adjustments=defaults)
         try:
-            style = self._library().get(style_id)
-            if style.rules and self._inputs is not None:
-                inputs = replace(self._inputs(photo), group=group)
-            else:
-                inputs = RuleInputs(stats=None, as_shot=None, group=group)
-            resolved = resolve(defaults, style, inputs)
+            return self._styled_with(photo, self._library().get(style_id), group)
         except (NotFoundError, InvalidRequestError, ValueError) as exc:
             # A missing or broken style must never break the Library: render unstyled and say why.
             return _Styled(adjustments=defaults, style_error=f"style '{style_id}' is not applied: {exc}")
+
+    def _styled_with(self, photo: CatalogPhoto, style: Style, group: GroupReference | None) -> _Styled:
+        if style.rules and self._inputs is not None:
+            inputs = replace(self._inputs(photo), group=group)
+        else:
+            inputs = RuleInputs(stats=None, as_shot=None, group=group)
+        resolved = resolve(source_defaults(photo.kind), style, inputs)
         return _Styled(
             adjustments=resolved.adjustments,
             style_values=resolved.style_values,

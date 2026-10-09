@@ -11,8 +11,10 @@ from photoedit.core.fs import list_dirs
 from photoedit.core.render.pipeline import LATER_PHASE_PARAMETERS
 from photoedit.models import (
     AdjustmentParams,
+    ApplyAndExportRequest,
     EngineInfo,
     ExportPreset,
+    ExportRequest,
     ImportRequest,
     Job,
     JobRequest,
@@ -26,7 +28,6 @@ from photoedit.models import (
     SortOrder,
     StyleSummary,
     StyleView,
-    style_view,
 )
 from photoedit.models.fs import DirListing
 from photoedit.services import Services
@@ -151,17 +152,17 @@ def photo_preview(
     return Response(content=data, media_type=JPEG, headers=IMAGE_CACHE)
 
 
-# ----------------------------------------------------------------- styles (mock until Phase 4)
+# ----------------------------------------------------------------- styles
 
 
 @router.get("/styles", response_model=list[StyleSummary], tags=["styles"])
 def list_styles(svc: Svc) -> list[StyleSummary]:
-    return svc.mock.list_styles()
+    return svc.styling.summaries()
 
 
 @router.get("/styles/{style_id}", response_model=StyleView, tags=["styles"])
 def style(style_id: str, svc: Svc) -> StyleView:
-    return style_view(svc.mock.style(style_id))
+    return svc.styling.view(style_id)
 
 
 @router.get(
@@ -171,8 +172,9 @@ def style(style_id: str, svc: Svc) -> StyleView:
     tags=["styles"],
 )
 def style_sample(style_id: str, name: str, which: Literal["before", "after"], svc: Svc) -> Response:
-    data = svc.mock.style_sample_image(style_id, name, before=which == "before")
-    return Response(content=data, media_type=JPEG, headers={"Cache-Control": "public, max-age=3600"})
+    data = svc.styling.sample_image(style_id, name, which)
+    # Sample URLs carry the look they were rendered with (?v=), so a new rendering gets a new URL.
+    return Response(content=data, media_type=JPEG, headers=IMAGE_CACHE)
 
 
 # ----------------------------------------------------------------- export presets
@@ -198,7 +200,18 @@ def list_jobs(svc: Svc) -> list[Job]:
 
 @router.post("/jobs", response_model=Job, status_code=status.HTTP_201_CREATED, tags=["jobs"])
 def create_job(request: Annotated[JobRequest, Body()], svc: Svc) -> Job:
-    return svc.mock.create_job(request)
+    """Apply a style (real), export (simulated until Phase 5), or apply then export."""
+    if isinstance(request, ExportRequest):
+        return svc.mock.export_job(request.photo_ids, request.preset_id, request.destination)
+    if isinstance(request, ApplyAndExportRequest):
+        if request.preset_id:
+            svc.mock.preset(request.preset_id)  # an unknown preset fails before anything is applied
+
+        def export() -> None:
+            svc.mock.export_job(request.photo_ids, request.preset_id, request.destination)
+
+        return svc.styling.apply(request.photo_ids, request.style_id, even_out=request.even_out, then=export)
+    return svc.styling.apply(request.photo_ids, request.style_id, even_out=request.even_out)
 
 
 @router.get("/jobs/{job_id}", response_model=Job, tags=["jobs"])

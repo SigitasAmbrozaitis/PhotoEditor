@@ -309,17 +309,18 @@ class Library:
     def save_edit(self, photo_id: str, adjustments: AdjustmentParams) -> EffectiveEdit:
         photo = self.photo(photo_id)
         result = self.edits.save(photo, adjustments)
-        self._record_edit(photo, result)
+        self.record_edit(photo, result)
         return result
 
     def reset_edit(self, photo_id: str) -> EffectiveEdit:
         """Drop the photo's own tweaks; its style stays (``set_photo_style(id, None)`` removes the style)."""
         photo = self.photo(photo_id)
         result = self.edits.reset_overrides(photo)
-        self._record_edit(photo, result)
+        self.record_edit(photo, result)
         return result
 
-    def _record_edit(self, photo: CatalogPhoto, edit: EffectiveEdit) -> None:
+    def record_edit(self, photo: CatalogPhoto, edit: EffectiveEdit) -> None:
+        """Bring the catalog (edit revision, style) and the render cache in line with a changed edit."""
         default = self.edits.default(photo).revision
         self.catalog.set_edit(photo.id, edit.revision if edit.revision != default else None)
         if photo.style_id != edit.style_id:
