@@ -97,7 +97,18 @@ uv run photoedit ui
 This opens http://127.0.0.1:8765 in the browser (backend plus built UI). Stop it with Ctrl+C.
 
 In the Library, type or paste a folder path (or use **Browse…**) and press **Open**. The folder is imported read-only:
-RAW + JPEG pairs become one photo, and opening a folder again only re-reads files that changed.
+RAW + JPEG pairs become one photo, and opening a folder again only re-reads files that changed. After an import,
+a background job renders every thumbnail with the photo's default look.
+
+**Editing.** Double-click a photo (or press Enter) to open it. Every slider in the **Adjust** panel edits the
+photo and saves automatically; the preview follows. Double-click a slider to reset it, click its value to type
+one, use the ↺ button on a group to reset that group, **Reset all** to start over, and Ctrl+Z / Ctrl+Shift+Z to
+undo and redo. Compare with **Before**, **Split**, or **Camera JPEG** (the camera's own JPEG next to a RAW).
+Sliders labeled *Phase 6* / *Phase 9* (crop, clarity, noise reduction, …) arrive later. Edits are small JSON
+files in `workspace/edits/`; the original photos are never changed.
+
+An unedited RAW renders through a **camera profile** fitted to that camera's own JPEGs (FUJIFILM X-T3 · Provia
+ships with the tool; other cameras get a neutral generic profile). See [docs/default-look.md](docs/default-look.md).
 
 From the command line:
 
@@ -112,6 +123,16 @@ uv run photoedit benchmark
 worker counts and writes a report to `output/benchmark/`. Results for the X-T3 sample folder are in
 [docs/benchmark.md](docs/benchmark.md). `photoedit cache clear` deletes cached thumbnails and previews, and
 `photoedit version` shows the library versions that decide how photos render.
+
+```bash
+uv run photoedit contact-sheet DSCF5437
+```
+
+`photoedit contact-sheet PHOTO [--group tone]` renders every slider of an imported photo at its low / neutral /
+high value into `output/contact-sheets/` (one image per group): a quick check that each slider does what it says.
+`photoedit profile fit FOLDER` fits a camera profile from RAW + camera JPEG pairs (report and JSON in
+`output/profiles/`), and `photoedit golden update` renders local reference images of a few sample photos into
+`output/golden/` for the golden-image tests.
 
 For UI development with hot reload (backend plus Vite dev server on http://localhost:5173):
 
@@ -129,7 +150,10 @@ npm --prefix ui test
 ```
 
 Tests marked `golden` read the real photos in `sample_photos_dir` (read-only) and are skipped without it. Add
-`-m "not slow"` for a quick run, or `-m golden` to run only the real-photo tests.
+`-m "not slow"` for a quick run, or `-m golden` to run only the real-photo tests. The real-photo golden-image
+test compares against `output/golden/` (run `photoedit golden update` once); the synthetic golden images in
+`tests/golden/` are committed. After an intended change to the render engine, regenerate both
+(`uv run python scripts/update_golden.py` and `photoedit golden update`).
 
 End-to-end smoke test in a real browser (uses your installed Google Chrome with a temporary profile; build the UI
 first). It runs on synthetic photos written to `output/e2e/` and never touches your real catalog. Screenshots of
@@ -150,8 +174,8 @@ CLAUDE.md          rules for AI agents working on this repo
 src/photoedit/     Python package: CLI, config, safety (write guard), API, core, MCP server
 ui/                web UI (React + TypeScript + Vite)
 tests/             Python tests
-scripts/           dev helpers (dev.cmd starts backend + UI dev server; e2e_setup.py makes e2e test photos)
-docs/              benchmark results
+scripts/           dev helpers (dev.cmd, e2e_setup.py for e2e test photos, update_golden.py)
+docs/              benchmark results, how the default look (camera profile) was fitted
 styles/            saved styles: style.json + README + sample images (from Phase 4)
 export-presets/    export settings presets (from Phase 5)
 workspace/         local catalog (catalog.sqlite), later edits (git-ignored)

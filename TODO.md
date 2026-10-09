@@ -459,12 +459,13 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
   next to the parametric sliders.
 - [x] **P3.22** Tests: Vitest for slider edit/reset/undo and the curve editor; Playwright: move a slider → the preview
   changes and the edit survives a reload; screenshots.
-- [ ] **P3.23** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e) and update README.
+- [x] **P3.23** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e) and update README.
 
 ### 🧑 Human test: Phase 3
 0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`.
-1. `uv run photoedit ui` → the Library. Within a short while the thumbnails switch to the pipeline's default look
-   (a background job on Jobs). They should look very close to the camera JPEGs (Provia).
+1. `uv run photoedit ui` → the Library (your catalog is upgraded automatically). Press **Open** on the `2026-08-11`
+   folder (quick: nothing changed) → a "Render thumbnails" job runs (top bar / Jobs, about half a minute) and the
+   thumbnails switch to the pipeline's default look. They should look very close to the camera JPEGs (Provia).
 1b. Open a few photos and switch between **After** and **Camera JPEG**: colors, contrast and brightness match closely
    (small differences in sharpening, noise and the very corners are expected; `docs/default-look.md` lists the measured
    difference per photo).
