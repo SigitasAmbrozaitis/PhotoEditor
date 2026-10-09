@@ -865,7 +865,9 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
   the real `styles/`; e2e photos carry exposure EXIF, plus a 2-stop-darker and a 1-stop-brighter shot of scene 1.
   Fixed from the screenshots: the Photo view's style picker was squeezed by its buttons (now its own row); a rule
   summary showed "-0.00 EV".
-- [ ] **P4.14** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e) and update README.
+- [x] **P4.14** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e) and update README.
+  Done 2026-10-09: pytest 565 passed (+ 13 golden, 8 min), ruff, format, mypy clean; Vitest 85 passed, oxlint
+  clean, build OK; Playwright 5 passed. README: status, Styles section, style CLI, config, layout.
 
 ### 🧑 Human test: Phase 4
 0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`.
