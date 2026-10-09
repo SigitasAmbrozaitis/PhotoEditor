@@ -22,6 +22,7 @@ from PIL import Image
 from photoedit.core import color
 from photoedit.core.cache import resize_linear
 from photoedit.core.decode import LinearImage, decode_linear
+from photoedit.core.render.anchors import measure_anchors
 from photoedit.core.render.pipeline import render, render_identity
 from photoedit.core.render.profile import GENERIC, CameraProfile, profile_for
 from photoedit.core.render.stages import quantize
@@ -106,9 +107,15 @@ def synthetic_cases() -> list[tuple[str, CameraProfile, str]]:
 
 
 def render_photo(path: Path, camera: str | None, width: int, edit: str) -> U8:
-    base = resize_linear(decode_linear(path, half_size=True), GOLDEN_LONG_EDGE * 2)
+    decoded = decode_linear(path, half_size=True)
+    profile = profile_for(camera)
     out = render(
-        base, GOLDEN_EDITS[edit], profile_for(camera), original_width=width, long_edge=GOLDEN_LONG_EDGE
+        resize_linear(decoded, GOLDEN_LONG_EDGE * 2),
+        GOLDEN_EDITS[edit],
+        profile,
+        original_width=width,
+        long_edge=GOLDEN_LONG_EDGE,
+        anchors=measure_anchors(decoded, profile),
     )
     return np.asarray(quantize(out, 8), dtype=np.uint8)
 

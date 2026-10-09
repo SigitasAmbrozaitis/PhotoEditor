@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from importlib.metadata import version as package_version
 
 import numpy as np
+import numpy.typing as npt
 
 from photoedit.core import color
 from photoedit.core.cache import resize_linear
@@ -18,11 +19,12 @@ from photoedit.core.decode import LinearImage
 from photoedit.core.decode import render_identity as decoder_identity
 from photoedit.core.errors import InvalidRequestError
 from photoedit.core.render import stages
+from photoedit.core.render.anchors import ToneAnchors, measure_anchors
 from photoedit.core.render.profile import IDENTITY, CameraProfile
 from photoedit.core.render.stages import F32
 from photoedit.models.adjustments import AdjustmentParams, Hsl
 
-ENGINE_VERSION = 1
+ENGINE_VERSION = 2
 
 # numpy releases the GIL in its array loops, so a few threads render strips of one image in parallel.
 _STRIP_THREADS = 8
@@ -78,14 +80,28 @@ def render(
     *,
     original_width: int,
     long_edge: int | None = None,
+    anchors: ToneAnchors | None = None,
 ) -> F32:
     """Render to sRGB-encoded float pixels (0..1).
 
     ``profile`` is the camera profile for RAWs; None for JPEG/TIFF originals, which are already rendered
     (their "base curve" is the exact sRGB encoding, so an unedited render reproduces the original).
     ``original_width`` is the photo's full width, so sharpening means the same at every output size.
+    ``anchors`` are the photo's tone anchors; the library passes the stored ones so every size of a photo gets
+    the same tone curve. Without them they are measured on ``base``.
     """
     check_supported(params)
+    tone_params = params.tone
+    tone_curve: npt.NDArray[np.float64] | None = None
+    if (
+        tone_params.contrast
+        or tone_params.highlights
+        or tone_params.shadows
+        or tone_params.whites
+        or (tone_params.blacks)
+    ):
+        black, white = (anchors or measure_anchors(base, profile)).shifted(tone_params.exposure)
+        tone_curve = stages.tone_curve_stops(tone_params, black, white)
     image = resize_linear(base, long_edge) if long_edge is not None else base
     matrix = stages.white_balance_matrix(image, params.white_balance)
     baseline = 0.0
@@ -106,7 +122,8 @@ def render(
         if not skip_matrix:
             rgb = color.apply_matrix(rgb, matrix)
         rgb = stages.exposure(rgb, exposure)
-        rgb = stages.tone(rgb, params.tone)
+        if tone_curve is not None:
+            rgb = stages.apply_tone_curve(rgb, tone_curve)
         if profile is not None:
             encoded = stages.base_curve(rgb, profile)
         else:

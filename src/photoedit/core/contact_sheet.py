@@ -18,6 +18,7 @@ from photoedit.core.catalog import CatalogPhoto
 from photoedit.core.decode import LinearImage, decode_linear, is_raw
 from photoedit.core.edits import apply_overrides, source_defaults
 from photoedit.core.errors import InvalidRequestError
+from photoedit.core.render.anchors import ToneAnchors, measure_anchors
 from photoedit.core.render.pipeline import render
 from photoedit.core.render.stages import quantize
 from photoedit.core.renderer import profile_of
@@ -145,14 +146,20 @@ def groups(as_shot: tuple[float, float]) -> dict[str, list[Row]]:
     }
 
 
-def render_sheet(photo: CatalogPhoto, group: str, base: LinearImage | None = None) -> bytes:
-    """One JPEG with a row per parameter of ``group`` (low / neutral / high)."""
+def render_sheet(
+    photo: CatalogPhoto, group: str, base: LinearImage | None = None, anchors: ToneAnchors | None = None
+) -> bytes:
+    """One JPEG with a row per parameter of ``group`` (low / neutral / high).
+
+    ``anchors`` are the photo's stored tone anchors; without them they are measured on the decoded image.
+    """
     full = base or decode_linear(photo.path, half_size=is_raw(photo.path))
     rows = groups(_as_shot(photo, full)).get(group)
     if rows is None:
         raise InvalidRequestError(f"unknown group '{group}'; choose from: {', '.join(groups((0, 0)))}")
     defaults = source_defaults(photo.kind)
     profile = profile_of(photo)
+    anchors = anchors or measure_anchors(full, profile)
     # Detail is judged at 1:1 (a center crop of the working image); everything else on the whole frame.
     working = resize_linear(full, 2048 if group == "detail" else TILE * 2)
     tiles: list[list[Image.Image]] = []
@@ -161,12 +168,14 @@ def render_sheet(photo: CatalogPhoto, group: str, base: LinearImage | None = Non
         for overrides in row.values:
             params = apply_overrides(defaults, overrides)
             if group == "detail":
-                pixels = render(working, params, profile, original_width=photo.width)
+                pixels = render(working, params, profile, original_width=photo.width, anchors=anchors)
                 height, width = pixels.shape[:2]
                 top, left = (height - TILE) // 2, (width - TILE) // 2
                 pixels = pixels[max(top, 0) : top + TILE, max(left, 0) : left + TILE]
             else:
-                pixels = render(working, params, profile, original_width=photo.width, long_edge=TILE)
+                pixels = render(
+                    working, params, profile, original_width=photo.width, long_edge=TILE, anchors=anchors
+                )
             rendered.append(Image.fromarray(np.asarray(quantize(pixels, 8))))
         tiles.append(rendered)
     return _compose(photo.path.name, group, rows, tiles)

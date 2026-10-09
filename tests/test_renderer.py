@@ -11,6 +11,7 @@ from helpers import write_jpeg
 from photoedit.core import renderer as renderer_module
 from photoedit.core.catalog import CatalogPhoto
 from photoedit.core.edits import EditStore
+from photoedit.core.render.anchors import ToneAnchors
 from photoedit.core.render.profile import GENERIC, builtin_profiles
 from photoedit.core.renderer import Renderer, profile_of
 from photoedit.core.scan import SourceKind
@@ -112,6 +113,55 @@ def test_clear(env: tuple[Renderer, EditStore, CatalogPhoto]) -> None:
     renderer.thumbnail(photo, edits.effective(photo))
     assert renderer.clear() == 2
     assert renderer.clear() == 0
+
+
+def test_anchors_are_measured_once_and_handed_on(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    guard = PathGuard(writable_roots=[workspace])
+    photo = catalog_photo(write_jpeg(tmp_path / "photos" / "a.jpg", (200, 120, 60)))
+    stored: list[tuple[str, float, float, str]] = []
+    renderer = Renderer(workspace / "cache", guard, remember_anchors=lambda *a: stored.append(a))
+    edits = EditStore(workspace / "edits", guard)
+    renderer.thumbnail(photo, edits.effective(photo))  # measured on the decoded image
+    renderer.preview(photo, edits.effective(photo), 256)  # on the working copy: same numbers, not again
+    assert len(stored) == 1
+    pid, black, white, identity = stored[0]
+    assert (pid, identity) == (photo.id, renderer.identity)
+    assert renderer.anchors(photo) == ToneAnchors(black=black, white=white)
+
+
+def test_stored_anchors_are_used_unless_another_engine_measured_them(
+    env: tuple[Renderer, EditStore, CatalogPhoto], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    renderer, _, photo = env
+    current = photo.model_copy(
+        update={"tone_black": -6.0, "tone_white": 1.0, "tone_anchors_identity": renderer.identity}
+    )
+
+    def fail(*args: object) -> None:
+        raise AssertionError("must not measure")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(renderer_module, "measure_anchors", fail)
+        assert renderer.anchors(current) == ToneAnchors(black=-6.0, white=1.0)
+    stale = current.model_copy(update={"tone_anchors_identity": "an older engine"})
+    assert renderer.anchors(stale) != ToneAnchors(black=-6.0, white=1.0)
+
+
+def test_tone_sliders_use_the_stored_anchors(env: tuple[Renderer, EditStore, CatalogPhoto]) -> None:
+    renderer, edits, photo = env
+    edit = edits.save(photo, AdjustmentParams.model_validate({"tone": {"whites": 100}}))
+
+    def with_white(white: float) -> CatalogPhoto:
+        return photo.model_copy(
+            update={"tone_black": -8.0, "tone_white": white, "tone_anchors_identity": renderer.identity}
+        )
+
+    low, high = with_white(-3.0), with_white(2.0)
+    renderer.prune(photo.id, keep=set())
+    first = renderer.preview(low, edit, 256)
+    renderer.prune(photo.id, keep=set())
+    assert renderer.preview(high, edit, 256) != first
 
 
 @pytest.mark.golden

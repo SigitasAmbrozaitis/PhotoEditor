@@ -107,6 +107,11 @@ undo and redo. Compare with **Before**, **Split**, or **Camera JPEG** (the camer
 Sliders labeled *Phase 6* / *Phase 9* (crop, clarity, noise reduction, …) arrive later. Edits are small JSON
 files in `workspace/edits/`; the original photos are never changed.
 
+**Highlights, Shadows, Whites, Blacks** and **Contrast** work on each photo's own tonal range, like Lightroom:
+the tool measures a photo's black and white points once (stored in the catalog), places the four bands between
+them, and pivots Contrast on the middle of that range, so a dark night shot and a bright beach shot both respond.
+See [docs/tone-sliders.md](docs/tone-sliders.md).
+
 An unedited RAW renders through a **camera profile** fitted to that camera's own JPEGs (FUJIFILM X-T3 · Provia
 ships with the tool; other cameras get a neutral generic profile). See [docs/default-look.md](docs/default-look.md).
 

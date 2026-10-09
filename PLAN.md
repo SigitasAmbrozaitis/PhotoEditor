@@ -29,6 +29,7 @@
 | Later-phase parameters | **Rejected with a clear error** when set to non-default values before their phase | 2026-10-08 |
 | ExifTool / OpenCV timing | **ExifTool joins in Phase 5** (writing export metadata); Phase 2 reads EXIF with Pillow. **OpenCV joins in Phase 3** | 2026-10-07 |
 | Tone sliders (Phase 3 feedback) | **Highlights/shadows/whites/blacks are relative to each photo's own white and black points** (Lightroom-like), not fixed scene stops. Measured once per photo, stored in the catalog, so previews and exports agree. Reason: with fixed stops, Whites ±100 changed nothing on DSCF5437 (its brightest pixel is +2.4 stops; the band started at +2) | 2026-10-09 |
+| Contrast pivot (P3.24) | **Contrast and the four tone bands pivot on the middle of the photo's own range** (between its black and white points), not on scene mid gray, which lies above the median pixel of every sample (Contrast +100 turned a night shot almost black) | 2026-10-09 |
 | Live preview speed | **New Phase 3b** after Phase 3: (A) draft renders while dragging, latest-wins, save on release; (B) **instant GPU preview in the browser via a 3D LUT built by `core`**. Reason: a slider change took ~0.6 s after the mouse stopped and showed nothing while dragging | 2026-10-09 |
 | Sharpening preview | Sharpening is invisible at fit-to-screen size (radius 1 px → 0.26 px); it needs a **1:1 zoom view, deferred to Phase 6** | 2026-10-09 |
 

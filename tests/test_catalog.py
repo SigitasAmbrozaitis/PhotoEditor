@@ -269,8 +269,9 @@ def test_v1_catalog_is_migrated(workspace: Path) -> None:
         None,
         None,
     )
+    assert (old.tone_black, old.tone_white, old.tone_anchors_identity) == (None, None, None)
     with sqlite3.connect(path) as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 2
+        assert db.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 3
 
 
 def test_has_edits_flag_survives_reimport(catalog: Catalog) -> None:
@@ -285,6 +286,16 @@ def test_has_edits_flag_survives_reimport(catalog: Catalog) -> None:
         100,
         5000.0,
     )
+
+
+def test_tone_anchors_are_stored_and_survive_reimport(catalog: Catalog) -> None:
+    catalog.upsert(_photo(1))
+    pid = photo_id(_sha(1))
+    catalog.set_tone_anchors(pid, -7.5, 1.25, "identity-1")
+    catalog.upsert(_photo(1))  # a re-import knows nothing about anchors, and must not wipe them
+    stored = catalog.get(pid)
+    assert stored is not None
+    assert (stored.tone_black, stored.tone_white, stored.tone_anchors_identity) == (-7.5, 1.25, "identity-1")
 
 
 def test_find_by_id_or_file_name(catalog: Catalog) -> None:

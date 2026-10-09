@@ -121,13 +121,16 @@ def test_luminance_of_white_is_one() -> None:
 
 # ----------------------------------------------------------------- tone
 
+# A photo spanning 10 stops: pivot at -3, bands a quarter (2.5 stops) wide on either side of their centers.
+BLACK, WHITE, PIVOT = -8.0, 2.0, -3.0
+
 
 def gray_at(stops: float) -> np.ndarray:
     return np.full((1, 1, 3), 0.18 * 2.0**stops, dtype=np.float32)
 
 
-def stops_after(params: Tone, stops: float) -> float:
-    out = stages.tone(gray_at(stops), params)
+def stops_after(params: Tone, stops: float, black: float = BLACK, white: float = WHITE) -> float:
+    out = stages.tone(gray_at(stops), params, black, white)
     return float(np.log2(stages.luminance(out)[0, 0] / 0.18))
 
 
@@ -136,50 +139,105 @@ tone_values = st.floats(min_value=-100, max_value=100)
 
 def test_neutral_tone_is_the_same_array() -> None:
     rgb = PATCHES.astype(np.float32)
-    assert stages.tone(rgb, Tone()) is rgb
+    assert stages.tone(rgb, Tone(), BLACK, WHITE) is rgb
 
 
-@given(tone_values, tone_values, tone_values, tone_values, tone_values)
-def test_tone_curve_is_monotone_and_keeps_mid_gray(c: float, h: float, s: float, w: float, b: float) -> None:
+def test_bands_sit_inside_the_photos_range_and_never_cross_the_pivot() -> None:
+    pivot, bands = stages.tone_bands(BLACK, WHITE)
+    assert pivot == PIVOT
+    for name, (center, half_width) in bands.items():
+        below = name in ("blacks", "shadows")
+        assert (center + half_width <= pivot) if below else (center - half_width >= pivot)
+    # Whites/blacks reach their full shift at the white/black point, not beyond it.
+    assert bands["whites"][0] + bands["whites"][1] / 2 == WHITE
+    assert bands["blacks"][0] - bands["blacks"][1] / 2 == BLACK
+
+
+@given(
+    tone_values,
+    tone_values,
+    tone_values,
+    tone_values,
+    tone_values,
+    st.floats(min_value=-14, max_value=4),
+    st.floats(min_value=0, max_value=12),
+)
+def test_tone_curve_is_monotone_and_keeps_the_pivot(
+    c: float, h: float, s: float, w: float, b: float, black: float, width: float
+) -> None:
     params = Tone(contrast=c, highlights=h, shadows=s, whites=w, blacks=b)
-    curve = stages.tone_curve_stops(params)
+    curve = stages.tone_curve_stops(params, black, black + width)
     assert (np.diff(curve) > 0).all()
-    np.testing.assert_array_equal(stages.tone(gray_at(0), params), gray_at(0))
+    pivot = black + width / 2
+    assert float(np.interp(pivot, stages.TONE_GRID, curve)) == pytest.approx(pivot, abs=1e-9)
 
 
 def test_tone_preserves_color_ratios() -> None:
     rgb = PATCHES.astype(np.float32)
-    out = stages.tone(rgb, Tone(contrast=40, shadows=30, highlights=-50))
+    out = stages.tone(rgb, Tone(contrast=40, shadows=30, highlights=-50), BLACK, WHITE)
     ratios = out / rgb
     np.testing.assert_allclose(ratios, ratios[..., :1].repeat(3, axis=-1), rtol=1e-5)
 
 
-def test_shadows_lift_darks_and_leave_brights_alone() -> None:
-    lifted = Tone(shadows=100)
-    assert stops_after(lifted, -4) > -4 + 0.5
-    assert stops_after(lifted, 2) == pytest.approx(2, abs=1e-5)
-    assert stops_after(Tone(shadows=-100), -4) < -4 - 0.5
+@pytest.mark.parametrize(
+    ("name", "beyond"),
+    [("whites", 3.5), ("highlights", 3.5), ("shadows", -9.5), ("blacks", -9.5)],
+)
+def test_each_slider_moves_everything_past_its_band_by_its_shift(name: str, beyond: float) -> None:
+    shift = stages.TONE_SHIFTS[name]
+    assert stops_after(Tone(**{name: 100}), beyond) == pytest.approx(beyond + shift, abs=0.01)
+    assert stops_after(Tone(**{name: -100}), beyond) == pytest.approx(beyond - shift, abs=0.01)
+    assert stops_after(Tone(**{name: 50}), beyond) == pytest.approx(beyond + shift / 2, abs=0.01)
 
 
-def test_highlights_recover_brights_and_leave_darks_alone() -> None:
-    recovered = Tone(highlights=-100)
-    assert stops_after(recovered, 2.5) < 2.5 - 0.5
-    assert stops_after(recovered, -3) == pytest.approx(-3, abs=1e-5)
-    assert stops_after(Tone(highlights=100), 2.5) > 2.5 + 0.5
+def test_slope_stays_within_limits_on_a_narrow_photo() -> None:
+    # A 4-stop photo: lifting its blacks 2.5 stops inside a 2-stop band would need an almost flat curve, so
+    # the lift stops short where the slope reaches 1/8 instead of crushing the tones together.
+    params = Tone(blacks=100)
+    curve = stages.tone_curve_stops(params, -4.0, 0.0)
+    slope = np.diff(curve) * 64
+    assert slope.min() >= 1 / 8 - 1e-6
+    assert -6.5 + 1 < stops_after(params, -6.5, -4.0, 0.0) < -6.5 + stages.TONE_SHIFTS["blacks"]
 
 
-def test_whites_and_blacks_work_at_the_ends() -> None:
-    assert stops_after(Tone(whites=100), 4) > 4 + 0.3
-    assert stops_after(Tone(whites=100), -2) == pytest.approx(-2, abs=1e-5)
-    assert stops_after(Tone(blacks=-100), -7) < -7 - 0.3
-    assert stops_after(Tone(blacks=-100), 1) == pytest.approx(1, abs=1e-5)
+def test_whites_and_highlights_leave_the_lower_half_alone() -> None:
+    for params in (Tone(whites=100), Tone(highlights=-100)):
+        assert stops_after(params, PIVOT - 1) == pytest.approx(PIVOT - 1, abs=1e-9)
+        assert stops_after(params, BLACK) == pytest.approx(BLACK, abs=1e-9)
+    assert stops_after(Tone(whites=100), WHITE) > WHITE + 0.5
+    assert stops_after(Tone(highlights=-100), -0.5) < -0.5 - 0.3
 
 
-def test_contrast_spreads_tones_around_mid_gray() -> None:
+def test_shadows_and_blacks_leave_the_upper_half_alone() -> None:
+    for params in (Tone(shadows=100), Tone(blacks=-100)):
+        assert stops_after(params, PIVOT + 1) == pytest.approx(PIVOT + 1, abs=1e-9)
+        assert stops_after(params, WHITE) == pytest.approx(WHITE, abs=1e-9)
+    assert stops_after(Tone(blacks=-100), BLACK) < BLACK - 1
+    assert stops_after(Tone(shadows=100), -5.5) > -5.5 + 0.5
+
+
+def test_bands_follow_the_photo() -> None:
+    # A darker photo (or the same one after -1 EV): the same slider moves the same tones of it.
+    params = Tone(contrast=30, highlights=-60, shadows=40, whites=20, blacks=-70)
+    curve = stages.tone_curve_stops(params, BLACK, WHITE)
+    darker = stages.tone_curve_stops(params, BLACK - 1, WHITE - 1)
+    steps = 64  # grid steps per stop
+    np.testing.assert_allclose(darker[:-steps], curve[steps:] - 1, atol=1e-9)
+
+
+def test_a_flat_photo_still_gets_usable_bands() -> None:
+    pivot, bands = stages.tone_bands(-1.0, -1.0)
+    assert pivot == -1.0
+    assert bands["whites"][1] == bands["blacks"][1] == 1.0  # the 4-stop minimum range
+    assert stops_after(Tone(whites=100), 2.0, -1.0, -1.0) == pytest.approx(3.0, abs=0.01)
+
+
+def test_contrast_spreads_tones_around_the_pivot() -> None:
     more = Tone(contrast=50)
-    assert stops_after(more, -3) < -3 and stops_after(more, 3) > 3
+    assert stops_after(more, PIVOT - 3) < PIVOT - 3 and stops_after(more, PIVOT + 3) > PIVOT + 3
+    assert stops_after(more, PIVOT) == pytest.approx(PIVOT, abs=1e-6)
     less = Tone(contrast=-50)
-    assert stops_after(less, -3) > -3 and stops_after(less, 3) < 3
+    assert stops_after(less, PIVOT - 3) > PIVOT - 3 and stops_after(less, PIVOT + 3) < PIVOT + 3
 
 
 # ----------------------------------------------------------------- color (OKLab)

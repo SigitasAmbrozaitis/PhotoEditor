@@ -67,7 +67,7 @@ class Library:
         self.catalog = catalog
         # Edits live next to the catalog in the workspace unless told otherwise.
         self.edits = edits or EditStore(catalog.path.parent / "edits", guard)
-        self.renderer = renderer or Renderer(cache.root, guard)
+        self.renderer = renderer or Renderer(cache.root, guard, remember_anchors=catalog.set_tone_anchors)
         self.cache = cache
         self.jobs = jobs
         self._guard = guard

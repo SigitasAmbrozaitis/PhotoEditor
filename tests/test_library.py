@@ -326,6 +326,16 @@ def test_import_renders_thumbnails_in_the_background(env: Env) -> None:
     assert sum(1 for j in env.library.jobs.list() if j.kind == "render") == 1
 
 
+def test_rendering_stores_tone_anchors_in_the_catalog(env: Env) -> None:
+    fill_folder(env.photos)
+    env.run_import()  # the thumbnail job measures them
+    for photo in env.library.list_photos().items:
+        stored = env.library.photo(photo.id)
+        assert stored.tone_anchors_identity == env.library.renderer.identity
+        assert stored.tone_black is not None and stored.tone_white is not None
+        assert stored.tone_black <= stored.tone_white
+
+
 def test_before_and_after_previews(env: Env) -> None:
     fill_folder(env.photos)
     env.run_import()

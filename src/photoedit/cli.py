@@ -309,10 +309,11 @@ def contact_sheet(
             )
         names = [group] if group else list(groups((0, 0)))
         base = decode_linear(found.path, half_size=is_raw(found.path))
+        anchors = services.library.renderer.anchors(found, base)
         out_dir = services.settings.output_dir / "contact-sheets"
         for name in names:
             try:
-                data = render_sheet(found, name, base)
+                data = render_sheet(found, name, base, anchors)
             except InvalidRequestError as exc:
                 raise typer.BadParameter(str(exc), param_hint="--group") from None
             path = services.guard.write_atomic(out_dir / f"{found.path.stem}-{name}.jpg", data)

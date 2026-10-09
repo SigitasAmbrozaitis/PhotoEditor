@@ -467,21 +467,29 @@ Measured on DSCF5437 at 1600 px, each slider at ±100 vs. unedited: Whites chang
 stops (whites +2…+5 stops above mid gray, blacks −4…−9), but this photo's brightest pixel is +2.4 stops and the X-T3
 curve's shoulder starts at +2. Speed → Phase 3b. Sharpening → needs the 1:1 view (Phase 6). HSL: not changed for now.
 
-- [ ] **P3.24** Relative tone sliders (PLAN §0, 2026-10-09). Highlights/shadows/whites/blacks act relative to the photo's
-  own tonal range, like Lightroom:
-  - **Anchors**: a white point and a black point per photo (high/low luminance percentiles, e.g. 99.5 % / 0.5 %, tuned
-    on the samples), measured once on the default render's scene luminance (as-shot WB, camera profile, exposure 0)
-    at a fixed 512 px size, so the numbers don't depend on preview or export size. Stored in the catalog (schema v3,
-    filled lazily like as-shot WB) together with the decoder identity; recomputed when that changes.
-  - **Bands** are placed between the anchors (blacks at the black point, shadows between it and mid gray, highlights
-    between mid gray and the white point, whites at the white point) and move with the exposure slider. The curve
-    stays slope-based, monotone, and keeps mid gray fixed. Contrast is unchanged.
-  - Strengths tuned so ±100 is clearly visible but never breaks the image (contact sheet + the extreme-values check).
-  - `ENGINE_VERSION` → 2; regenerate the synthetic golden images (`scripts/update_golden.py`) and the local real ones.
-  - Tests: exact-math tests on synthetic ramps with known anchors (the white point maps where expected, mid gray fixed,
-    monotone for any values); hypothesis property tests still pass; a `@pytest.mark.golden` test checks that each of the
-    four sliders at ±100 changes at least 5 % of pixels by ≥ 2 levels in the 1600 px preview on every sample RAF.
-  - Re-run the full check (as P3.23) and the contact sheet; update `docs/` and README where they describe the sliders.
+- [x] **P3.24** Relative tone sliders (PLAN §0, 2026-10-09). Highlights/shadows/whites/blacks act relative to the photo's
+  own tonal range, like Lightroom ([docs/tone-sliders.md](docs/tone-sliders.md)):
+  - **Anchors**: a black and a white point per photo (0.5 % / 99.5 % luminance percentiles), measured once on the
+    default render's scene luminance (as-shot WB, camera profile, exposure 0) at a fixed 512 px size, so the numbers
+    don't depend on preview or export size. Stored in the catalog (schema v3, filled lazily on the first render)
+    together with the render identity; measured again when that changes.
+  - **Bands** sit between the anchors and move with the exposure slider. The pivot is the **middle of the photo's
+    range**, not mid gray (changed while implementing: on ~50 of the 67 samples the white point is below mid gray, so
+    "between mid gray and the white point" would have been empty). Highlights/whites move only pixels above the
+    pivot, shadows/blacks only below it. The curve stays slope-based and monotone.
+  - **Contrast** pivots on the same middle (user decision 2026-10-09; it was "unchanged" in the plan): around mid
+    gray, which is above the median pixel of every sample, Contrast +100 turned a night shot almost black.
+  - Strengths at ±100 (everything past the band moves by): whites 1, highlights 1, shadows 2, blacks 2.5 stops; local
+    slope limited to ×1/8…×8. Checked on contact sheets of bright, dark, night and backlit samples.
+  - `ENGINE_VERSION` → 2; synthetic golden images and the local real ones regenerated (unedited renders unchanged).
+  - Tests: exact-math tests on synthetic ramps with known anchors (shift past each band, pivot fixed, untouched side,
+    bands follow exposure, minimum range, slope limit), hypothesis (monotone, pivot fixed for any values and
+    anchors), anchor measurement, catalog v3, renderer/library storage. The `@pytest.mark.golden` acceptance test
+    changed from "≥ 5 % of the whole image" to **"≥ 25 % of the slider's own pixels change by ≥ 2 levels, leaving out
+    pixels already black on screen"**: on night shots (≈ 97 % deep darks plus lights) only ~1 % of the frame is above
+    the pivot, so a whole-image share can't measure Whites/Highlights; the deepest shadows of the darkest photos sit in
+    the profile's toe, where one stop is a few levels. All 67 samples pass.
+  - Full check re-run (pytest incl. golden, ruff, format, mypy, npm test/lint/build, e2e); README and docs updated.
 
 ### 🧑 Human test: Phase 3
 0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`.
@@ -495,8 +503,11 @@ curve's shoulder starts at +2. Speed → Phase 3b. Sharpening → needs the 1:1 
    **Exposure** → the preview updates within about half a second after you stop moving it (instant updates while
    dragging come in Phase 3b). Try every group: white balance (temperature/tint start at the as-shot values), tone,
    presence, tone curve (drag a point), HSL, color grading, vignette. Sharpening is only visible at 1:1 (Phase 6).
-2b. (P3.24) On a few different photos (bright, dark, backlit), set **Whites**, **Blacks**, **Highlights**, **Shadows** each
-   to −100 and +100 → every one visibly changes its part of the tonal range on every photo.
+2b. (P3.24) On a few different photos (bright, dark, backlit, and a night shot such as DSCF5523), set **Whites**,
+   **Blacks**, **Highlights**, **Shadows** each to −100 and +100 → every one visibly changes its part of the tonal range
+   on every photo (on a night shot, Whites/Highlights act on the lights). **Contrast** ±100 adds or removes contrast
+   without making the whole photo much darker or brighter. (The engine changed, so step 1's "Render thumbnails"
+   job re-renders every thumbnail once; it also measures each photo's black/white points.)
 3. **Before/After/Split** compare against the default look. Double-click a slider → it resets. **Reset all** works.
    Ctrl+Z / Ctrl+Shift+Z undo and redo.
 4. Go back to the Library → the edited photo's thumbnail shows the edit. Restart `photoedit ui` → the edit is still there.

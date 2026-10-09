@@ -10,6 +10,7 @@ import io
 import math
 import shutil
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -19,6 +20,7 @@ from photoedit.core.cache import THUMBNAIL_LONG_EDGE, LinearCache, resize_linear
 from photoedit.core.catalog import CatalogPhoto
 from photoedit.core.decode import LinearImage, decode_linear, is_raw
 from photoedit.core.edits import EffectiveEdit
+from photoedit.core.render.anchors import ToneAnchors, measure_anchors
 from photoedit.core.render.pipeline import render, render_identity
 from photoedit.core.render.profile import CameraProfile, profile_for
 from photoedit.core.render.stages import quantize
@@ -26,6 +28,9 @@ from photoedit.safety import PathGuard
 
 PREVIEW_QUALITY = 90
 THUMBNAIL_QUALITY = 85
+
+# Stores a photo's tone anchors (photo id, black, white, render identity), e.g. in the catalog.
+type AnchorSink = Callable[[str, float, float, str], None]
 
 
 def profile_of(photo: CatalogPhoto) -> CameraProfile | None:
@@ -44,13 +49,44 @@ def profile_of(photo: CatalogPhoto) -> CameraProfile | None:
 
 
 class Renderer:
-    def __init__(self, cache_dir: Path, guard: PathGuard, linear: LinearCache | None = None) -> None:
+    def __init__(
+        self,
+        cache_dir: Path,
+        guard: PathGuard,
+        linear: LinearCache | None = None,
+        *,
+        remember_anchors: AnchorSink | None = None,
+    ) -> None:
         self._guard = guard
         self.identity = render_identity()
         self._root = cache_dir / "renders" / self.identity
         self.linear = linear or LinearCache()
+        self._remember_anchors = remember_anchors
+        self._anchors: dict[str, ToneAnchors] = {}
         self._locks: dict[Path, threading.Lock] = {}
         self._locks_lock = threading.Lock()
+
+    def anchors(self, photo: CatalogPhoto, base: LinearImage | None = None) -> ToneAnchors:
+        """The photo's tone anchors: the stored ones if this engine measured them, else measured now (on
+        ``base``, the in-memory base, or a fresh decode) and handed to ``remember_anchors``."""
+        if (
+            photo.tone_anchors_identity == self.identity
+            and photo.tone_black is not None
+            and photo.tone_white is not None
+        ):
+            return ToneAnchors(black=photo.tone_black, white=photo.tone_white)
+        with self._locks_lock:
+            known = self._anchors.get(photo.id)
+        if known is not None:
+            return known
+        if base is None:
+            base = self.linear.peek(photo.id) or decode_linear(photo.path, half_size=is_raw(photo.path))
+        measured = measure_anchors(base, profile_of(photo))
+        with self._locks_lock:
+            self._anchors[photo.id] = measured
+        if self._remember_anchors is not None:
+            self._remember_anchors(photo.id, measured.black, measured.white, self.identity)
+        return measured
 
     def preview_path(self, photo: CatalogPhoto, edit: EffectiveEdit, long_edge: int) -> Path:
         return self._root / photo.id / f"{edit.revision}-{long_edge}.jpg"
@@ -65,7 +101,7 @@ class Renderer:
             if path.is_file():
                 return path.read_bytes()
             base = self.linear.get(photo)
-            data = self._encode(photo, edit, base, long_edge, PREVIEW_QUALITY)
+            data = self._encode(photo, edit, base, long_edge, PREVIEW_QUALITY, self.anchors(photo, base))
             self._guard.write_atomic(path, data)
             return data
 
@@ -81,10 +117,12 @@ class Renderer:
                 return path.read_bytes()
             base = self.linear.peek(photo.id)
             if base is None:
-                base = resize_linear(
-                    decode_linear(photo.path, half_size=is_raw(photo.path)), 2 * THUMBNAIL_LONG_EDGE
-                )
-            data = self._encode(photo, edit, base, THUMBNAIL_LONG_EDGE, THUMBNAIL_QUALITY)
+                decoded = decode_linear(photo.path, half_size=is_raw(photo.path))
+                anchors = self.anchors(photo, decoded)
+                base = resize_linear(decoded, 2 * THUMBNAIL_LONG_EDGE)
+            else:
+                anchors = self.anchors(photo, base)
+            data = self._encode(photo, edit, base, THUMBNAIL_LONG_EDGE, THUMBNAIL_QUALITY, anchors)
             self._guard.write_atomic(path, data)
             return data
 
@@ -114,10 +152,21 @@ class Renderer:
         return removed
 
     def _encode(
-        self, photo: CatalogPhoto, edit: EffectiveEdit, base: LinearImage, long_edge: int, quality: int
+        self,
+        photo: CatalogPhoto,
+        edit: EffectiveEdit,
+        base: LinearImage,
+        long_edge: int,
+        quality: int,
+        anchors: ToneAnchors,
     ) -> bytes:
         pixels = render(
-            base, edit.adjustments, profile_of(photo), original_width=photo.width, long_edge=long_edge
+            base,
+            edit.adjustments,
+            profile_of(photo),
+            original_width=photo.width,
+            long_edge=long_edge,
+            anchors=anchors,
         )
         buf = io.BytesIO()
         Image.fromarray(np.asarray(quantize(pixels, 8))).save(buf, "JPEG", quality=quality, optimize=True)

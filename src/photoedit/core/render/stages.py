@@ -140,56 +140,107 @@ def uniform_lookup(values: F32, start: float, step: float, table: npt.NDArray[np
     return out
 
 
-# ----------------------------------------------------------------- tone (exposure-relative luminance curve)
+# ----------------------------------------------------------------- tone (luminance curve in stops)
 
 MID_GRAY = 0.18
-# The luminance curve lives on a grid of stops relative to mid gray; 0 is on the grid exactly, so mid gray
-# maps
-# to itself bit-exactly.
+# The luminance curve lives on a grid of stops relative to mid gray.
 _STOPS_MIN, _STOPS_MAX, _STEPS_PER_STOP = -24, 12, 64
 TONE_GRID = np.arange(_STOPS_MIN * _STEPS_PER_STOP, _STOPS_MAX * _STEPS_PER_STOP + 1) / _STEPS_PER_STOP
-_ZERO_INDEX = -_STOPS_MIN * _STEPS_PER_STOP
 
-# (center in stops, half width in stops, strength in stops of slope change at ±100, sign of a positive
-# slider).
-# A positive "shadows"/"blacks" lifts dark areas by flattening the curve below mid gray; a positive
-# "highlights"/"whites" brightens by steepening it above mid gray.
-_TONE_BANDS = {
-    "blacks": (-6.5, 2.5, 1.0, -1),
-    "shadows": (-2.5, 2.5, 1.0, -1),
-    "highlights": (1.5, 1.5, 1.2, +1),
-    "whites": (3.5, 1.5, 1.0, +1),
-}
-_CONTRAST_STRENGTH = 0.6  # contrast ±100 → overall slope ×2^±0.6 (≈ ×1.52 / ×0.66) around mid gray
+# The tone sliders act on the photo's own tonal range (decided 2026-10-09), between its black and white points
+# (``core.render.anchors``), not at fixed scene stops: most photos never reach mid gray +2, and their median
+# pixel sits 3-5 stops below mid gray. The middle of the range is the pivot: it stays put, highlights/whites
+# only move pixels above it, shadows/blacks only below, and contrast spreads tones away from it.
+_MIN_TONE_RANGE = 4.0  # stops; a flatter photo gets bands as wide as if it spanned this much
+# How far each slider at +100 moves the far end of its band (the white point for highlights/whites, the black
+# point for shadows/blacks), in stops; positive = brighter. -100 moves it as far the other way.
+TONE_SHIFTS = {"blacks": 2.5, "shadows": 2.0, "highlights": 1.0, "whites": 1.0}
+_MAX_LOG_SLOPE = 3.0  # local slope stays within ×1/8…×8, so narrow bands can't posterize
+_CONTRAST_STRENGTH = 0.6  # contrast ±100 → overall slope ×2^±0.6 (≈ ×1.52 / ×0.66) around the pivot
 
 
-def tone_curve_stops(tone: Tone) -> npt.NDArray[np.float64]:
-    """Output stops for every input stop on ``TONE_GRID``.
+def tone_bands(black: float, white: float) -> tuple[float, dict[str, tuple[float, float]]]:
+    """The pivot (middle of the range) and each slider's band as (center, half width), all in stops.
 
-    The curve is defined by its slope: each slider multiplies the local slope by a strictly positive factor,
-    and the slope is integrated outward from mid gray. So the curve is monotone for any slider values and mid
-    gray stays exactly where it is.
+    Each band is a quarter of the range wide on either side of its center; none crosses the pivot.
     """
-    log_slope = np.full(TONE_GRID.shape, _CONTRAST_STRENGTH * tone.contrast / 100)
-    for name, (center, half_width, strength, sign) in _TONE_BANDS.items():
-        value: float = getattr(tone, name)
-        if value:
-            distance = np.clip(np.abs(TONE_GRID - center) / half_width, 0, 1)
-            bump = 0.5 + 0.5 * np.cos(np.pi * distance)  # 1 at the center, 0 beyond ±half_width
-            log_slope += sign * strength * value / 100 * bump
-    slope = np.exp2(log_slope)
-    steps = (slope[1:] + slope[:-1]) / 2 / _STEPS_PER_STOP  # trapezoid rule
-    out = np.zeros_like(TONE_GRID)
-    out[_ZERO_INDEX + 1 :] = np.cumsum(steps[_ZERO_INDEX:])
-    out[:_ZERO_INDEX] = -np.cumsum(steps[:_ZERO_INDEX][::-1])[::-1]
+    middle = (black + white) / 2
+    quarter = max(white - black, _MIN_TONE_RANGE) / 4
+    low, high = middle - 2 * quarter, middle + 2 * quarter
+    return middle, {
+        "blacks": (low + quarter / 2, quarter),
+        "shadows": (middle - quarter, quarter),
+        "highlights": (middle + quarter, quarter),
+        "whites": (high - quarter / 2, quarter),
+    }
+
+
+def _bump(center: float, half_width: float) -> npt.NDArray[np.float64]:
+    distance = np.clip(np.abs(TONE_GRID - center) / half_width, 0, 1)
+    out: npt.NDArray[np.float64] = 0.5 + 0.5 * np.cos(np.pi * distance)  # 1 at the center, 0 beyond
     return out
 
 
-def tone(rgb: F32, params: Tone) -> F32:
-    """Contrast, highlights, shadows, whites and blacks as one luminance curve (colors keep their ratios)."""
+def _band_amplitude(bump: npt.NDArray[np.float64], shift: float) -> float:
+    """The log2 slope change at the band's center that moves everything past the band by ``shift`` stops.
+
+    Found by bisection (the shift grows strictly with the amplitude), so the curve is exact and reproducible.
+    """
+
+    def moved(amplitude: float) -> float:
+        return float(np.sum(np.exp2(amplitude * bump) - 1)) / _STEPS_PER_STOP
+
+    low, high = -_MAX_LOG_SLOPE, _MAX_LOG_SLOPE
+    if shift <= moved(low):
+        return low
+    if shift >= moved(high):
+        return high
+    for _ in range(48):
+        middle = (low + high) / 2
+        low, high = (middle, high) if moved(middle) < shift else (low, middle)
+    return (low + high) / 2
+
+
+def tone_curve_stops(tone: Tone, black: float, white: float) -> npt.NDArray[np.float64]:
+    """Output stops for every input stop on ``TONE_GRID``; ``black``/``white`` are the photo's black and white
+    points after exposure.
+
+    The band sliders shape the curve through its slope: each multiplies the local slope by a strictly positive
+    factor, and the slope is integrated outward from the pivot, which stays where it is. Contrast then scales
+    the result around the pivot. So the curve is monotone for any slider values.
+    """
+    curve = TONE_GRID.copy()
+    pivot, bands = tone_bands(black, white)
+    if tone.highlights or tone.shadows or tone.whites or tone.blacks:
+        log_slope = np.zeros_like(TONE_GRID)
+        for name, (center, half_width) in bands.items():
+            value: float = getattr(tone, name)
+            if value:
+                bump = _bump(center, half_width)
+                shift = TONE_SHIFTS[name] * value / 100
+                # Below the pivot the slope is integrated downward: a flatter slope there lifts the darks.
+                log_slope += _band_amplitude(bump, shift if center > pivot else -shift) * bump
+        slope = np.exp2(log_slope)
+        integral = np.zeros_like(TONE_GRID)
+        integral[1:] = np.cumsum((slope[1:] + slope[:-1]) / 2) / _STEPS_PER_STOP  # trapezoid rule
+        curve = integral - np.interp(pivot, TONE_GRID, integral) + pivot
+    if tone.contrast:
+        curve = pivot + (curve - pivot) * 2.0 ** (_CONTRAST_STRENGTH * tone.contrast / 100)
+    return curve
+
+
+def tone(rgb: F32, params: Tone, black: float, white: float) -> F32:
+    """Contrast, highlights, shadows, whites and blacks as one luminance curve (colors keep their ratios).
+
+    ``black``/``white`` are the photo's black and white points in stops after exposure (see ``tone_bands``).
+    """
     if not (params.contrast or params.highlights or params.shadows or params.whites or params.blacks):
         return rgb
-    curve = tone_curve_stops(params)
+    return apply_tone_curve(rgb, tone_curve_stops(params, black, white))
+
+
+def apply_tone_curve(rgb: F32, curve: npt.NDArray[np.float64]) -> F32:
+    """Scale each pixel so its luminance follows ``curve`` (from ``tone_curve_stops``)."""
     stops = np.log2(np.maximum(luminance(rgb), _EPSILON) / np.float32(MID_GRAY))
     new_stops = uniform_lookup(stops, _STOPS_MIN, 1 / _STEPS_PER_STOP, curve)
     gain = np.exp2(new_stops - stops).astype(np.float32)
