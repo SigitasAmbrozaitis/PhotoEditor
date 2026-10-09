@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, Download, Wand2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import { imageUrls } from '../../api/client'
 import {
   IMPORT_REFRESH_MS,
@@ -80,7 +80,13 @@ export function LibraryPage() {
   const library = useLibrary()
   const styles = useStyles()
   const importing = useLatestImport().running
-  const [query, setQuery] = useState<PhotoQuery>({ sort: 'date', order: 'asc' })
+  // "Show photos" on a style opens the Library filtered to it (?style=<id>).
+  const [searchParams] = useSearchParams()
+  const [query, setQuery] = useState<PhotoQuery>(() => ({
+    sort: 'date',
+    order: 'asc',
+    styleId: searchParams.get('style') ?? undefined,
+  }))
   const photos = usePhotos(query, { refetchInterval: importing ? IMPORT_REFRESH_MS : false })
   const noFolder = library.data !== undefined && library.data.folder === null
 

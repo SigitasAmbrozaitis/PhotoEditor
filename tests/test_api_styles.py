@@ -188,3 +188,14 @@ def test_even_out_samples_and_report(client: TestClient) -> None:
     assert cam["middle"].after_range < cam["middle"].before_range
     empty = _create(client, name="Empty")
     assert client.post(f"/api/styles/{empty.id}/report", json={}).status_code == 400
+
+
+def test_render_a_photo_with_any_version(client: TestClient) -> None:
+    style = _create(client, name="Bright", values={"tone.exposure": 0.5})
+    client.put(f"/api/styles/{style.id}", json={"expected_version": 1, "values": {"tone.exposure": -0.5}})
+    pid = _ids(client)[0]
+    url = f"/api/styles/{style.id}/versions/{{}}/photos/{pid}.jpg"
+    v1, v2 = (client.get(url.format(n), params={"size": 256}) for n in (1, 2))
+    assert v1.status_code == v2.status_code == 200 and v1.headers["content-type"] == "image/jpeg"
+    assert v1.content != v2.content
+    assert client.get(url.format(9)).status_code == 404

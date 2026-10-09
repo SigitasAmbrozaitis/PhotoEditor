@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { vi } from 'vitest'
 import { AppRoutes, Providers } from '../App'
-import type { Job, JobRequest } from '../api/types'
+import type { Job, JobRequest, Style, StyleUpdate } from '../api/types'
 import * as fx from './fixtures'
 
 export interface ApiCall {
@@ -20,6 +20,29 @@ type Handler = (call: ApiCall) => unknown
 /** Default fake backend: answers every endpoint the UI uses from the fixtures. */
 export function defaultHandlers(): Record<string, Handler> {
   const jobs: Job[] = [fx.makeJob()]
+  // One editable style, so saving, versions and conflicts behave like the real backend.
+  let style: Style = structuredClone(fx.warmFilm)
+  const newJob = (kind: Job['kind'], photoIds: string[]) => {
+    const job = fx.makeJob({
+      id: `j${String(jobs.length + 1).padStart(4, '0')}`,
+      kind,
+      status: 'running',
+      title: `New ${kind} job`,
+      progress: 0,
+      completed: 0,
+      total: photoIds.length,
+      finished_at: null,
+      items: photoIds.map((id) => ({
+        photo_id: id,
+        filename: `${id}.RAF`,
+        status: 'queued' as const,
+        message: null,
+        output_path: null,
+      })),
+    })
+    jobs.unshift(job)
+    return job
+  }
   return {
     'GET /api/health': () => ({ status: 'ok', version: '0.1.0' }),
     'GET /api/library': () => fx.library,
@@ -59,31 +82,32 @@ export function defaultHandlers(): Record<string, Handler> {
       return { ...detail, edit: { ...detail.edit, adjustments: fx.neutralAdjustments(), overridden: [] } }
     },
     'GET /api/styles': () => fx.styleSummaries,
-    'GET /api/styles/:id': () => fx.warmFilm,
+    'GET /api/styles/:id': () => style,
+    'PUT /api/styles/:id': ({ body }) => {
+      const { expected_version, change_note, ...changes } = body as StyleUpdate
+      if (expected_version !== style.version) {
+        return Response.json({ detail: `style is at version ${style.version}` }, { status: 409 })
+      }
+      const values = (changes.values as Record<string, unknown> | undefined) ?? style.values
+      style = { ...style, ...changes, values, changed_parameters: values, version: style.version + 1, change_note } as Style
+      return style
+    },
+    'POST /api/styles/:id/duplicate': () => ({ ...style, id: 'warm-film-copy', name: 'Warm Film (copy)', version: 1 }),
+    'DELETE /api/styles/:id': () => ({ id: style.id, photos: style.photo_count }),
+    'GET /api/styles/:id/history': () => fx.styleHistory,
+    'GET /api/styles/:id/diff': () => fx.styleDiff,
+    'POST /api/styles/:id/revert': ({ body }) => {
+      style = { ...style, version: style.version + 1, change_note: `reverted to version ${(body as { version: number }).version}` }
+      return style
+    },
+    'POST /api/styles/:id/report': () => fx.styleReport,
+    'POST /api/styles/:id/samples': ({ body }) => newJob('render', (body as { photo_ids: string[] }).photo_ids),
     'GET /api/export-presets': () => fx.presets,
     'GET /api/jobs': () => jobs,
     'GET /api/jobs/:id': ({ path }) => jobs.find((j) => path.endsWith(`/${j.id}`)) ?? jobs[0],
     'POST /api/jobs': ({ body }) => {
       const request = body as JobRequest
-      const job = fx.makeJob({
-        id: `j${String(jobs.length + 1).padStart(4, '0')}`,
-        kind: request.kind,
-        status: 'running',
-        title: `New ${request.kind} job`,
-        progress: 0,
-        completed: 0,
-        total: request.photo_ids.length,
-        finished_at: null,
-        items: request.photo_ids.map((id) => ({
-          photo_id: id,
-          filename: `${id}.RAF`,
-          status: 'queued' as const,
-          message: null,
-          output_path: null,
-        })),
-      })
-      jobs.unshift(job)
-      return job
+      return newJob(request.kind, request.photo_ids)
     },
     'POST /api/jobs/:id/cancel': ({ path }) => {
       const job = jobs.find((j) => path.includes(`/${j.id}/`)) ?? jobs[0]!

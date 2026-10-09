@@ -241,6 +241,24 @@ def style_version(style_id: str, version: int, svc: Svc) -> StyleView:
     return style_view(svc.styles.version(style_id, version))
 
 
+@router.get(
+    "/styles/{style_id}/versions/{version}/photos/{photo_id}.jpg",
+    response_class=Response,
+    responses=IMAGE_RESPONSE,
+    tags=["styles"],
+)
+def style_version_render(
+    style_id: str,
+    version: int,
+    photo_id: str,
+    svc: Svc,
+    size: Annotated[int, Query(ge=256, le=2048, description="Long edge in pixels.")] = 800,
+) -> Response:
+    """A photo with one version of the style (none of its own tweaks), to compare versions side by side."""
+    data = svc.styling.render_version(style_id, version, photo_id, size)
+    return Response(content=data, media_type=JPEG, headers=IMAGE_CACHE)
+
+
 @router.get("/styles/{style_id}/diff", response_model=StyleDiff, tags=["styles"])
 def style_diff(
     style_id: str, svc: Svc, a: Annotated[int, Query(ge=1)], b: Annotated[int, Query(ge=1)]

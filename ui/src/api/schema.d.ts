@@ -389,6 +389,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/styles/{style_id}/versions/{version}/photos/{photo_id}.jpg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Style Version Render
+         * @description A photo with one version of the style (none of its own tweaks), to compare versions side by side.
+         */
+        get: operations["style_version_render_api_styles__style_id__versions__version__photos__photo_id__jpg_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/styles/{style_id}/diff": {
         parameters: {
             query?: never;
@@ -3536,6 +3556,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StyleView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    style_version_render_api_styles__style_id__versions__version__photos__photo_id__jpg_get: {
+        parameters: {
+            query?: {
+                /** @description Long edge in pixels. */
+                size?: number;
+            };
+            header?: never;
+            path: {
+                style_id: string;
+                version: number;
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JPEG image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
                 };
             };
             /** @description Validation Error */

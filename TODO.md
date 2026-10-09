@@ -798,7 +798,7 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
   `history/` too.
 
 ### UI
-- [ ] **P4.10** Styles screens on real data (the `DEMO DATA` tag leaves them):
+- [x] **P4.10** Styles screens on real data (the `DEMO DATA` tag leaves them):
   - Library cards: cover = the first "after" sample, else a placeholder; photo count.
   - Detail: inline editing of name, description, best for, avoid on; a rules editor (exposure auto: target,
     strength, max; WB mode and offsets); the parameter table with "remove from style"; samples with "Render from
@@ -813,6 +813,12 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
   - **History**: a version list with change notes, a diff of two versions, "compare on test set" (old vs. new
     renders side by side), and revert.
   - Saving asks for an optional change note and shows conflicts (another change came first) with a reload.
+  Done: the detail page is split into sections (`features/styles/Style*.tsx`), each with its own edit/save, all
+  through one save path (`useStyleSave`: `expected_version`, 409 → a "changed somewhere else" banner with Reload).
+  Added `GET /api/styles/{id}/versions/{n}/photos/{photo_id}.jpg` (a photo with any version, no tweaks) for the
+  test-set strips and "compare on the test set". "Show photos" opens `/library?style=<id>`. The Create style dialog
+  now explains Save as style… (by hand) next to Phase 8's AI flow. Vite's chunk warning limit is 800 kB (local app,
+  one bundle; 515 kB now).
 - [ ] **P4.11** Library + Photo view:
   - Library: "Apply style…" uses real styles and a real job (the export step is labeled "simulated until Phase 5"),
     plus the **Even out these photos** checkbox (off by default; its hint explains when it helps, e.g. "a series shot

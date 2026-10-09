@@ -52,7 +52,6 @@ function JobIndicator() {
 
 /** Screens still backed by mock data, and the phase that makes them real. */
 const MOCK_SCREENS: Record<string, string> = {
-  '/styles': 'Styles are mock data until Phase 4.',
   '/presets': 'Export presets are built in; exporting is simulated until Phase 5.',
 }
 

@@ -339,6 +339,15 @@ class Styling:
             style_id=style_id,
         )
 
+    def render_version(self, style_id: str, version: int, photo_id: str, long_edge: int) -> bytes:
+        """``photo`` with ``version`` of the style and none of its own tweaks (to compare versions)."""
+        style = self.styles.version(style_id, version)
+        photo = self.library.photo(photo_id)
+        stored = self.library.edits.load(photo.id)
+        group = stored.group if stored is not None and stored.style_id == style_id else None
+        edit = self.library.edits.styled_edit(photo, style, group=group)
+        return self.library.renderer.preview(photo, edit, long_edge)
+
     def sample_image(self, style_id: str, name: str, which: Literal["before", "after"]) -> bytes:
         style = self.styles.get(style_id)
         if not any(s.name == name for s in style.samples):

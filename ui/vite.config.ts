@@ -7,6 +7,11 @@ const BACKEND = process.env.PHOTOEDIT_BACKEND ?? 'http://127.0.0.1:8765'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    // The UI is served by the local backend from disk, so one bundle loads instantly; splitting it would only
+    // add complexity. Warn again if it grows well past today's size (~520 kB).
+    chunkSizeWarningLimit: 800,
+  },
   server: {
     port: 5173,
     strictPort: true,

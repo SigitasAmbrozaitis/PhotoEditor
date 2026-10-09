@@ -1116,6 +1116,77 @@
         }
       }
     },
+    "/api/styles/{style_id}/versions/{version}/photos/{photo_id}.jpg": {
+      "get": {
+        "tags": [
+          "styles"
+        ],
+        "summary": "Style Version Render",
+        "description": "A photo with one version of the style (none of its own tweaks), to compare versions side by side.",
+        "operationId": "style_version_render_api_styles__style_id__versions__version__photos__photo_id__jpg_get",
+        "parameters": [
+          {
+            "name": "style_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Style Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Version"
+            }
+          },
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 2048,
+              "minimum": 256,
+              "description": "Long edge in pixels.",
+              "default": 800,
+              "title": "Size"
+            },
+            "description": "Long edge in pixels."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "JPEG image",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/styles/{style_id}/diff": {
       "get": {
         "tags": [

@@ -15,8 +15,16 @@ import type {
   PhotoPage,
   PhotoSort,
   SortOrder,
+  ConsistencyReport,
   Style,
+  StyleCreate,
+  StyleDeleted,
+  StyleDiff,
+  StyleFromPhoto,
   StyleSummary,
+  StyleUpdate,
+  StyleUpdateFromPhoto,
+  StyleVersionInfo,
 } from './types'
 
 export interface PhotoQuery {
@@ -37,6 +45,8 @@ export const queryKeys = {
   photo: (id: string) => ['photo', id] as const,
   styles: ['styles'] as const,
   style: (id: string) => ['style', id] as const,
+  styleHistory: (id: string) => ['style', id, 'history'] as const,
+  styleDiff: (id: string, a: number, b: number) => ['style', id, 'diff', a, b] as const,
   presets: ['presets'] as const,
   jobs: ['jobs'] as const,
   job: (id: string) => ['job', id] as const,
@@ -170,6 +180,127 @@ export function useStyle(id: string | undefined) {
     queryKey: queryKeys.style(id ?? ''),
     queryFn: () => api.get<Style>(`/api/styles/${encodeURIComponent(id ?? '')}`),
     enabled: Boolean(id),
+  })
+}
+
+const styleUrl = (id: string) => `/api/styles/${encodeURIComponent(id)}`
+
+/** A style changed: its views, the list, and every photo (their look and style follow the style). */
+function styleChanged(client: ReturnType<typeof useQueryClient>, style?: Style) {
+  if (style) client.setQueryData(queryKeys.style(style.id), style)
+  void client.invalidateQueries({ queryKey: queryKeys.styles })
+  void client.invalidateQueries({ queryKey: ['style'] })
+  void client.invalidateQueries({ queryKey: ['photos'] })
+  void client.invalidateQueries({ queryKey: ['photo'] })
+  void client.invalidateQueries({ queryKey: queryKeys.jobs })
+}
+
+export function useCreateStyle() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (request: StyleCreate) => api.post<Style>('/api/styles', request),
+    onSuccess: (style) => styleChanged(client, style),
+  })
+}
+
+export function useCreateStyleFromPhoto() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (request: StyleFromPhoto) => api.post<Style>('/api/styles/from-photo', request),
+    onSuccess: (style) => styleChanged(client, style),
+  })
+}
+
+/** Save a change to a style. A 409 means someone else saved first (reload, then redo the change). */
+export function useUpdateStyle(id: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (update: StyleUpdate) => api.put<Style>(styleUrl(id), update),
+    onSuccess: (style) => styleChanged(client, style),
+  })
+}
+
+export function useUpdateStyleFromPhoto(id: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (request: StyleUpdateFromPhoto) => api.post<Style>(`${styleUrl(id)}/from-photo`, request),
+    onSuccess: (style) => styleChanged(client, style),
+  })
+}
+
+export function useDuplicateStyle(id: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (name?: string) => api.post<Style>(`${styleUrl(id)}/duplicate`, { name: name ?? null }),
+    onSuccess: (style) => styleChanged(client, style),
+  })
+}
+
+export function useDeleteStyle(id: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.delete<StyleDeleted>(styleUrl(id)),
+    onSuccess: () => {
+      client.removeQueries({ queryKey: queryKeys.style(id) })
+      styleChanged(client)
+    },
+  })
+}
+
+export function useRevertStyle(id: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (request: { version: number; expected_version: number }) =>
+      api.post<Style>(`${styleUrl(id)}/revert`, request),
+    onSuccess: (style) => styleChanged(client, style),
+  })
+}
+
+export function useStyleHistory(id: string) {
+  return useQuery({
+    queryKey: queryKeys.styleHistory(id),
+    queryFn: () => api.get<StyleVersionInfo[]>(`${styleUrl(id)}/history`),
+  })
+}
+
+export function useStyleDiff(id: string, a: number | undefined, b: number | undefined) {
+  return useQuery({
+    queryKey: queryKeys.styleDiff(id, a ?? 0, b ?? 0),
+    queryFn: () => api.get<StyleDiff>(`${styleUrl(id)}/diff`, { a, b }),
+    enabled: a !== undefined && b !== undefined && a !== b,
+  })
+}
+
+/** The consistency report (a POST, because measuring may take a moment; run on demand). */
+export function useStyleReport(id: string) {
+  return useMutation({
+    mutationFn: (photoIds?: string[]) =>
+      api.post<ConsistencyReport>(`${styleUrl(id)}/report`, { photo_ids: photoIds ?? null }),
+  })
+}
+
+export function useRenderSamples(id: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (photoIds: string[]) => api.post<Job>(`${styleUrl(id)}/samples`, { photo_ids: photoIds }),
+    onSuccess: (job) => {
+      client.setQueryData(queryKeys.job(job.id), job)
+      void client.invalidateQueries({ queryKey: queryKeys.jobs })
+    },
+  })
+}
+
+/** Give one photo a style right away (null removes it). */
+export function useSetPhotoStyle(photoId: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (styleId: string | null) =>
+      api.put<PhotoDetail>(`/api/photos/${encodeURIComponent(photoId)}/style`, { style_id: styleId }),
+    onSuccess: (detail) => {
+      storeDetail(client, detail)
+      void client.invalidateQueries({ queryKey: queryKeys.styles })
+      void client.invalidateQueries({ queryKey: queryKeys.jobs })
+    },
   })
 }
 

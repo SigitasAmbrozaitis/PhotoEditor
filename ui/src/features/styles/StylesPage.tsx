@@ -19,7 +19,10 @@ function CreateStyleDialog({ open, onOpenChange }: { open: boolean; onOpenChange
       }
     >
       <div className="flex flex-col gap-2 text-sm">
-        <p>Creating a style from sample photos arrives in Phase 8. The flow will be:</p>
+        <p>
+          <strong>By hand, now:</strong> open a photo, edit it, then use <em>Save as style…</em> in its Adjust panel.
+        </p>
+        <p>Creating a style from sample photos with the AI arrives in Phase 8. The flow will be:</p>
         <ol className="list-decimal space-y-1 pl-5 text-muted">
           <li>You provide sample photos: finished photos, and/or RAWs with your edited versions.</li>
           <li>The AI analyzes them and proposes style parameters.</li>
@@ -52,7 +55,9 @@ export function StylesPage() {
         ) : styles.isLoading ? (
           <Loading label="Loading styles…" />
         ) : !styles.data?.length ? (
-          <EmptyState title="No styles yet." />
+          <EmptyState title="No styles yet.">
+            <p className="text-xs">Open a photo, edit it, and use "Save as style…" in its Adjust panel.</p>
+          </EmptyState>
         ) : (
           <ul className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
             {styles.data.map((s) => (
@@ -68,12 +73,15 @@ export function StylesPage() {
                   )}
                   <div className="flex flex-1 flex-col gap-1 p-3">
                     <h2 className="text-sm font-semibold text-strong">{s.name}</h2>
-                    <p className="line-clamp-3 text-xs text-muted">{s.description}</p>
-                    {s.updated_at && (
-                      <p className="mt-auto pt-2 text-[11px] text-muted">
-                        Updated {new Date(s.updated_at).toLocaleDateString()}
-                      </p>
+                    {s.error ? (
+                      <p className="text-xs text-err">Can't be used: {s.error}</p>
+                    ) : (
+                      <p className="line-clamp-3 text-xs text-muted">{s.description}</p>
                     )}
+                    <p className="mt-auto pt-2 text-[11px] text-muted">
+                      {s.photo_count} photo{s.photo_count === 1 ? '' : 's'}
+                      {s.updated_at && ` · v${s.version} · updated ${new Date(s.updated_at).toLocaleDateString()}`}
+                    </p>
                   </div>
                 </Link>
               </li>
