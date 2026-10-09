@@ -12,7 +12,7 @@ Derived from [PLAN.md](PLAN.md) v0.3. This checklist is written for an AI to fol
 - ⛔ **STOP** = halt and wait for the user. Never continue past a STOP without the user's explicit go-ahead.
 - 🧑 **Human test** = steps the user runs by hand at the end of a phase, with the expected result for each step.
 - If something is ambiguous or the plan seems wrong, **ask**. Don't guess. Plan changes go into PLAN.md first.
-- **Phases 0–3 are detailed.** Later phases are an outline and get detailed at the start of each phase. Writing that detail is the first item in each phase.
+- **Phases 0–3 and 3b are detailed.** Later phases are an outline and get detailed at the start of each phase. Writing that detail is the first item in each phase.
 - Golden rules: originals are read-only; never write outside `C:\Work\PhotoEditing` (except export destinations the user
   chose); commit as `SigitasAmbrozaitis`.
 
@@ -461,6 +461,28 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
   changes and the edit survives a reload; screenshots.
 - [x] **P3.23** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e) and update README.
 
+### Human test feedback (2026-10-09)
+Measured on DSCF5437 at 1600 px, each slider at ±100 vs. unedited: Whites changed 0 % of pixels (max 1/255), Blacks
+14 % (weak), Highlights −100 only 2 %; Shadows/Contrast/Exposure 93–100 %. Cause: the four bands sit at fixed scene
+stops (whites +2…+5 stops above mid gray, blacks −4…−9), but this photo's brightest pixel is +2.4 stops and the X-T3
+curve's shoulder starts at +2. Speed → Phase 3b. Sharpening → needs the 1:1 view (Phase 6). HSL: not changed for now.
+
+- [ ] **P3.24** Relative tone sliders (PLAN §0, 2026-10-09). Highlights/shadows/whites/blacks act relative to the photo's
+  own tonal range, like Lightroom:
+  - **Anchors**: a white point and a black point per photo (high/low luminance percentiles, e.g. 99.5 % / 0.5 %, tuned
+    on the samples), measured once on the default render's scene luminance (as-shot WB, camera profile, exposure 0)
+    at a fixed 512 px size, so the numbers don't depend on preview or export size. Stored in the catalog (schema v3,
+    filled lazily like as-shot WB) together with the decoder identity; recomputed when that changes.
+  - **Bands** are placed between the anchors (blacks at the black point, shadows between it and mid gray, highlights
+    between mid gray and the white point, whites at the white point) and move with the exposure slider. The curve
+    stays slope-based, monotone, and keeps mid gray fixed. Contrast is unchanged.
+  - Strengths tuned so ±100 is clearly visible but never breaks the image (contact sheet + the extreme-values check).
+  - `ENGINE_VERSION` → 2; regenerate the synthetic golden images (`scripts/update_golden.py`) and the local real ones.
+  - Tests: exact-math tests on synthetic ramps with known anchors (the white point maps where expected, mid gray fixed,
+    monotone for any values); hypothesis property tests still pass; a `@pytest.mark.golden` test checks that each of the
+    four sliders at ±100 changes at least 5 % of pixels by ≥ 2 levels in the 1600 px preview on every sample RAF.
+  - Re-run the full check (as P3.23) and the contact sheet; update `docs/` and README where they describe the sliders.
+
 ### 🧑 Human test: Phase 3
 0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`.
 1. `uv run photoedit ui` → the Library (your catalog is upgraded automatically). Press **Open** on the `2026-08-11`
@@ -470,8 +492,11 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
    (small differences in sharpening, noise and the very corners are expected; `docs/default-look.md` lists the measured
    difference per photo).
 2. Open a photo → the Adjust panel's sliders are live (geometry and Phase 9 ones stay disabled, labeled). Move
-   **Exposure** → the preview updates within about half a second. Try every group: white balance (temperature/tint start
-   at the as-shot values), tone, presence, tone curve (drag a point), HSL, color grading, sharpening, vignette.
+   **Exposure** → the preview updates within about half a second after you stop moving it (instant updates while
+   dragging come in Phase 3b). Try every group: white balance (temperature/tint start at the as-shot values), tone,
+   presence, tone curve (drag a point), HSL, color grading, vignette. Sharpening is only visible at 1:1 (Phase 6).
+2b. (P3.24) On a few different photos (bright, dark, backlit), set **Whites**, **Blacks**, **Highlights**, **Shadows** each
+   to −100 and +100 → every one visibly changes its part of the tonal range on every photo.
 3. **Before/After/Split** compare against the default look. Double-click a slider → it resets. **Reset all** works.
    Ctrl+Z / Ctrl+Shift+Z undo and redo.
 4. Go back to the Library → the edited photo's thumbnail shows the edit. Restart `photoedit ui` → the edit is still there.
@@ -482,6 +507,90 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
 8. **Give feedback on the default look and on how each slider feels** (too strong, too weak, wrong direction).
 
 ### ⛔ STOP: user approves Phase 3
+
+## Phase 3b: Live preview speed
+
+Goal: slider changes show **instantly**, like Lightroom: the image follows the mouse while dragging, and the exact image
+settles within about half a second of release. Added 2026-10-09 after the Phase 3 human test (PLAN §0, §4.3).
+Branch `phase-3b-live-preview` from `main` after Phase 3 is merged.
+
+Measured 2026-10-09 (DSCF5437, 1600 px, this machine):
+- A 2 s drag in the UI: **nothing renders while the slider moves**. The edit is saved only after 200 ms without motion,
+  and only then is a new preview requested. Final image 0.6 s after release. Every pause also refreshes the photo list
+  and re-renders the filmstrip thumbnail. Superseded previews keep rendering on the server (they can't be cancelled),
+  so a stop-and-go drag piles up work.
+- The first edit of a freshly opened photo also waits for the RAW decode (2.6 s).
+- Render 0.38–0.45 s at 1600 px. CPU time per stage (single thread): color_adjust 460 ms (always runs, because the
+  X-T3 profile has HSL tweaks), output_srgb 224 ms, base_curve 149 ms, to_display 81 ms, sharpen 52 ms. JPEG
+  `optimize=True` costs +30 ms (q90: 43 ms vs 12 ms).
+
+Approach: **A** = make the server path responsive (drafts while dragging, latest-wins, save on release). **B** = the
+instant path: `core` turns the per-pixel part of the pipeline into a 3D LUT, and the browser applies it to the photo's
+linear base in WebGL. Vignette and sharpening aren't per-pixel color functions, so they stay on A's drafts. The exact
+CPU render stays the source of truth; exports never use the LUT.
+
+- [ ] **P3b.0** Review this detail. ⛔ STOP for the user.
+
+### A: responsive server path
+- [ ] **P3b.1** Benchmark first: `photoedit benchmark preview PHOTO` times the render per stage at 1600/800 px, the JPEG
+  encode, and (after P3b.6) the LUT build. Record the baseline in `docs/benchmark.md` so every later item is measured
+  against it.
+- [ ] **P3b.2** Draft renders: `POST /api/photos/{id}/render` takes the full `AdjustmentParams` and a size, validates
+  them like a save (later-phase parameters still rejected), and returns a JPEG. Nothing is saved, nothing is written to
+  disk, `optimize` is off. Core: `Library.render_draft()`. Regenerate the TS types.
+- [ ] **P3b.3** UI drafts: while a slider or curve point moves, request drafts continuously at a draft size (~800 px,
+  chosen from P3b.1), **at most one request in flight**: when it returns, send the newest parameters if they changed
+  (latest-wins, so nothing piles up on the server). Show each draft as soon as it arrives. On release: one save (PUT),
+  then the full 1600 px preview replaces the draft without flicker. Refresh the photo list and filmstrip thumbnail only
+  after the save. Undo/redo and keyboard/numeric entry behave as before.
+- [ ] **P3b.4** First open: show the cached preview at once, decode the linear base in the background when a photo
+  opens (not on the first slider move), and prefetch the previous/next photo's base (the LRU holds 8).
+- [ ] **P3b.5** Faster CPU render (this helps the release render, thumbnails and exports too). Target ≤ 0.2 s at 1600 px
+  for a busy edit. Candidates: fuse the OKLab conversions and matrices in `color_adjust`, a cube-root and sRGB-encode
+  via lookup tables, skip passes for neutral groups, fewer float temporaries. Keep the strip-parallel result
+  bit-identical; any pixel change bumps `ENGINE_VERSION` and regenerates the golden images.
+
+### B: instant GPU preview (3D LUT)
+- [ ] **P3b.6** `core/render/lut.py`: `build_lut(base, params, profile, size)` runs the **same stage functions** as
+  `render` (white balance → profile → exposure → tone → base curve → curves → color → output encoding) on an N³ grid
+  of input colors. Inputs are the base's camera-space linear RGB through a log2 shaper (range chosen to cover the base
+  images, below-range values clamp). N = 33 or 65, chosen by measurement (accuracy vs. build time; target ≤ 30 ms).
+  Deterministic. Tests: at grid points the LUT equals `render` of those colors exactly; neutral grays stay neutral;
+  `@pytest.mark.golden`: LUT preview vs. exact render on the sample RAFs (vignette and sharpening off) within ΔE2000
+  mean ≤ 1, p99 ≤ 3.
+- [ ] **P3b.7** API for the browser (binary, documented in OpenAPI, metadata as Pydantic models):
+  - `GET /api/photos/{id}/base?size=1600`: the linear base, shaper-encoded, as float16 RGB with a small header (size,
+    shaper range, render identity). In-memory cache; cacheable by the browser per render identity.
+  - `POST /api/photos/{id}/lut`: `AdjustmentParams` → the LUT (float16 RGB, N³) plus its header. Validated like a save.
+- [ ] **P3b.8** UI `GpuPreview` (WebGL2): upload the base once per photo as a texture and each LUT as a 3D texture with
+  linear filtering. The shader does only the lookup (no editing math in TypeScript). Before/Split use the default
+  edit's LUT. While dragging a per-pixel slider: request LUTs with the same latest-wins rule as P3b.3; vignette and
+  sharpening sliders use P3b.3's drafts. After release, the exact render swaps in. Without WebGL2 (or if a LUT
+  request fails): fall back to drafts and say so once.
+- [ ] **P3b.9** Tests: Python (LUT exactness, binary formats, validation errors, render identity in the headers);
+  Vitest (latest-wins scheduler, draft/LUT/exact swapping, the WebGL2 fallback, with WebGL mocked); Playwright: drag
+  Exposure → the canvas changes while the mouse is still moving, and the exact image arrives after release
+  (screenshots).
+- [ ] **P3b.10** Measure in the real UI and document in `docs/benchmark.md` ("Live preview"): time from a slider move to
+  new pixels (GPU path target ≤ 50 ms; draft path), time from release to the exact image (target ≤ 0.6 s), first open
+  of a photo. If a target is missed, ⛔ STOP and discuss before going on.
+- [ ] **P3b.11** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e) and update README.
+
+### 🧑 Human test: Phase 3b
+0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`, and
+   `uv run photoedit ui`.
+1. Open a photo you haven't opened in this session → its preview shows at once (no long spinner).
+2. Drag **Exposure** slowly, then fast, back and forth → the image follows the mouse with no visible delay. Release →
+   within about half a second the image may sharpen slightly (the exact render), but the colors don't jump.
+3. Same for temperature/tint, contrast, highlights/shadows/whites/blacks, saturation/vibrance, an HSL band, a color
+   grading wheel, and a tone curve point.
+4. Drag **Vignette** amount → updates several times per second while dragging (server drafts), exact after release.
+5. Before / Split while editing work and stay fast. Ctrl+Z / Ctrl+Shift+Z still undo and redo whole drags.
+6. Next/previous photo, then edit right away → no 2–3 s wait on the first slider move.
+7. Library → the edited photo's thumbnail shows the edit. Restart `photoedit ui` → the edits are still there.
+8. `docs/benchmark.md` "Live preview" numbers look plausible to you.
+
+### ⛔ STOP: user approves Phase 3b
 
 ## Phase 4: Styles (outline)
 - [ ] **P4.0** Detail this phase. ⛔ STOP for review.
@@ -501,6 +610,8 @@ pipeline math at preview size runs in ~100–200 ms, so live sliders are feasibl
 - [ ] **P6.0** Detail this phase. ⛔ STOP for review.
 - [ ] Crop / rotate / straighten / flip / zoom in the pipeline. Subject detection (faces + saliency). `suggest_crop(aspect)`.
 - [ ] Crop overlay in the Photo view.
+- [ ] 1:1 zoom view (full-resolution crops of the visible area) so sharpening can be judged (deferred from Phase 3,
+  2026-10-09).
 - 🧑 Human test + ⛔ STOP.
 
 ## Phase 7: MCP server (outline)
