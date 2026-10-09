@@ -26,6 +26,9 @@ from photoedit.models import (
     Style,
     StyleSample,
     StyleSummary,
+    WhiteBalanceMode,
+    WhiteBalanceRule,
+    style_summary,
 )
 
 SECONDS_PER_ITEM = 0.4  # fake processing time per photo in a job
@@ -105,35 +108,31 @@ _STYLE_DEFS: tuple[tuple[str, str, str, list[str], list[str], AdjustmentParams, 
 )
 
 
-def _style_sample_url(style_id: str, n: int, which: str) -> str:
-    return f"/api/styles/{style_id}/samples/{n}/{which}.jpg"
-
-
 def _build_styles() -> dict[str, Style]:
     styles: dict[str, Style] = {}
     for idx, (sid, name, desc, best, avoid, adjustments, _look) in enumerate(_STYLE_DEFS):
-        samples = [
-            StyleSample(
-                caption=f"Sample {n + 1}",
-                before_url=_style_sample_url(sid, n, "before"),
-                after_url=_style_sample_url(sid, n, "after"),
-            )
-            for n in range(3)
-        ]
-        created = _BASE_TIME - timedelta(days=30 - idx * 5)
-        styles[sid] = Style(
+        changed = adjustments.changed_fields()
+        wb = {k.split(".")[1]: v for k, v in changed.items() if k.startswith("white_balance.")}
+        values = {k: v for k, v in changed.items() if not k.startswith(("white_balance.", "effects.grain"))}
+        rules = [WhiteBalanceRule(mode=WhiteBalanceMode.FIXED, **wb)] if wb else []
+        style = Style(
             id=sid,
             name=name,
             description=desc,
             best_for=best,
             avoid_on=avoid,
-            adjustments=adjustments,
-            samples=samples,
-            cover_url=samples[0].after_url,
-            created_at=created,
-            updated_at=created + timedelta(days=2),
+            values=values,
+            rules=rules,
+            created_at=_BASE_TIME - timedelta(days=30 - idx * 5),
+            updated_at=_BASE_TIME - timedelta(days=28 - idx * 5),
             version=idx + 1,
         )
+        look = style.look_hash()
+        samples = [
+            StyleSample(photo_id=f"mock-{n}", caption=f"Sample {n + 1}", name=str(n), look_hash=look)
+            for n in range(3)
+        ]
+        styles[sid] = style.model_copy(update={"samples": samples})
     return styles
 
 
@@ -164,10 +163,7 @@ class MockBackend:
     # ---- styles
 
     def list_styles(self) -> list[StyleSummary]:
-        return [
-            StyleSummary.model_validate(s.model_dump(include=set(StyleSummary.model_fields)))
-            for s in sorted(self._styles.values(), key=lambda s: s.name)
-        ]
+        return [style_summary(s) for s in sorted(self._styles.values(), key=lambda s: s.name)]
 
     def style(self, style_id: str) -> Style:
         try:
@@ -175,10 +171,11 @@ class MockBackend:
         except KeyError:
             raise NotFoundError(f"style '{style_id}' not found") from None
 
-    def style_sample_image(self, style_id: str, n: int, *, before: bool) -> bytes:
+    def style_sample_image(self, style_id: str, name: str, *, before: bool) -> bytes:
         style = self.style(style_id)
-        if not 0 <= n < len(style.samples):
-            raise NotFoundError(f"style '{style_id}' has no sample {n}")
+        n = next((i for i, s in enumerate(style.samples) if s.name == name), None)
+        if n is None:
+            raise NotFoundError(f"style '{style_id}' has no sample '{name}'")
         scene = (list(self._styles).index(style_id) * 3 + n) % len(images.SCENES)
         look = images.FLAT_LOOK if before else _LOOKS[style_id]
         return images.render_placeholder(scene, 800, 533, f"{style.name} #{n + 1}", look)
@@ -201,7 +198,7 @@ class MockBackend:
         style_id = getattr(request, "style_id", None)
         preset_id = getattr(request, "preset_id", None)
         destination = getattr(request, "destination", None)
-        style_name = self.style(style_id).name if style_id else None
+        style_name = self.style(style_id).name if style_id else "no style"
         preset_name = self.preset(preset_id).name if preset_id else "custom settings"
         n = len(photos)
         noun = "photo" if n == 1 else "photos"

@@ -160,6 +160,9 @@ export const styleSummaries: StyleSummary[] = [
     description: 'Dark greens and teal shadows.',
     cover_url: '/api/styles/moody-forest/samples/0/after.jpg',
     updated_at: '2026-08-01T10:00:00Z',
+    version: 1,
+    photo_count: 0,
+    error: null,
   },
   {
     id: 'warm-film',
@@ -167,24 +170,51 @@ export const styleSummaries: StyleSummary[] = [
     description: 'Soft warm analog look.',
     cover_url: '/api/styles/warm-film/samples/0/after.jpg',
     updated_at: '2026-08-02T10:00:00Z',
+    version: 2,
+    photo_count: 3,
+    error: null,
   },
 ]
 
+const warmValues = { 'tone.exposure': 0.15, 'tone.highlights': -30 }
+
 export const warmFilm: Style = {
-  ...styleSummaries[1]!,
+  id: 'warm-film',
+  name: 'Warm Film',
+  description: 'Soft warm analog look.',
+  cover_url: '/api/styles/warm-film/samples/0/after.jpg',
+  updated_at: '2026-08-02T10:00:00Z',
+  photo_count: 3,
   best_for: ['portraits', 'golden hour'],
   avoid_on: ['night scenes'],
-  adjustments: warmAdjustments(),
+  values: warmValues,
+  rules: [
+    {
+      type: 'white_balance',
+      rule_version: 1,
+      mode: 'fixed',
+      temperature_offset: 0,
+      tint_offset: 0,
+      temperature: 6200,
+      tint: 0,
+    },
+  ],
+  test_photo_ids: [],
   samples: [
     {
+      photo_id: 'p1',
       caption: 'Sample 1',
       before_url: '/api/styles/warm-film/samples/0/before.jpg',
       after_url: '/api/styles/warm-film/samples/0/after.jpg',
+      stale: false,
     },
   ],
   created_at: '2026-07-01T10:00:00Z',
   version: 2,
-  changed_parameters: { 'white_balance.temperature': 6200, 'tone.exposure': 0.15, 'tone.highlights': -30 },
+  change_note: '',
+  look_hash: 'abc123',
+  samples_stale: false,
+  changed_parameters: warmValues,
 }
 
 export function photoDetail(photo: Photo): PhotoDetail {
@@ -203,6 +233,12 @@ export function photoDetail(photo: Photo): PhotoDetail {
       overridden,
       revision: `r${photo.id}`,
       defaults: neutralAdjustments(),
+      style_values:
+        photo.style_id === 'warm-film' ? ['tone.exposure', 'tone.highlights', 'white_balance.temperature'] : [],
+      rules: [],
+      style_version: photo.style_id === 'warm-film' ? 2 : null,
+      style_error: null,
+      group: null,
     },
     as_shot: { temperature: 5200, tint: 8 },
   }

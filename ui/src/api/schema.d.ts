@@ -269,7 +269,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/styles/{style_id}/samples/{n}/{which}.jpg": {
+    "/api/styles/{style_id}/samples/{name}/{which}.jpg": {
         parameters: {
             query?: never;
             header?: never;
@@ -277,7 +277,7 @@ export interface paths {
             cookie?: never;
         };
         /** Style Sample */
-        get: operations["style_sample_api_styles__style_id__samples__n___which__jpg_get"];
+        get: operations["style_sample_api_styles__style_id__samples__name___which__jpg_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -420,6 +420,11 @@ export interface components {
             kind: "apply_and_export";
             /** Style Id */
             style_id: string;
+            /**
+             * Even Out
+             * @default false
+             */
+            even_out: boolean;
             /** Preset Id */
             preset_id?: string | null;
             settings: components["schemas"]["ExportSettings-Input"];
@@ -436,8 +441,17 @@ export interface components {
              * @constant
              */
             kind: "apply_style";
-            /** Style Id */
-            style_id: string;
+            /**
+             * Style Id
+             * @description None removes the style from the photos.
+             */
+            style_id: string | null;
+            /**
+             * Even Out
+             * @description Store the selection's median as each photo's group reference, so the style's exposure rule evens the photos out against each other.
+             * @default false
+             */
+            even_out: boolean;
         };
         /**
          * AsShot
@@ -760,6 +774,56 @@ export interface components {
          */
         ExportTarget: "instagram" | "print" | "web" | "custom";
         /**
+         * ExposureMetering
+         * @enum {string}
+         */
+        ExposureMetering: "middle" | "highlights" | "camera_settings";
+        /**
+         * ExposureRule
+         * @description Auto exposure: moves a measure of the photo toward a target, so differently exposed photos match.
+         */
+        ExposureRule: {
+            /**
+             * Rule Version
+             * @description Format version of this rule type.
+             * @default 1
+             */
+            rule_version: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "exposure";
+            /**
+             * @description What is measured. middle: the median brightness (ordinary scenes). highlights: the white point, so dark subjects (a black cat, night streets) stay dark. camera_settings: the exposure dialed in (shutter, aperture, ISO); evens out a series shot in the same light, needs a group reference.
+             * @default middle
+             */
+            metering: components["schemas"]["ExposureMetering"];
+            /**
+             * Target
+             * @description Target in stops relative to mid gray. None = the metering's default (docs/styles.md).
+             */
+            target: number | null;
+            /**
+             * Use Group
+             * @description Target the photo's group reference when it has one ('even out').
+             * @default true
+             */
+            use_group: boolean;
+            /**
+             * Strength
+             * @description How far toward the target, in percent.
+             * @default 100
+             */
+            strength: number;
+            /**
+             * Max Change
+             * @description Largest exposure change in EV either way.
+             * @default 1.5
+             */
+            max_change: number;
+        };
+        /**
          * FileFormat
          * @enum {string}
          */
@@ -943,6 +1007,29 @@ export interface components {
              * @default 50
              */
             roughness: number;
+        };
+        /**
+         * GroupReference
+         * @description The group a photo was evened out with: the group's median of one measure. It's stored with the photo's
+         *     edit, so the photo's render doesn't depend on what is selected later.
+         */
+        GroupReference: {
+            /**
+             * Id
+             * @description Shared by the photos applied together.
+             */
+            id: string;
+            measure: components["schemas"]["ExposureMetering"];
+            /**
+             * Reference
+             * @description Stops (middle/highlights) or EV100 (camera_settings).
+             */
+            reference: number;
+            /**
+             * Size
+             * @description Number of photos in the group.
+             */
+            size: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1411,6 +1498,28 @@ export interface components {
             revision: string;
             /** @description The photo's unedited parameters (what a reset goes back to; JPEGs start unsharpened). */
             defaults: components["schemas"]["AdjustmentParams-Output"];
+            /**
+             * Style Values
+             * @description Dotted parameter names whose value comes from the style (incl. its rules).
+             */
+            style_values: string[];
+            /**
+             * Rules
+             * @description What the style's rules did on this photo.
+             */
+            rules: components["schemas"]["RuleResult"][];
+            /**
+             * Style Version
+             * @description Version of the style the edit uses.
+             */
+            style_version: number | null;
+            /**
+             * Style Error
+             * @description Why the assigned style isn't applied (missing or invalid), if it isn't.
+             */
+            style_error: string | null;
+            /** @description Set by 'even out' when the style was applied. */
+            group: components["schemas"]["GroupReference"] | null;
         };
         /**
          * PhotoSort
@@ -1488,6 +1597,35 @@ export interface components {
          * @enum {string}
          */
         ResizeMode: "original" | "long_edge" | "short_edge" | "width_height" | "megapixels" | "percentage";
+        /**
+         * RuleResult
+         * @description What one rule did on one photo (for display, reports and the AI).
+         */
+        RuleResult: {
+            /** Type */
+            type: string;
+            /**
+             * Summary
+             * @description One line, e.g. 'middle -2.1 → target -1.0 stops: +1.1 EV'.
+             */
+            summary: string;
+            /** Measured */
+            measured: number | null;
+            /** Target */
+            target: number | null;
+            /**
+             * Values
+             * @description Parameters the rule set, e.g. {'tone.exposure': 0.6}.
+             */
+            values: {
+                [key: string]: number;
+            };
+            /**
+             * Note
+             * @description Why the rule fell back or was limited, if it did.
+             */
+            note: string | null;
+        };
         /**
          * SharpenAmount
          * @enum {string}
@@ -1637,27 +1775,25 @@ export interface components {
          * @enum {string}
          */
         SortOrder: "asc" | "desc";
-        /**
-         * StyleSample
-         * @description A before/after example showing the expected result of a style.
-         */
-        StyleSample: {
-            /**
-             * Caption
-             * @default
-             */
+        /** StyleSampleView */
+        StyleSampleView: {
+            /** Photo Id */
+            photo_id: string;
+            /** Caption */
             caption: string;
             /** Before Url */
             before_url: string;
             /** After Url */
             after_url: string;
+            /**
+             * Stale
+             * @description Rendered with an older look of the style.
+             */
+            stale: boolean;
         };
         /** StyleSummary */
         StyleSummary: {
-            /**
-             * Id
-             * @description Slug, also the folder name under styles/.
-             */
+            /** Id */
             id: string;
             /** Name */
             name: string;
@@ -1668,73 +1804,85 @@ export interface components {
             description: string;
             /**
              * Cover Url
-             * @description Thumbnail of an 'after' sample.
+             * @description The first sample's 'after' image, if any.
              */
             cover_url: string | null;
+            /** Updated At */
+            updated_at: string | null;
             /**
-             * Updated At
-             * Format: date-time
+             * Version
+             * @default 1
              */
-            updated_at: string;
+            version: number;
+            /**
+             * Photo Count
+             * @description Photos that use this style.
+             * @default 0
+             */
+            photo_count: number;
+            /**
+             * Error
+             * @description Why the style file can't be used, if it can't.
+             */
+            error: string | null;
         };
         /**
          * StyleView
          * @description API response for a style: the stored style plus derived, read-only information.
          */
         StyleView: {
-            /**
-             * Id
-             * @description Slug, also the folder name under styles/.
-             */
+            /** Id */
             id: string;
             /** Name */
             name: string;
-            /**
-             * Description
-             * @default
-             */
+            /** Description */
             description: string;
-            /**
-             * Cover Url
-             * @description Thumbnail of an 'after' sample.
-             */
-            cover_url: string | null;
-            /**
-             * Updated At
-             * Format: date-time
-             */
-            updated_at: string;
-            /**
-             * Best For
-             * @description Scenes/subjects the style suits.
-             */
+            /** Best For */
             best_for: string[];
-            /**
-             * Avoid On
-             * @description Scenes/subjects the style handles badly.
-             */
+            /** Avoid On */
             avoid_on: string[];
-            adjustments: components["schemas"]["AdjustmentParams-Output"];
+            /** Values */
+            values: {
+                [key: string]: unknown;
+            };
+            /** Rules */
+            rules: (components["schemas"]["ExposureRule"] | components["schemas"]["WhiteBalanceRule"])[];
+            /** Test Photo Ids */
+            test_photo_ids: string[];
             /** Samples */
-            samples: components["schemas"]["StyleSample"][];
+            samples: components["schemas"]["StyleSampleView"][];
             /**
              * Created At
              * Format: date-time
              */
             created_at: string;
             /**
-             * Version
-             * @description Incremented on every saved change.
-             * @default 1
+             * Updated At
+             * Format: date-time
              */
+            updated_at: string;
+            /** Version */
             version: number;
+            /** Change Note */
+            change_note: string;
+            /** Look Hash */
+            look_hash: string;
             /**
              * Changed Parameters
-             * @description Parameters this style changes from neutral, as {dotted.name: value}.
+             * @description Same as values (what the style changes).
              */
-            readonly changed_parameters: {
+            changed_parameters: {
                 [key: string]: unknown;
             };
+            /** Cover Url */
+            cover_url: string | null;
+            /** Photo Count */
+            photo_count: number;
+            /**
+             * Samples Stale
+             * @description Some samples show an older look of the style.
+             */
+            samples_stale: boolean;
         };
         /**
          * TiffCompression
@@ -1979,6 +2127,55 @@ export interface components {
             /**
              * Tint
              * @description Green (-) / magenta (+) tint. None = as shot.
+             */
+            tint: number | null;
+        };
+        /**
+         * WhiteBalanceMode
+         * @enum {string}
+         */
+        WhiteBalanceMode: "as_shot" | "auto" | "fixed";
+        /**
+         * WhiteBalanceRule
+         * @description White balance relative to each photo, instead of a fixed Kelvin value.
+         */
+        WhiteBalanceRule: {
+            /**
+             * Rule Version
+             * @description Format version of this rule type.
+             * @default 1
+             */
+            rule_version: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "white_balance";
+            /**
+             * @description as_shot: the camera's white balance plus the offsets. auto: a neutral estimate from the photo plus the offsets (can remove intentional warm light). fixed: temperature and tint as given.
+             * @default as_shot
+             */
+            mode: components["schemas"]["WhiteBalanceMode"];
+            /**
+             * Temperature Offset
+             * @description Kelvin at 5500 K, applied as the same mired shift (looks alike under any light).
+             * @default 0
+             */
+            temperature_offset: number;
+            /**
+             * Tint Offset
+             * @description Added to the tint.
+             * @default 0
+             */
+            tint_offset: number;
+            /**
+             * Temperature
+             * @description Kelvin (fixed mode only).
+             */
+            temperature: number | null;
+            /**
+             * Tint
+             * @description Tint (fixed mode only).
              */
             tint: number | null;
         };
@@ -2455,13 +2652,13 @@ export interface operations {
             };
         };
     };
-    style_sample_api_styles__style_id__samples__n___which__jpg_get: {
+    style_sample_api_styles__style_id__samples__name___which__jpg_get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 style_id: string;
-                n: number;
+                name: string;
                 which: "before" | "after";
             };
             cookie?: never;

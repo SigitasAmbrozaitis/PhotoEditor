@@ -69,9 +69,11 @@ export function StylesPage() {
                   <div className="flex flex-1 flex-col gap-1 p-3">
                     <h2 className="text-sm font-semibold text-strong">{s.name}</h2>
                     <p className="line-clamp-3 text-xs text-muted">{s.description}</p>
-                    <p className="mt-auto pt-2 text-[11px] text-muted">
-                      Updated {new Date(s.updated_at).toLocaleDateString()}
-                    </p>
+                    {s.updated_at && (
+                      <p className="mt-auto pt-2 text-[11px] text-muted">
+                        Updated {new Date(s.updated_at).toLocaleDateString()}
+                      </p>
+                    )}
                   </div>
                 </Link>
               </li>

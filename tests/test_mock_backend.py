@@ -48,8 +48,8 @@ def test_styles_have_samples(backend: MockBackend) -> None:
     for s in summaries:
         style = backend.style(s.id)
         assert style.samples
-        assert style.adjustments.changed_fields()
-        data = backend.style_sample_image(s.id, 0, before=False)
+        assert style.values
+        data = backend.style_sample_image(s.id, style.samples[0].name, before=False)
         assert Image.open(io.BytesIO(data)).format == "JPEG"
 
 

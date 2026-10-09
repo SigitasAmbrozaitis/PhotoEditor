@@ -73,11 +73,12 @@ export function ProcessWizard({
             kind: 'apply_and_export' as const,
             photo_ids: photoIds,
             style_id: styleId,
+            even_out: false,
             preset_id: preset?.id ?? null,
             settings,
             destination: destination.trim(),
           }
-        : { kind: 'apply_style' as const, photo_ids: photoIds, style_id: styleId }
+        : { kind: 'apply_style' as const, photo_ids: photoIds, style_id: styleId, even_out: false }
     createJob.mutate(request, {
       onSuccess: (job) => {
         onOpenChange(false)

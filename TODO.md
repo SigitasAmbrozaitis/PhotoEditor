@@ -554,10 +554,11 @@ style filter uses it. Styles, sample images and apply jobs come from `mock/backe
   - `exposure`: `off` | `auto`. Auto adds `strength × (target − photo middle)` EV, limited to ±`max_change`. The
     "photo middle" is the median scene luminance in stops relative to mid gray, at exposure 0 with the profile
     baseline. The style's own `tone.exposure` is added on top.
-  - `white_balance`: `as_shot` (default: the style doesn't touch WB) | `as_shot_offset` | `auto` (neutral estimate
-    + offset) | `fixed` (the style's own `white_balance.temperature`/`tint`; only this mode may set them, any other
-    mode with WB values is rejected). Temperature offsets are given in Kelvin at 5500 K and applied as the
-    equivalent mired shift, so "+400 K" looks alike under tungsten and daylight.
+  - `white_balance`: `as_shot` + offsets | `auto` (neutral estimate + offsets) | `fixed` (temperature/tint given in
+    the rule). A style without a white_balance rule doesn't touch WB. `values` never holds `white_balance.*`
+    (rejected: WB goes through the rule). Temperature offsets are given in Kelvin at 5500 K and applied as the
+    equivalent mired shift, so "+400 K" looks alike under tungsten and daylight. (Changed in P4.2: `as_shot`
+    takes the offsets, so a separate `as_shot_offset` mode wasn't needed.)
   - Rule outputs are limited by design (`max_change`, the parameter ranges) and the limits are documented. That isn't
     silent clamping of input (golden rule 5): invalid rule settings are still rejected.
 
@@ -585,7 +586,7 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
 - **Version history**: every saved style version is kept (`styles/<id>/history/v<N>.json`). The UI and CLI can diff
   two versions, compare them on the test set and revert, so trying a change costs nothing.
 
-- [ ] **P4.0** Detail this phase into items. ⛔ STOP for the user to review it.
+- [x] **P4.0** Detail this phase into items. ⛔ STOP for the user to review it. Reviewed and approved 2026-10-09.
 
 ### Decisions to confirm at phase start (ask the user)
 - [x] **P4.1** Confirmed 2026-10-09 (recorded in PLAN.md §0): live link; applying replaces only the parameters the
@@ -619,13 +620,14 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
     sunset, a backlit or night shot, drift shots at different settings, and rally panning vs. freeze shots.
 
 ### Core
-- [ ] **P4.2** Models (`models/style.py`, the API contract):
+- [x] **P4.2** Models (`models/style.py`, the API contract):
   - `rules`: a list of typed rules (discriminated by `type`, each with its own `rule_version`), at most one per
     type, evaluated in a fixed order:
     - `exposure`: metering `middle` | `highlights` | `camera_settings`; target −4…+4 stops (for `middle` /
       `highlights`); `use_group` (target the photo's stored group reference when it has one); strength 0…100;
       max_change 0…3 EV.
-    - `white_balance`: mode, temperature_offset −3000…+3000 K, tint_offset −50…+50.
+    - `white_balance`: mode, temperature_offset −3000…+3000 K, tint_offset −50…+50, temperature/tint (`fixed`
+      only).
   - `RuleResults`: per rule, what it measured, its target and what it changed (e.g. "highlights metering: white
     point +1.8 → target +2.2, +0.4 EV"), for display and reports.
   - `Style`: `schema_version`, id (slug = folder name, fixed at creation), name, description, best_for, avoid_on,
@@ -645,6 +647,10 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
   Tests: validation and ranges, WB values only in `fixed` mode, a duplicate rule type rejected, an unknown rule
   type or newer rule version → a clear error, geometry and later-phase names rejected, unknown names rejected, JSON
   round-trip, and `look_hash` ignores name, description, test set and timestamps.
+  Done: `StyleView` is a flat API model (not a subclass of the stored `Style`) with sample URLs and `stale` flags;
+  `PhotoEdit` also has `style_error` and `group` (`GroupReference`); `AdjustmentParams.with_values()` / `dotted()`
+  handle dotted names. Later-phase names are rejected by core when a style is saved or used (P4.3/P4.5), because
+  the list lives in the engine. The mock styles were adapted to the new format until P4.7 removes them.
 - [ ] **P4.3** `core/styles.py` `StyleLibrary` over `styles/` (all writes atomic and through the path guard):
   - list (a broken `style.json` is listed as broken with its error, so it doesn't break the list), get, create (id
     from the name; slug collision → `-2`, `-3`…), update (optimistic: `expected_version` mismatch → conflict error),

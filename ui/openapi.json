@@ -688,13 +688,13 @@
         }
       }
     },
-    "/api/styles/{style_id}/samples/{n}/{which}.jpg": {
+    "/api/styles/{style_id}/samples/{name}/{which}.jpg": {
       "get": {
         "tags": [
           "styles"
         ],
         "summary": "Style Sample",
-        "operationId": "style_sample_api_styles__style_id__samples__n___which__jpg_get",
+        "operationId": "style_sample_api_styles__style_id__samples__name___which__jpg_get",
         "parameters": [
           {
             "name": "style_id",
@@ -706,12 +706,12 @@
             }
           },
           {
-            "name": "n",
+            "name": "name",
             "in": "path",
             "required": true,
             "schema": {
-              "type": "integer",
-              "title": "N"
+              "type": "string",
+              "title": "Name"
             }
           },
           {
@@ -1086,6 +1086,11 @@
             "type": "string",
             "title": "Style Id"
           },
+          "even_out": {
+            "type": "boolean",
+            "title": "Even Out",
+            "default": false
+          },
           "preset_id": {
             "anyOf": [
               {
@@ -1134,8 +1139,22 @@
             "default": "apply_style"
           },
           "style_id": {
-            "type": "string",
-            "title": "Style Id"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style Id",
+            "description": "None removes the style from the photos."
+          },
+          "even_out": {
+            "type": "boolean",
+            "title": "Even Out",
+            "description": "Store the selection's median as each photo's group reference, so the style's exposure rule evens the photos out against each other.",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -1802,6 +1821,85 @@
         ],
         "title": "ExportTarget"
       },
+      "ExposureMetering": {
+        "type": "string",
+        "enum": [
+          "middle",
+          "highlights",
+          "camera_settings"
+        ],
+        "title": "ExposureMetering"
+      },
+      "ExposureRule": {
+        "properties": {
+          "rule_version": {
+            "type": "integer",
+            "title": "Rule Version",
+            "description": "Format version of this rule type.",
+            "default": 1
+          },
+          "type": {
+            "type": "string",
+            "const": "exposure",
+            "title": "Type",
+            "default": "exposure"
+          },
+          "metering": {
+            "$ref": "#/components/schemas/ExposureMetering",
+            "description": "What is measured. middle: the median brightness (ordinary scenes). highlights: the white point, so dark subjects (a black cat, night streets) stay dark. camera_settings: the exposure dialed in (shutter, aperture, ISO); evens out a series shot in the same light, needs a group reference.",
+            "default": "middle"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 4.0,
+                "minimum": -4.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target",
+            "description": "Target in stops relative to mid gray. None = the metering's default (docs/styles.md)."
+          },
+          "use_group": {
+            "type": "boolean",
+            "title": "Use Group",
+            "description": "Target the photo's group reference when it has one ('even out').",
+            "default": true
+          },
+          "strength": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Strength",
+            "description": "How far toward the target, in percent.",
+            "default": 100
+          },
+          "max_change": {
+            "type": "number",
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Max Change",
+            "description": "Largest exposure change in EV either way.",
+            "default": 1.5
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "rule_version",
+          "type",
+          "metering",
+          "target",
+          "use_group",
+          "strength",
+          "max_change"
+        ],
+        "title": "ExposureRule",
+        "description": "Auto exposure: moves a measure of the photo toward a target, so differently exposed photos match."
+      },
       "FileFormat": {
         "type": "string",
         "enum": [
@@ -2122,6 +2220,41 @@
           "roughness"
         ],
         "title": "Grain"
+      },
+      "GroupReference": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Shared by the photos applied together."
+          },
+          "measure": {
+            "$ref": "#/components/schemas/ExposureMetering"
+          },
+          "reference": {
+            "type": "number",
+            "maximum": 30.0,
+            "minimum": -30.0,
+            "title": "Reference",
+            "description": "Stops (middle/highlights) or EV100 (camera_settings)."
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Size",
+            "description": "Number of photos in the group."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "measure",
+          "reference",
+          "size"
+        ],
+        "title": "GroupReference",
+        "description": "The group a photo was evened out with: the group's median of one measure. It's stored with the photo's\nedit, so the photo's render doesn't depend on what is selected later."
       },
       "HTTPValidationError": {
         "properties": {
@@ -3193,6 +3326,57 @@
           "defaults": {
             "$ref": "#/components/schemas/AdjustmentParams-Output",
             "description": "The photo's unedited parameters (what a reset goes back to; JPEGs start unsharpened)."
+          },
+          "style_values": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Style Values",
+            "description": "Dotted parameter names whose value comes from the style (incl. its rules)."
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/RuleResult"
+            },
+            "type": "array",
+            "title": "Rules",
+            "description": "What the style's rules did on this photo."
+          },
+          "style_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style Version",
+            "description": "Version of the style the edit uses."
+          },
+          "style_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style Error",
+            "description": "Why the assigned style isn't applied (missing or invalid), if it isn't."
+          },
+          "group": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GroupReference"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set by 'even out' when the style was applied."
           }
         },
         "additionalProperties": false,
@@ -3203,7 +3387,12 @@
           "adjustments",
           "overridden",
           "revision",
-          "defaults"
+          "defaults",
+          "style_values",
+          "rules",
+          "style_version",
+          "style_error",
+          "group"
         ],
         "title": "PhotoEdit",
         "description": "The edit of one photo: an optional style plus per-photo overrides. Overrides always win."
@@ -3329,6 +3518,73 @@
           "percentage"
         ],
         "title": "ResizeMode"
+      },
+      "RuleResult": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "description": "One line, e.g. 'middle -2.1 → target -1.0 stops: +1.1 EV'."
+          },
+          "measured": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measured"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "values": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Values",
+            "description": "Parameters the rule set, e.g. {'tone.exposure': 0.6}."
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "Why the rule fell back or was limited, if it did."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "summary",
+          "measured",
+          "target",
+          "values",
+          "note"
+        ],
+        "title": "RuleResult",
+        "description": "What one rule did on one photo (for display, reports and the AI)."
       },
       "SharpenAmount": {
         "type": "string",
@@ -3664,12 +3920,15 @@
         ],
         "title": "SortOrder"
       },
-      "StyleSample": {
+      "StyleSampleView": {
         "properties": {
+          "photo_id": {
+            "type": "string",
+            "title": "Photo Id"
+          },
           "caption": {
             "type": "string",
-            "title": "Caption",
-            "default": ""
+            "title": "Caption"
           },
           "before_url": {
             "type": "string",
@@ -3678,35 +3937,36 @@
           "after_url": {
             "type": "string",
             "title": "After Url"
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale",
+            "description": "Rendered with an older look of the style."
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
+          "photo_id",
           "caption",
           "before_url",
-          "after_url"
+          "after_url",
+          "stale"
         ],
-        "title": "StyleSample",
-        "description": "A before/after example showing the expected result of a style."
+        "title": "StyleSampleView"
       },
       "StyleSummary": {
         "properties": {
           "id": {
             "type": "string",
-            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
-            "title": "Id",
-            "description": "Slug, also the folder name under styles/."
+            "title": "Id"
           },
           "name": {
             "type": "string",
-            "maxLength": 80,
-            "minLength": 1,
             "title": "Name"
           },
           "description": {
             "type": "string",
-            "maxLength": 2000,
             "title": "Description",
             "default": ""
           },
@@ -3720,106 +3980,44 @@
               }
             ],
             "title": "Cover Url",
-            "description": "Thumbnail of an 'after' sample."
+            "description": "The first sample's 'after' image, if any."
           },
           "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "id",
-          "name",
-          "description",
-          "cover_url",
-          "updated_at"
-        ],
-        "title": "StyleSummary"
-      },
-      "StyleView": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
-            "title": "Id",
-            "description": "Slug, also the folder name under styles/."
-          },
-          "name": {
-            "type": "string",
-            "maxLength": 80,
-            "minLength": 1,
-            "title": "Name"
-          },
-          "description": {
-            "type": "string",
-            "maxLength": 2000,
-            "title": "Description",
-            "default": ""
-          },
-          "cover_url": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "format": "date-time"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Cover Url",
-            "description": "Thumbnail of an 'after' sample."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
             "title": "Updated At"
-          },
-          "best_for": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Best For",
-            "description": "Scenes/subjects the style suits."
-          },
-          "avoid_on": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Avoid On",
-            "description": "Scenes/subjects the style handles badly."
-          },
-          "adjustments": {
-            "$ref": "#/components/schemas/AdjustmentParams-Output"
-          },
-          "samples": {
-            "items": {
-              "$ref": "#/components/schemas/StyleSample"
-            },
-            "type": "array",
-            "title": "Samples"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
           },
           "version": {
             "type": "integer",
             "minimum": 1.0,
             "title": "Version",
-            "description": "Incremented on every saved change.",
             "default": 1
           },
-          "changed_parameters": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Changed Parameters",
-            "description": "Parameters this style changes from neutral, as {dotted.name: value}.",
-            "readOnly": true
+          "photo_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Photo Count",
+            "description": "Photos that use this style.",
+            "default": 0
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Why the style file can't be used, if it can't."
           }
         },
         "additionalProperties": false,
@@ -3830,13 +4028,151 @@
           "description",
           "cover_url",
           "updated_at",
+          "version",
+          "photo_count",
+          "error"
+        ],
+        "title": "StyleSummary"
+      },
+      "StyleView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "best_for": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Best For"
+          },
+          "avoid_on": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Avoid On"
+          },
+          "values": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Values"
+          },
+          "rules": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ExposureRule"
+                },
+                {
+                  "$ref": "#/components/schemas/WhiteBalanceRule"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "exposure": "#/components/schemas/ExposureRule",
+                  "white_balance": "#/components/schemas/WhiteBalanceRule"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Rules"
+          },
+          "test_photo_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Test Photo Ids"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/StyleSampleView"
+            },
+            "type": "array",
+            "title": "Samples"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "change_note": {
+            "type": "string",
+            "title": "Change Note"
+          },
+          "look_hash": {
+            "type": "string",
+            "title": "Look Hash"
+          },
+          "changed_parameters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Changed Parameters",
+            "description": "Same as values (what the style changes)."
+          },
+          "cover_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url"
+          },
+          "photo_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Photo Count"
+          },
+          "samples_stale": {
+            "type": "boolean",
+            "title": "Samples Stale",
+            "description": "Some samples show an older look of the style."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
           "best_for",
           "avoid_on",
-          "adjustments",
+          "values",
+          "rules",
+          "test_photo_ids",
           "samples",
           "created_at",
+          "updated_at",
           "version",
-          "changed_parameters"
+          "change_note",
+          "look_hash",
+          "changed_parameters",
+          "cover_url",
+          "photo_count",
+          "samples_stale"
         ],
         "title": "StyleView",
         "description": "API response for a style: the stored style plus derived, read-only information."
@@ -4325,6 +4661,93 @@
           "tint"
         ],
         "title": "WhiteBalance"
+      },
+      "WhiteBalanceMode": {
+        "type": "string",
+        "enum": [
+          "as_shot",
+          "auto",
+          "fixed"
+        ],
+        "title": "WhiteBalanceMode"
+      },
+      "WhiteBalanceRule": {
+        "properties": {
+          "rule_version": {
+            "type": "integer",
+            "title": "Rule Version",
+            "description": "Format version of this rule type.",
+            "default": 1
+          },
+          "type": {
+            "type": "string",
+            "const": "white_balance",
+            "title": "Type",
+            "default": "white_balance"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/WhiteBalanceMode",
+            "description": "as_shot: the camera's white balance plus the offsets. auto: a neutral estimate from the photo plus the offsets (can remove intentional warm light). fixed: temperature and tint as given.",
+            "default": "as_shot"
+          },
+          "temperature_offset": {
+            "type": "number",
+            "maximum": 3000.0,
+            "minimum": -3000.0,
+            "title": "Temperature Offset",
+            "description": "Kelvin at 5500 K, applied as the same mired shift (looks alike under any light).",
+            "default": 0
+          },
+          "tint_offset": {
+            "type": "number",
+            "maximum": 50.0,
+            "minimum": -50.0,
+            "title": "Tint Offset",
+            "description": "Added to the tint.",
+            "default": 0
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 50000.0,
+                "minimum": 2000.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature",
+            "description": "Kelvin (fixed mode only)."
+          },
+          "tint": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 150.0,
+                "minimum": -150.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tint",
+            "description": "Tint (fixed mode only)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "rule_version",
+          "type",
+          "mode",
+          "temperature_offset",
+          "tint_offset",
+          "temperature",
+          "tint"
+        ],
+        "title": "WhiteBalanceRule",
+        "description": "White balance relative to each photo, instead of a fixed Kelvin value."
       }
     }
   }

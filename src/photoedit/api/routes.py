@@ -165,13 +165,13 @@ def style(style_id: str, svc: Svc) -> StyleView:
 
 
 @router.get(
-    "/styles/{style_id}/samples/{n}/{which}.jpg",
+    "/styles/{style_id}/samples/{name}/{which}.jpg",
     response_class=Response,
     responses=IMAGE_RESPONSE,
     tags=["styles"],
 )
-def style_sample(style_id: str, n: int, which: Literal["before", "after"], svc: Svc) -> Response:
-    data = svc.mock.style_sample_image(style_id, n, before=which == "before")
+def style_sample(style_id: str, name: str, which: Literal["before", "after"], svc: Svc) -> Response:
+    data = svc.mock.style_sample_image(style_id, name, before=which == "before")
     return Response(content=data, media_type=JPEG, headers={"Cache-Control": "public, max-age=3600"})
 
 

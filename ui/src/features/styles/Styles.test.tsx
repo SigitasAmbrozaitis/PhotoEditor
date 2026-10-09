@@ -34,7 +34,7 @@ describe('Style detail', () => {
     const table = screen.getByRole('table')
     expect(within(table).getByText('Tone › Exposure')).toBeInTheDocument()
     expect(within(table).getByText('+0.15 EV')).toBeInTheDocument()
-    expect(within(table).getByText('6200 K')).toBeInTheDocument()
+    expect(within(table).getByText('Tone › Highlights')).toBeInTheDocument()
   })
 
   it('applies to the selection only when photos are selected', async () => {

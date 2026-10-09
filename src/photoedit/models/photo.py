@@ -8,6 +8,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field
 
 from photoedit.models.adjustments import AdjustmentParams
+from photoedit.models.style import ExposureMetering, RuleResult
 
 
 class Photo(BaseModel):
@@ -40,6 +41,20 @@ class Photo(BaseModel):
     )
 
 
+class GroupReference(BaseModel):
+    """The group a photo was evened out with: the group's median of one measure. It's stored with the photo's
+    edit, so the photo's render doesn't depend on what is selected later."""
+
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
+
+    id: str = Field(description="Shared by the photos applied together.")
+    measure: ExposureMetering
+    reference: float = Field(
+        ge=-30, le=30, description="Stops (middle/highlights) or EV100 (camera_settings)."
+    )
+    size: int = Field(ge=1, description="Number of photos in the group.")
+
+
 class PhotoEdit(BaseModel):
     """The edit of one photo: an optional style plus per-photo overrides. Overrides always win."""
 
@@ -58,6 +73,20 @@ class PhotoEdit(BaseModel):
     defaults: AdjustmentParams = Field(
         default_factory=AdjustmentParams,
         description="The photo's unedited parameters (what a reset goes back to; JPEGs start unsharpened).",
+    )
+    style_values: list[str] = Field(
+        default_factory=list,
+        description="Dotted parameter names whose value comes from the style (incl. its rules).",
+    )
+    rules: list[RuleResult] = Field(
+        default_factory=list, description="What the style's rules did on this photo."
+    )
+    style_version: int | None = Field(default=None, description="Version of the style the edit uses.")
+    style_error: str | None = Field(
+        default=None, description="Why the assigned style isn't applied (missing or invalid), if it isn't."
+    )
+    group: GroupReference | None = Field(
+        default=None, description="Set by 'even out' when the style was applied."
     )
 
 

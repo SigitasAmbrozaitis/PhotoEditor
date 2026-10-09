@@ -56,7 +56,7 @@ describe('Apply & export wizard (full use loop)', () => {
     await user.click(dialog.getByRole('button', { name: 'Apply style' }))
     await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true))
     const body = calls.find((c) => c.method === 'POST')!.body as ApplyStyleRequest
-    expect(body).toEqual({ kind: 'apply_style', photo_ids: ['p001', 'p002'], style_id: 'warm-film' })
+    expect(body).toEqual({ kind: 'apply_style', photo_ids: ['p001', 'p002'], style_id: 'warm-film', even_out: false })
   })
 
   it('back button returns to the previous step', async () => {

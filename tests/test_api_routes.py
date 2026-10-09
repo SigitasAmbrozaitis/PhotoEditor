@@ -24,8 +24,8 @@ from photoedit.models import (
     Page,
     Photo,
     PhotoDetail,
-    Style,
     StyleSummary,
+    StyleView,
 )
 from photoedit.models.fs import DirListing
 from photoedit.services import Services
@@ -201,19 +201,12 @@ def test_fs_dirs_roots_and_errors(client: TestClient, tmp_path: Path) -> None:
 def test_styles(client: TestClient) -> None:
     summaries = TypeAdapter(list[StyleSummary]).validate_python(client.get("/api/styles").json())
     assert len(summaries) == 4
-    data = client.get(f"/api/styles/{summaries[0].id}").json()
-    assert data.pop("changed_parameters")  # derived, read-only field of the API view
-    style = Style.model_validate(data)
-    sample = client.get(style.samples[0].after_url)
+    view = StyleView.model_validate(client.get(f"/api/styles/{summaries[0].id}").json())
+    assert view.changed_parameters == view.values
+    sample = client.get(view.samples[0].after_url)
     assert sample.status_code == 200 and sample.headers["content-type"] == "image/jpeg"
-    assert client.get(f"/api/styles/{style.id}/samples/0/sideways.jpg").status_code == 422
+    assert client.get(f"/api/styles/{view.id}/samples/0/sideways.jpg").status_code == 422
     assert client.get("/api/styles/nope").status_code == 404
-
-
-def test_color_grading_serialized_with_global_alias(client: TestClient) -> None:
-    data = client.get("/api/styles/warm-film").json()
-    assert "global" in data["adjustments"]["color_grading"]
-    assert "global_" not in data["adjustments"]["color_grading"]
 
 
 def test_presets(client: TestClient) -> None:
