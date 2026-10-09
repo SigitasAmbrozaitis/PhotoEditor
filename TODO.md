@@ -605,10 +605,14 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
     `@pytest.mark.golden` tests) and imported into the catalog during P4.4:
     - `2026-08-17`: orange cat + sunsets (6 photos; ISO 800, 1/60, EV spread 0.7 stops)
     - `2026-08-11`: both cats, orange and **black** (67; the existing sample folder; EV spread 6.9 stops)
-    - `2026-07-26`: drift (113; 1/500–1/4000, ISO 1000/4000; EV spread 2.3 stops in one session, a good
-      "even out" test). Framing will be tighter in future shoots (new longer lens), so nothing may depend on it.
-    - `2026-08-16`: rally (183; f/9–14, **1/60–1/3195**: panning and freeze shots mixed, light changes between
-      stages; EV spread 4.7 stops). Camera-settings evening-out only holds within a run of shots in the same
+    - `2026-07-26`: drift (113; old XF18-55 lens; 1/500–1/4000, ISO 1000/4000; EV spread 2.3 stops in one
+      session, a good "even out" test).
+    - `2026-08-16`: rally (183; new XF70-300 lens; f/9–14, **1/60–1/3195**: panning and freeze shots mixed, light
+      changes between stages; EV spread 4.7 stops).
+    - At car events the user can't get close, even with the longer lens, so **cars are often small in the frame**
+      and the framing varies. Whole-frame metering then mostly measures the background, so nothing in Phase 4 may
+      rely on the framing or on the subject filling the frame. Subject-weighted metering and subject-centered
+      crops (Phase 6) matter here. Camera-settings evening-out only holds within a run of shots in the same
       light, so whole-folder grouping is left to later (see Phase 8).
 
     The test styles' test sets (P4.12) pick hard cases from all four folders: the black cat, the orange cat, a
@@ -838,6 +842,8 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
 ## Phase 6: Geometry & centering (outline)
 - [ ] **P6.0** Detail this phase. ⛔ STOP for review.
 - [ ] Crop / rotate / straighten / flip / zoom in the pipeline. Subject detection (faces + saliency). `suggest_crop(aspect)`.
+  Must handle small, off-center subjects (rally/drift cars shot from far away, often with panning blur) and cats
+  (incl. a black cat on dark backgrounds); test on the style sample folders.
 - [ ] Crop overlay in the Photo view.
 - [ ] 1:1 zoom view (full-resolution crops of the visible area) so sharpening can be judged (deferred from Phase 3,
   2026-10-09).
@@ -858,7 +864,8 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
 - [ ] Fallbacks as needed: F1 A/B picker, F2 statistical transfer, F3 learned 3D LUT, F5 ML (only with the user's approval).
 - [ ] Series detection for inconsistent shoots (from Phase 4's preparation): split a folder into runs of shots in
   the same light (capture-time gaps + scene similarity), so "even out" works per series on a whole folder (e.g. a
-  rally day with panning and freeze shots across stages). Subject-weighted metering once Phase 6 detects subjects.
+  rally day with panning and freeze shots across stages). Subject-weighted metering once Phase 6 detects subjects
+  (cars are often small in the frame: the user can't get close at rally/drift events).
 - 🧑 Human test + ⛔ STOP.
 
 ## Phase 9: Polish (outline)
