@@ -82,6 +82,18 @@ export function defaultHandlers(): Record<string, Handler> {
       return { ...detail, edit: { ...detail.edit, adjustments: fx.neutralAdjustments(), overridden: [] } }
     },
     'GET /api/styles': () => fx.styleSummaries,
+    'PUT /api/photos/:id/style': ({ path, body }) => {
+      const photo = fx.photos.find((p) => path.includes(`/${p.id}/`))!
+      return fx.photoDetail({ ...photo, style_id: (body as { style_id: string | null }).style_id })
+    },
+    'POST /api/styles/from-photo': ({ body }) => {
+      const request = body as { name: string; photo_id: string }
+      return { ...style, id: 'new-look', name: request.name, version: 1, test_photo_ids: [request.photo_id] }
+    },
+    'POST /api/styles/:id/from-photo': () => {
+      style = { ...style, version: style.version + 1, change_note: 'updated from a photo' }
+      return style
+    },
     'GET /api/styles/:id': () => style,
     'PUT /api/styles/:id': ({ body }) => {
       const { expected_version, change_note, ...changes } = body as StyleUpdate

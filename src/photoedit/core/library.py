@@ -260,6 +260,7 @@ class Library:
     def photo_detail(self, photo_id: str) -> PhotoDetail:
         photo = self.photo(photo_id)
         edit = self.edits.effective(photo)
+        unedited = self.edits.default(photo).adjustments
         as_shot = self.as_shot(photo)
         return PhotoDetail(
             photo=photo.to_photo(self.image_version(photo)),
@@ -269,7 +270,8 @@ class Library:
                 adjustments=edit.adjustments,
                 overridden=edit.overridden,
                 revision=edit.revision,
-                defaults=self.edits.default(photo).adjustments,
+                defaults=edit.base or unedited,
+                unedited=unedited,
                 style_values=edit.style_values,
                 rules=edit.rules,
                 style_version=edit.style_version,

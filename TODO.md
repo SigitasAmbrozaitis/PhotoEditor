@@ -819,7 +819,7 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
   test-set strips and "compare on the test set". "Show photos" opens `/library?style=<id>`. The Create style dialog
   now explains Save as style… (by hand) next to Phase 8's AI flow. Vite's chunk warning limit is 800 kB (local app,
   one bundle; 515 kB now).
-- [ ] **P4.11** Library + Photo view:
+- [x] **P4.11** Library + Photo view:
   - Library: "Apply style…" uses real styles and a real job (the export step is labeled "simulated until Phase 5"),
     plus the **Even out these photos** checkbox (off by default; its hint explains when it helps, e.g. "a series shot
     in the same light with changing settings"). A "Remove style" action. Real style badges and filter.
@@ -827,6 +827,12 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
     style get a marker; a line showing the rule results ("Auto exposure +0.62 EV · WB as shot +400 K");
     "Save as style…" (name, groups with the number of changed values in each, exposure and WB modes);
     "Update style from this photo" (choose groups, confirm "changes N photos").
+  Done. Also: double-clicking a slider (or a group reset) on a styled photo goes back to the **style's** value
+  (`PhotoEdit.defaults` is now "what a reset goes back to": the styled values; new `PhotoEdit.unedited` is the
+  Before look, used to count changed values per group). Save as style… can use the new style for the photo right
+  away (on by default). The panel restarts its edit session when the photo's style or style version changes. When
+  an apply job finishes, photos and styles refresh app-wide (`useRefreshAfterJobs` in the layout). "Remove style"
+  is enabled when the selection has a styled photo.
 - [ ] **P4.12** Two hand-written test styles, committed in `styles/` (only `style.json` + generated `README.md`):
   - `test-warm-matte`: auto exposure (`middle` metering, use group); WB as shot +400 K; lower contrast, lifted
     blacks (tone curve), highlights −30; greens toned down; warm highlight / cool shadow grading; a light vignette.

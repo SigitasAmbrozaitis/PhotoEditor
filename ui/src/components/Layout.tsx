@@ -1,6 +1,6 @@
 import { Download, FolderOpen, Images, ListChecks, LoaderCircle, Palette } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router'
-import { useJobs, useLibrary } from '../api/queries'
+import { useJobs, useLibrary, useRefreshAfterJobs } from '../api/queries'
 import { useBackendHealth, type BackendState } from '../hooks/useBackendHealth'
 import { Tooltip } from './ui'
 import { cn } from '../lib/cn'
@@ -104,6 +104,7 @@ function NavRail() {
 }
 
 export function Layout() {
+  useRefreshAfterJobs()
   return (
     <div className="flex h-full flex-col">
       <TopBar />

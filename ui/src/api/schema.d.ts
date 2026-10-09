@@ -1789,8 +1789,10 @@ export interface components {
              * @default
              */
             revision: string;
-            /** @description The photo's unedited parameters (what a reset goes back to; JPEGs start unsharpened). */
+            /** @description What a reset goes back to: the style's values when the photo has a style, else the unedited parameters (JPEGs start unsharpened). */
             defaults: components["schemas"]["AdjustmentParams-Output"];
+            /** @description The photo's parameters with no style and no tweaks (the 'Before' look). */
+            unedited: components["schemas"]["AdjustmentParams-Output"];
             /**
              * Style Values
              * @description Dotted parameter names whose value comes from the style (incl. its rules).

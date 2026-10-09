@@ -54,6 +54,9 @@ class EffectiveEdit(BaseModel):
     overridden: list[str]
     style_id: str | None
     revision: str = Field(description="Changes whenever the edit changes; used for cache keys and URLs.")
+    base: AdjustmentParams | None = Field(
+        default=None, description="The parameters before the photo's own tweaks (defaults + style)."
+    )
     style_values: list[str] = Field(default_factory=list)
     rules: list[RuleResult] = Field(default_factory=list)
     style_version: int | None = None
@@ -117,6 +120,7 @@ class EditStore:
             overridden=sorted(stored.overrides),
             style_id=stored.style_id,
             revision=revision(stored.style_id, stored.overrides, resolved),
+            base=styled.adjustments,
             style_values=styled.style_values,
             rules=styled.rules,
             style_version=styled.style_version,

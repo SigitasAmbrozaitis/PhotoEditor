@@ -34,7 +34,7 @@ describe('Photo view', () => {
   it('marks per-photo changes', async () => {
     mockApi()
     renderApp('/library/p004')
-    expect(await screen.findByText(/1 change · saved/)).toBeInTheDocument()
+    expect(await screen.findByText(/1 change for this photo · saved/)).toBeInTheDocument()
     expect(screen.getByLabelText('changed for this photo')).toBeInTheDocument()
   })
 

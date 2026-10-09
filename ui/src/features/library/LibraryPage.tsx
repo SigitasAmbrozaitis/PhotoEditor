@@ -1,11 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Download, Wand2 } from 'lucide-react'
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Download, Eraser, Wand2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { imageUrls } from '../../api/client'
 import {
   IMPORT_REFRESH_MS,
   queryKeys,
+  useCreateJob,
   useLatestImport,
   useLibrary,
   usePhotos,
@@ -106,6 +107,9 @@ export function LibraryPage() {
   const orderedIds = useMemo(() => items.map((p) => p.id), [items])
   const styleNames = useMemo(() => new Map(styles.data?.map((s) => [s.id, s.name])), [styles.data])
   const count = selection.ids.length
+  const removeStyle = useCreateJob()
+  const selected = new Set(selection.ids)
+  const selectedHaveStyle = items.some((p) => selected.has(p.id) && p.style_id)
 
   const handleClick = (e: MouseEvent, id: string) => {
     if (e.shiftKey) selection.selectRange(orderedIds, id)
@@ -145,6 +149,15 @@ export function LibraryPage() {
           <>
             <Button variant="primary" disabled={count === 0} onClick={() => setDialog('apply')}>
               <Wand2 className="size-4" aria-hidden /> Apply style…
+            </Button>
+            <Button
+              disabled={count === 0 || !selectedHaveStyle || removeStyle.isPending}
+              title="The photos keep their own tweaks"
+              onClick={() =>
+                removeStyle.mutate({ kind: 'apply_style', photo_ids: selection.ids, style_id: null, even_out: false })
+              }
+            >
+              <Eraser className="size-4" aria-hidden /> Remove style
             </Button>
             <Button disabled={count === 0} onClick={() => setDialog('export')}>
               <Download className="size-4" aria-hidden /> Export…

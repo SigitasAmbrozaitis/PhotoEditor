@@ -4213,7 +4213,11 @@
           },
           "defaults": {
             "$ref": "#/components/schemas/AdjustmentParams-Output",
-            "description": "The photo's unedited parameters (what a reset goes back to; JPEGs start unsharpened)."
+            "description": "What a reset goes back to: the style's values when the photo has a style, else the unedited parameters (JPEGs start unsharpened)."
+          },
+          "unedited": {
+            "$ref": "#/components/schemas/AdjustmentParams-Output",
+            "description": "The photo's parameters with no style and no tweaks (the 'Before' look)."
           },
           "style_values": {
             "items": {
@@ -4276,6 +4280,7 @@
           "overridden",
           "revision",
           "defaults",
+          "unedited",
           "style_values",
           "rules",
           "style_version",

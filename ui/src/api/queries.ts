@@ -1,5 +1,6 @@
 /** TanStack Query hooks for every API resource. Components never call fetch directly. */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef } from 'react'
 import { api } from './client'
 import type {
   AdjustmentParams,
@@ -334,6 +335,30 @@ export function useCreateJob() {
       void client.invalidateQueries({ queryKey: queryKeys.jobs })
     },
   })
+}
+
+/** Jobs that change photos' edits; when one finishes, everything showing photos or styles refreshes. */
+const EDITING_JOBS = new Set<Job['kind']>(['apply_style', 'apply_and_export'])
+
+/** Mounted once (in the layout): refresh photos and styles when an apply job finishes, wherever it started. */
+export function useRefreshAfterJobs() {
+  const client = useQueryClient()
+  const jobs = useJobs()
+  const running = useRef(new Set<string>())
+  useEffect(() => {
+    let finished = false
+    for (const job of jobs.data ?? []) {
+      if (!EDITING_JOBS.has(job.kind)) continue
+      if (isActive(job)) running.current.add(job.id)
+      else if (running.current.delete(job.id)) finished = true
+    }
+    if (finished) {
+      void client.invalidateQueries({ queryKey: ['photos'] })
+      void client.invalidateQueries({ queryKey: ['photo'] })
+      void client.invalidateQueries({ queryKey: queryKeys.styles })
+      void client.invalidateQueries({ queryKey: ['style'] })
+    }
+  }, [jobs.data, client])
 }
 
 export function useCancelJob() {

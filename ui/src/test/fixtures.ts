@@ -221,7 +221,8 @@ export const warmFilm: Style = {
 }
 
 export function photoDetail(photo: Photo): PhotoDetail {
-  const adjustments = photo.style_id === 'warm-film' ? warmAdjustments() : neutralAdjustments()
+  const styled = photo.style_id === 'warm-film'
+  const adjustments = styled ? warmAdjustments() : neutralAdjustments()
   const overridden = photo.has_overrides ? ['tone.exposure'] : []
   if (photo.has_overrides) {
     adjustments.tone.exposure = 0.3
@@ -235,11 +236,22 @@ export function photoDetail(photo: Photo): PhotoDetail {
       adjustments,
       overridden,
       revision: `r${photo.id}`,
-      defaults: neutralAdjustments(),
-      style_values:
-        photo.style_id === 'warm-film' ? ['tone.exposure', 'tone.highlights', 'white_balance.temperature'] : [],
-      rules: [],
-      style_version: photo.style_id === 'warm-film' ? 2 : null,
+      defaults: styled ? warmAdjustments() : neutralAdjustments(), // a reset goes back to the style's values
+      unedited: neutralAdjustments(),
+      style_values: styled ? ['tone.exposure', 'tone.highlights', 'white_balance.temperature', 'white_balance.tint'] : [],
+      rules: styled
+        ? [
+            {
+              type: 'white_balance',
+              summary: 'fixed: 6200 K, tint +0.0',
+              measured: null,
+              target: null,
+              values: { 'white_balance.temperature': 6200, 'white_balance.tint': 0 },
+              note: null,
+            },
+          ]
+        : [],
+      style_version: styled ? 2 : null,
       style_error: null,
       group: null,
     },

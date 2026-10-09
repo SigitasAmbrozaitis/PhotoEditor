@@ -176,6 +176,8 @@ def test_reset_overrides_keeps_the_style(store: EditStore, styles: StyleLibrary)
     store.save(photo(), params(tone={"contrast": 40}))
     edit = store.reset_overrides(photo())
     assert edit.style_id == sid and edit.overridden == [] and edit.adjustments.tone.contrast == -10
+    # What a reset goes back to: the style's values, not the camera defaults.
+    assert edit.base is not None and edit.base.tone.contrast == -10
 
 
 def test_applying_an_unknown_style_fails(store: EditStore) -> None:

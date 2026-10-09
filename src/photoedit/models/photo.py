@@ -74,7 +74,14 @@ class PhotoEdit(BaseModel):
     revision: str = Field(default="", description="Changes whenever the edit changes.")
     defaults: AdjustmentParams = Field(
         default_factory=AdjustmentParams,
-        description="The photo's unedited parameters (what a reset goes back to; JPEGs start unsharpened).",
+        description=(
+            "What a reset goes back to: the style's values when the photo has a style, else the unedited "
+            "parameters (JPEGs start unsharpened)."
+        ),
+    )
+    unedited: AdjustmentParams = Field(
+        default_factory=AdjustmentParams,
+        description="The photo's parameters with no style and no tweaks (the 'Before' look).",
     )
     style_values: list[str] = Field(
         default_factory=list,
