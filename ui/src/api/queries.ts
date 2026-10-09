@@ -2,7 +2,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import type {
+  AdjustmentParams,
   DirListing,
+  EngineInfo,
   ExportPreset,
   ImportRequest,
   Job,
@@ -27,6 +29,7 @@ export interface PhotoQuery {
 }
 
 export const queryKeys = {
+  engine: ['engine'] as const,
   library: ['library'] as const,
   folders: ['library', 'folders'] as const,
   dirs: (path: string | null) => ['dirs', path] as const,
@@ -126,6 +129,35 @@ export function usePhotoDetail(id: string | undefined) {
     queryKey: queryKeys.photo(id ?? ''),
     queryFn: () => api.get<PhotoDetail>(`/api/photos/${encodeURIComponent(id ?? '')}`),
     enabled: Boolean(id),
+  })
+}
+
+/** What the render engine supports (e.g. which parameters arrive in later phases). Never changes at runtime. */
+export function useEngine() {
+  return useQuery({ queryKey: queryKeys.engine, queryFn: () => api.get<EngineInfo>('/api/engine'), staleTime: Infinity })
+}
+
+function storeDetail(client: ReturnType<typeof useQueryClient>, detail: PhotoDetail) {
+  client.setQueryData(queryKeys.photo(detail.photo.id), detail)
+  // Grid thumbnails and the "edited" marker come from the list: refresh it.
+  void client.invalidateQueries({ queryKey: ['photos'] })
+}
+
+/** Save a photo's full adjustments; the response is the updated detail (new image version for the preview). */
+export function useSaveEdit(photoId: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (params: AdjustmentParams) =>
+      api.put<PhotoDetail>(`/api/photos/${encodeURIComponent(photoId)}/edit`, params),
+    onSuccess: (detail) => storeDetail(client, detail),
+  })
+}
+
+export function useResetEdit(photoId: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.delete<PhotoDetail>(`/api/photos/${encodeURIComponent(photoId)}/edit`),
+    onSuccess: (detail) => storeDetail(client, detail),
   })
 }
 

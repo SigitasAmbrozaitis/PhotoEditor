@@ -37,9 +37,10 @@ from rawpy._rawpy import (
     libraw_version,
 )
 
+from photoedit.core import color
 from photoedit.core.scan import RAW_EXTENSIONS
 
-DECODER_VERSION = 1
+DECODER_VERSION = 2
 
 # LibRaw "flip" → the Pillow transpose that shows the image upright (0 = as stored).
 _FLIP_TRANSPOSE = {
@@ -81,6 +82,7 @@ class RawInfo:
     height: int
     flip: int
     embedded_jpeg: bytes | None
+    as_shot: tuple[float, float] | None = None  # temperature, tint the camera balanced for
 
 
 def render_identity() -> str:
@@ -98,7 +100,13 @@ def read_raw_info(path: Path) -> RawInfo:
     with _open_raw(path) as raw:
         sizes = raw.sizes
         width, height = (sizes.height, sizes.width) if sizes.flip in (5, 6) else (sizes.width, sizes.height)
-        return RawInfo(width=width, height=height, flip=sizes.flip, embedded_jpeg=_embedded_jpeg(raw))
+        return RawInfo(
+            width=width,
+            height=height,
+            flip=sizes.flip,
+            embedded_jpeg=_embedded_jpeg(raw),
+            as_shot=_as_shot(raw),
+        )
 
 
 def oriented_image(jpeg: bytes, fallback_flip: int = 0) -> Image.Image:
@@ -126,6 +134,63 @@ def decode(path: Path, options: DecodeOptions) -> RGBImage:
     if is_raw(path):
         return _decode_raw(path, options)
     return _decode_raster(path, half_size=options.half_size)
+
+
+@dataclass(frozen=True)
+class LinearImage:
+    """Scene-linear pixels plus what the render pipeline needs to finish the color conversion.
+
+    For a RAW, ``pixels`` are demosaiced camera RGB, white-balanced with the camera's multipliers;
+    ``to_rec2020`` takes them to linear Rec.2020, and a different white balance rescales the channels first
+    (by new ÷ as-shot multipliers). For a JPEG/TIFF, ``pixels`` are already linear Rec.2020 and ``to_rec2020``
+    is the identity.
+    """
+
+    pixels: npt.NDArray[np.float32]
+    to_rec2020: npt.NDArray[np.float64]
+    is_raw: bool
+    cam_from_xyz: npt.NDArray[np.float64] | None = None
+    as_shot_multipliers: npt.NDArray[np.float64] | None = None
+
+    @property
+    def as_shot(self) -> tuple[float, float]:
+        """Temperature + tint (Lightroom units) the photo was balanced for. JPEG/TIFF count as D65."""
+        if self.cam_from_xyz is None or self.as_shot_multipliers is None:
+            return color.xy_to_temperature_tint(color.D65)
+        return color.as_shot_temperature_tint(self.cam_from_xyz, self.as_shot_multipliers)
+
+
+def decode_linear(path: Path, *, half_size: bool) -> LinearImage:
+    """Decode to scene-linear float data for the render pipeline (no tone curve, no auto-brightness)."""
+    if not is_raw(path):
+        encoded = _decode_raster(path, half_size=half_size).astype(np.float32) / 255
+        linear = color.apply_matrix(color.srgb_decode(encoded), color.REC2020_FROM_SRGB)
+        return LinearImage(pixels=linear.astype(np.float32), to_rec2020=np.eye(3), is_raw=False)
+    with _open_raw(path) as raw:
+        cam_from_xyz = np.asarray(raw.rgb_xyz_matrix, dtype=np.float64)[:3, :3]
+        multipliers = np.asarray(raw.camera_whitebalance, dtype=np.float64)[:3]
+        if not (multipliers > 0).all():  # no as-shot WB recorded: fall back to LibRaw's daylight balance
+            multipliers = np.asarray(raw.daylight_whitebalance, dtype=np.float64)[:3]
+        _single_threaded_libraw()
+        try:
+            pixels = raw.postprocess(
+                half_size=half_size,
+                output_bps=16,
+                gamma=(1, 1),
+                use_camera_wb=True,
+                use_auto_wb=False,
+                no_auto_bright=True,
+                output_color=ColorSpace.raw,
+            )
+        except LibRawError as exc:
+            raise DecodeError(f"cannot decode {path.name}: {exc}") from exc
+    return LinearImage(
+        pixels=(pixels.astype(np.float32) / np.float32(65535)),
+        to_rec2020=color.camera_to_rec2020(cam_from_xyz),
+        is_raw=True,
+        cam_from_xyz=cam_from_xyz,
+        as_shot_multipliers=multipliers / multipliers[1],
+    )
 
 
 def _decode_raw(path: Path, options: DecodeOptions) -> RGBImage:
@@ -173,6 +238,17 @@ def _open_raw(path: Path) -> RawPy:
         raise DecodeError(f"cannot read {path.name}: {exc.strerror or exc}") from exc
     except LibRawError as exc:
         raise DecodeError(f"cannot decode {path.name}: {exc}") from exc
+
+
+def _as_shot(raw: RawPy) -> tuple[float, float] | None:
+    multipliers = np.asarray(raw.camera_whitebalance, dtype=np.float64)[:3]
+    cam_from_xyz = np.asarray(raw.rgb_xyz_matrix, dtype=np.float64)[:3, :3]
+    if not (multipliers > 0).all() or not np.any(cam_from_xyz):
+        return None
+    try:
+        return color.as_shot_temperature_tint(cam_from_xyz, multipliers)
+    except (ValueError, np.linalg.LinAlgError):
+        return None
 
 
 def _embedded_jpeg(raw: RawPy) -> bytes | None:

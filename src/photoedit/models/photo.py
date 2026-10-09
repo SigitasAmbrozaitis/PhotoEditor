@@ -35,6 +35,9 @@ class Photo(BaseModel):
     sidecar_jpeg: str | None = Field(
         default=None, description="Camera JPEG saved next to a RAW original (read-only), if any."
     )
+    image_version: str = Field(
+        default="", description="Changes whenever the photo renders differently; add it to image URLs."
+    )
 
 
 class PhotoEdit(BaseModel):
@@ -51,6 +54,20 @@ class PhotoEdit(BaseModel):
         default_factory=list,
         description="Dotted parameter names that are overridden per photo, e.g. 'tone.exposure'.",
     )
+    revision: str = Field(default="", description="Changes whenever the edit changes.")
+    defaults: AdjustmentParams = Field(
+        default_factory=AdjustmentParams,
+        description="The photo's unedited parameters (what a reset goes back to; JPEGs start unsharpened).",
+    )
+
+
+class AsShot(BaseModel):
+    """The white balance the camera recorded (what temperature/tint = None means)."""
+
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
+
+    temperature: float = Field(description="Kelvin.")
+    tint: float = Field(description="Green (-) / magenta (+), Lightroom units.")
 
 
 class PhotoDetail(BaseModel):
@@ -58,6 +75,18 @@ class PhotoDetail(BaseModel):
 
     photo: Photo
     edit: PhotoEdit
+    as_shot: AsShot | None = Field(default=None, description="None if the camera recorded no white balance.")
+
+
+class EngineInfo(BaseModel):
+    """What the render engine can do in this version."""
+
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
+
+    render_identity: str
+    later_phase_parameters: dict[str, int] = Field(
+        description="Parameter (or group) prefixes that can't be set yet, with the phase that adds them."
+    )
 
 
 class PhotoSort(StrEnum):

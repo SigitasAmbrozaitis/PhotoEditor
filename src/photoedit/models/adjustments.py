@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 Signed100 = Annotated[float, Field(ge=-100, le=100)]
 Unsigned100 = Annotated[float, Field(ge=0, le=100)]
 Hue = Annotated[float, Field(ge=0, lt=360)]
+MIN_CURVE_POINT_GAP = 0.01
 
 
 class _Group(BaseModel):
@@ -78,8 +79,11 @@ class ToneCurve(_Group):
         for name in ("rgb", "red", "green", "blue"):
             points: list[CurvePoint] = getattr(self, name)
             xs = [p.x for p in points]
-            if any(b <= a for a, b in pairwise(xs)):
-                raise ValueError(f"tone curve '{name}': point x values must be strictly increasing")
+            # Points closer than this make the curve's slope explode (found by the render property tests).
+            if any(b - a < MIN_CURVE_POINT_GAP for a, b in pairwise(xs)):
+                raise ValueError(
+                    f"tone curve '{name}': point x values must increase by at least {MIN_CURVE_POINT_GAP}"
+                )
         return self
 
 

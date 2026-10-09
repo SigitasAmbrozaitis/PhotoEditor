@@ -8,7 +8,10 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Body, Depends, Query, Request, Response, status
 
 from photoedit.core.fs import list_dirs
+from photoedit.core.render.pipeline import LATER_PHASE_PARAMETERS
 from photoedit.models import (
+    AdjustmentParams,
+    EngineInfo,
     ExportPreset,
     ImportRequest,
     Job,
@@ -97,6 +100,37 @@ def photo_detail(photo_id: str, svc: Svc) -> PhotoDetail:
     return svc.library.photo_detail(photo_id)
 
 
+@router.get("/photos/{photo_id}/sidecar", response_class=Response, responses=IMAGE_RESPONSE, tags=["library"])
+def photo_sidecar(
+    photo_id: str,
+    svc: Svc,
+    size: Annotated[int, Query(ge=256, le=4096, description="Long edge in pixels.")] = 1600,
+) -> Response:
+    """The camera's own JPEG of a RAW (if it saved one), for comparing with the default look."""
+    return Response(content=svc.library.sidecar(photo_id, size), media_type=JPEG, headers=IMAGE_CACHE)
+
+
+@router.put("/photos/{photo_id}/edit", response_model=PhotoDetail, tags=["edit"])
+def save_edit(photo_id: str, adjustments: Annotated[AdjustmentParams, Body()], svc: Svc) -> PhotoDetail:
+    """Save a photo's adjustments (the full set; only what differs from the defaults is stored)."""
+    svc.library.save_edit(photo_id, adjustments)
+    return svc.library.photo_detail(photo_id)
+
+
+@router.delete("/photos/{photo_id}/edit", response_model=PhotoDetail, tags=["edit"])
+def reset_edit(photo_id: str, svc: Svc) -> PhotoDetail:
+    """Back to the unedited photo."""
+    svc.library.reset_edit(photo_id)
+    return svc.library.photo_detail(photo_id)
+
+
+@router.get("/engine", response_model=EngineInfo, tags=["edit"])
+def engine(svc: Svc) -> EngineInfo:
+    return EngineInfo(
+        render_identity=svc.library.renderer.identity, later_phase_parameters=dict(LATER_PHASE_PARAMETERS)
+    )
+
+
 @router.get(
     "/photos/{photo_id}/thumbnail", response_class=Response, responses=IMAGE_RESPONSE, tags=["library"]
 )
@@ -113,7 +147,7 @@ def photo_preview(
     ] = False,
     size: Annotated[int, Query(ge=256, le=4096, description="Long edge in pixels.")] = 1600,
 ) -> Response:
-    data = svc.library.preview(photo_id, size)
+    data = svc.library.preview(photo_id, size, before=before)
     return Response(content=data, media_type=JPEG, headers=IMAGE_CACHE)
 
 

@@ -220,3 +220,89 @@ def test_to_photo_maps_to_the_api_model(catalog: Catalog) -> None:
     assert photo.folder == PHOTOS.as_posix()
     assert photo.sidecar_jpeg == (PHOTOS / "DSCF0007.JPG").as_posix()
     assert (photo.width, photo.height, photo.rating, photo.style_id) == (6240, 4160, 2, None)
+
+
+# ----------------------------------------------------------------- schema v2 (Phase 3)
+
+V1_PHOTOS = """CREATE TABLE photos (
+    id TEXT PRIMARY KEY, sha256 TEXT NOT NULL UNIQUE, path TEXT NOT NULL, path_key TEXT NOT NULL UNIQUE,
+    parent_key TEXT NOT NULL, filename TEXT NOT NULL, kind TEXT NOT NULL, sidecar_jpeg TEXT,
+    file_size INTEGER NOT NULL, mtime_ns INTEGER NOT NULL, captured_at TEXT, camera TEXT, lens TEXT,
+    iso INTEGER, shutter TEXT, aperture REAL, focal_length REAL, orientation INTEGER NOT NULL,
+    width INTEGER NOT NULL, height INTEGER NOT NULL, rating INTEGER NOT NULL DEFAULT 0, style_id TEXT,
+    missing INTEGER NOT NULL DEFAULT 0
+)"""
+
+
+def test_v1_catalog_is_migrated(workspace: Path) -> None:
+    import os
+
+    workspace.mkdir(parents=True)
+    path = workspace / "catalog.sqlite"
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "CREATE TABLE folders (path_key TEXT PRIMARY KEY, path TEXT NOT NULL,"
+            " include_subfolders INTEGER NOT NULL, last_imported_at TEXT)"
+        )
+        db.execute(V1_PHOTOS)
+        db.execute("CREATE TABLE state (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        photo_path = PHOTOS / "old.RAF"
+        db.execute(
+            "INSERT INTO photos (id, sha256, path, path_key, parent_key, filename, kind, file_size,"
+            " mtime_ns, orientation, width, height, rating)"
+            " VALUES (?, ?, ?, ?, ?, 'old.RAF', 'raw', 1, 1, 1, 60, 40, 3)",
+            (
+                photo_id(_sha(9)),
+                _sha(9),
+                str(photo_path),
+                os.path.normcase(str(photo_path)),
+                os.path.normcase(str(PHOTOS)),
+            ),
+        )
+        db.execute("PRAGMA user_version = 1")
+    catalog = Catalog(path, PathGuard(writable_roots=[workspace]))
+    old = catalog.get(photo_id(_sha(9)))
+    assert old is not None and old.rating == 3
+    assert (old.has_edits, old.as_shot_temperature, old.film_simulation, old.dynamic_range) == (
+        False,
+        None,
+        None,
+        None,
+    )
+    assert (old.tone_black, old.tone_white, old.tone_anchors_identity) == (None, None, None)
+    with sqlite3.connect(path) as db:
+        assert db.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 3
+
+
+def test_has_edits_flag_survives_reimport(catalog: Catalog) -> None:
+    catalog.upsert(_photo(1, film_simulation="Provia", dynamic_range=100, as_shot_temperature=5000.0))
+    catalog.set_edit(photo_id(_sha(1)), "rev1")
+    catalog.upsert(_photo(1, film_simulation="Provia", dynamic_range=100, as_shot_temperature=5000.0))
+    stored = catalog.get(photo_id(_sha(1)))
+    assert stored is not None and stored.has_edits
+    assert stored.to_photo().has_overrides
+    assert (stored.film_simulation, stored.dynamic_range, stored.as_shot_temperature) == (
+        "Provia",
+        100,
+        5000.0,
+    )
+
+
+def test_tone_anchors_are_stored_and_survive_reimport(catalog: Catalog) -> None:
+    catalog.upsert(_photo(1))
+    pid = photo_id(_sha(1))
+    catalog.set_tone_anchors(pid, -7.5, 1.25, "identity-1")
+    catalog.upsert(_photo(1))  # a re-import knows nothing about anchors, and must not wipe them
+    stored = catalog.get(pid)
+    assert stored is not None
+    assert (stored.tone_black, stored.tone_white, stored.tone_anchors_identity) == (-7.5, 1.25, "identity-1")
+
+
+def test_find_by_id_or_file_name(catalog: Catalog) -> None:
+    catalog.upsert(_photo(1, path=PHOTOS / "DSCF5437.RAF"))
+    catalog.upsert(_photo(2, path=PHOTOS / "DSCF5437_x.RAF"))  # an underscore must not act as a wildcard
+    pid = photo_id(_sha(1))
+    for name in (pid, "DSCF5437", "dscf5437.raf", "DSCF5437.RAF"):
+        found = catalog.find(name)
+        assert found is not None and found.id == pid
+    assert catalog.find("DSCF54") is None

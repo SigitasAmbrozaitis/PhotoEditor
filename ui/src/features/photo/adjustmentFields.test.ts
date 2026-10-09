@@ -17,7 +17,9 @@ const openapi = JSON.parse(readFileSync(fileURLToPath(new URL('../../../openapi.
 }
 
 function range(component: string, property: string): { min?: number; max?: number; exclusiveMax?: number } {
-  const prop = openapi.components.schemas[component]?.properties[property]
+  // Models used both in requests and responses appear as `Name-Input` and `Name-Output`; the ranges are the same.
+  const schemas = openapi.components.schemas
+  const prop = (schemas[component] ?? schemas[`${component}-Output`])?.properties[property]
   if (!prop) throw new Error(`${component}.${property} missing from openapi.json`)
   const numeric = prop.anyOf?.find((s) => s.minimum !== undefined || s.maximum !== undefined) ?? prop
   return { min: numeric.minimum, max: numeric.maximum, exclusiveMax: numeric.exclusiveMaximum }
@@ -52,5 +54,21 @@ describe('adjustment slider metadata', () => {
     expect(formatValue(temperature!, 5500)).toBe('5500 K')
     expect(formatValue(tint!, 8)).toBe('+8')
     expect(formatValue(tint!, -3)).toBe('-3')
+  })
+})
+
+describe('slider track scale', () => {
+  it('puts temperature on a log track and rounds to the step', async () => {
+    const { BASIC_GROUPS, fromTrack, toTrack } = await import('./adjustmentFields')
+    const temperature = BASIC_GROUPS[0]!.fields[0]!
+    const lo = toTrack(temperature, temperature.min)
+    const hi = toTrack(temperature, temperature.max)
+    const at6500 = (toTrack(temperature, 6500) - lo) / (hi - lo)
+    expect(at6500).toBeGreaterThan(0.3)
+    expect(at6500).toBeLessThan(0.45)
+    expect(fromTrack(temperature, toTrack(temperature, 5017))).toBe(5000)
+    expect(fromTrack(temperature, hi + 1)).toBe(temperature.max)
+    const exposure = BASIC_GROUPS[1]!.fields[0]!
+    expect(toTrack(exposure, 0.3)).toBe(0.3)
   })
 })

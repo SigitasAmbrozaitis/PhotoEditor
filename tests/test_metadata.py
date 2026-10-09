@@ -124,6 +124,8 @@ def test_missing_exif_gives_empty_fields() -> None:
         "shutter": None,
         "aperture": None,
         "focal_length": None,
+        "film_simulation": None,
+        "dynamic_range": None,
     }
     assert (meta.width, meta.height, meta.orientation, meta.rating) == (10, 20, 1, 0)
 
@@ -192,3 +194,47 @@ def test_not_an_image_raises(tmp_path: Path) -> None:
         read_metadata(bad)
     with pytest.raises(MetadataError):
         read_metadata_from_bytes(b"nope")
+
+
+# ----------------------------------------------------------------- Fujifilm maker notes
+
+
+def fuji_maker_note(tags: dict[int, int]) -> bytes:
+    import struct
+
+    entries = b"".join(struct.pack("<HHII", tag, 3, 1, value) for tag, value in sorted(tags.items()))
+    return b"FUJIFILM" + struct.pack("<I", 12) + struct.pack("<H", len(tags)) + entries + b"\0\0\0\0"
+
+
+@pytest.mark.parametrize(
+    ("tags", "film", "dr"),
+    [
+        ({0x1401: 0x000, 0x1403: 100}, "Provia", 100),
+        ({0x1401: 0x600, 0x1403: 400}, "Classic Chrome", 400),
+        ({0x1003: 0x500, 0x1401: 0x000, 0x1403: 200}, "Acros", 200),  # monochrome wins over film mode
+        ({0x1401: 0x7777, 0x1403: 300}, None, None),  # unknown values stay unknown
+    ],
+)
+def test_fujifilm_film_simulation_and_dynamic_range(
+    tags: dict[int, int], film: str | None, dr: int | None
+) -> None:
+    meta = read_metadata_from_bytes(_jpeg(ifd0=FUJI_IFD0, exif_ifd={0x927C: fuji_maker_note(tags)}))
+    assert (meta.film_simulation, meta.dynamic_range) == (film, dr)
+
+
+@pytest.mark.parametrize(
+    "note", [b"Nikon\0\x02\x10\0\0", b"FUJIFILM\xff\xff", b"FUJIFILM" + b"\x0c\0\0\0" + b"\xff\xff"]
+)
+def test_other_or_broken_maker_notes_are_ignored(note: bytes) -> None:
+    meta = read_metadata_from_bytes(_jpeg(exif_ifd={0x927C: note}))
+    assert meta.film_simulation is None and meta.dynamic_range is None
+
+
+@pytest.mark.golden
+def test_real_xt3_maker_note(sample_raw: Path) -> None:
+    from photoedit.core.decode import read_raw_info
+
+    jpeg = read_raw_info(sample_raw).embedded_jpeg
+    assert jpeg is not None
+    meta = read_metadata_from_bytes(jpeg)
+    assert (meta.film_simulation, meta.dynamic_range) == ("Provia", 100)

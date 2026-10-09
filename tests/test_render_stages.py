@@ -1,0 +1,470 @@
+from __future__ import annotations
+
+import numpy as np
+import pytest
+from hypothesis import given
+from hypothesis import strategies as st
+
+from photoedit.core import color
+from photoedit.core.decode import LinearImage
+from photoedit.core.render import stages
+from photoedit.models.adjustments import Tone, WhiteBalance
+
+XT3 = np.array([[1.6393, -0.7740, -0.1436], [-0.4140, 1.1745, 0.2632], [-0.0536, 0.1413, 0.6614]])
+
+
+def raw_image(pixels: np.ndarray, temperature: float = 5000, tint: float = 0) -> LinearImage:
+    return LinearImage(
+        pixels=pixels.astype(np.float32),
+        to_rec2020=color.camera_to_rec2020(XT3),
+        is_raw=True,
+        cam_from_xyz=XT3,
+        as_shot_multipliers=color.camera_multipliers(XT3, temperature, tint),
+    )
+
+
+def raster_image(pixels: np.ndarray) -> LinearImage:
+    return LinearImage(pixels=pixels.astype(np.float32), to_rec2020=np.eye(3), is_raw=False)
+
+
+NEUTRAL = np.full((1, 1, 3), 0.5)
+PATCHES = np.array([[[0.5, 0.5, 0.5], [0.6, 0.3, 0.1], [0.1, 0.4, 0.7]]])
+
+
+# ----------------------------------------------------------------- white balance
+
+
+def test_raw_as_shot_is_just_the_camera_matrix() -> None:
+    image = raw_image(PATCHES)
+    out = stages.white_balance(image, WhiteBalance())
+    np.testing.assert_allclose(out, color.apply_matrix(image.pixels, image.to_rec2020), atol=1e-7)
+    np.testing.assert_allclose(out[0, 0], [0.5, 0.5, 0.5], atol=1e-6)  # a neutral stays neutral
+
+
+def test_raw_explicit_as_shot_values_change_nothing() -> None:
+    image = raw_image(PATCHES, 5000, 0)
+    temperature, tint = image.as_shot
+    out = stages.white_balance(image, WhiteBalance(temperature=temperature, tint=tint))
+    np.testing.assert_allclose(out, stages.white_balance(image, WhiteBalance()), atol=1e-5)
+
+
+def test_raw_lower_temperature_makes_the_photo_bluer() -> None:
+    image = raw_image(NEUTRAL, 5000)
+    cooler = stages.white_balance(image, WhiteBalance(temperature=3000))[0, 0]
+    warmer = stages.white_balance(image, WhiteBalance(temperature=9000))[0, 0]
+    assert cooler[2] > cooler[0]  # corrected for warm light → blue
+    assert warmer[0] > warmer[2]
+
+
+def test_raw_tint_alone_keeps_the_as_shot_temperature() -> None:
+    image = raw_image(NEUTRAL, 5000)
+    magenta = stages.white_balance(image, WhiteBalance(tint=40))[0, 0]
+    assert magenta[1] < magenta[0] and magenta[1] < magenta[2]  # green drops: magenta
+
+
+def test_raster_white_balance() -> None:
+    image = raster_image(PATCHES)
+    assert stages.white_balance(image, WhiteBalance()) is image.pixels
+    as_shot_t, as_shot_tint = image.as_shot
+    np.testing.assert_allclose(
+        stages.white_balance(image, WhiteBalance(temperature=as_shot_t, tint=as_shot_tint)),
+        image.pixels,
+        atol=1e-5,
+    )
+    cooler = stages.white_balance(raster_image(NEUTRAL), WhiteBalance(temperature=3000))[0, 0]
+    assert cooler[2] > cooler[0]
+
+
+# ----------------------------------------------------------------- exposure
+
+
+def test_exposure_doubles_and_halves_linear_values() -> None:
+    rgb = PATCHES.astype(np.float32)
+    assert stages.exposure(rgb, 0) is rgb
+    np.testing.assert_array_equal(stages.exposure(rgb, 1), rgb * 2)
+    np.testing.assert_array_equal(stages.exposure(rgb, -1), rgb / 2)
+    assert stages.exposure(rgb, 1).dtype == np.float32
+
+
+# ----------------------------------------------------------------- output
+
+
+def test_output_encodes_gray_and_white_exactly() -> None:
+    rgb = np.array([[[0.18, 0.18, 0.18], [1.0, 1.0, 1.0], [0.0, 0.0, 0.0]]], dtype=np.float32)
+    np.testing.assert_allclose(stages.output_srgb(rgb)[0], [[0.4613561] * 3, [1.0] * 3, [0.0] * 3], atol=1e-5)
+
+
+def test_out_of_gamut_colors_keep_their_luminance() -> None:
+    rec2020_green = np.array([[[0.0, 0.5, 0.0]]], dtype=np.float32)  # far outside sRGB
+    encoded = stages.output_srgb(rec2020_green)
+    assert encoded.min() >= 0
+    srgb_linear = color.srgb_decode(encoded.astype(np.float64))[0, 0]
+    assert float(color.XYZ_FROM_SRGB[1] @ srgb_linear) == pytest.approx(
+        float(stages.luminance(rec2020_green)[0, 0]), rel=1e-4
+    )
+
+
+def test_in_gamut_colors_are_not_desaturated() -> None:
+    srgb = np.array([[[0.2, 0.5, 0.8], [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]], dtype=np.float32)
+    np.testing.assert_array_equal(stages.desaturate_into_gamut(srgb, color.XYZ_FROM_SRGB[1]), srgb)
+
+
+def test_quantize_rounds_to_nearest() -> None:
+    values = np.array([0.0, 0.5, 1.0, 1.5, -0.2], dtype=np.float32)
+    np.testing.assert_array_equal(stages.quantize(values), [0, 128, 255, 255, 0])
+    assert stages.quantize(values, 16).tolist() == [0, 32768, 65535, 65535, 0]
+
+
+def test_luminance_of_white_is_one() -> None:
+    assert float(stages.luminance(np.ones((1, 1, 3), dtype=np.float32))[0, 0]) == pytest.approx(1.0, abs=1e-6)
+
+
+# ----------------------------------------------------------------- tone
+
+# A photo spanning 10 stops: pivot at -3, bands a quarter (2.5 stops) wide on either side of their centers.
+BLACK, WHITE, PIVOT = -8.0, 2.0, -3.0
+
+
+def gray_at(stops: float) -> np.ndarray:
+    return np.full((1, 1, 3), 0.18 * 2.0**stops, dtype=np.float32)
+
+
+def stops_after(params: Tone, stops: float, black: float = BLACK, white: float = WHITE) -> float:
+    out = stages.tone(gray_at(stops), params, black, white)
+    return float(np.log2(stages.luminance(out)[0, 0] / 0.18))
+
+
+tone_values = st.floats(min_value=-100, max_value=100)
+
+
+def test_neutral_tone_is_the_same_array() -> None:
+    rgb = PATCHES.astype(np.float32)
+    assert stages.tone(rgb, Tone(), BLACK, WHITE) is rgb
+
+
+def test_bands_sit_inside_the_photos_range_and_never_cross_the_pivot() -> None:
+    pivot, bands = stages.tone_bands(BLACK, WHITE)
+    assert pivot == PIVOT
+    for name, (center, half_width) in bands.items():
+        below = name in ("blacks", "shadows")
+        assert (center + half_width <= pivot) if below else (center - half_width >= pivot)
+    # Whites/blacks reach their full shift at the white/black point, not beyond it.
+    assert bands["whites"][0] + bands["whites"][1] / 2 == WHITE
+    assert bands["blacks"][0] - bands["blacks"][1] / 2 == BLACK
+
+
+@given(
+    tone_values,
+    tone_values,
+    tone_values,
+    tone_values,
+    tone_values,
+    st.floats(min_value=-14, max_value=4),
+    st.floats(min_value=0, max_value=12),
+)
+def test_tone_curve_is_monotone_and_keeps_the_pivot(
+    c: float, h: float, s: float, w: float, b: float, black: float, width: float
+) -> None:
+    params = Tone(contrast=c, highlights=h, shadows=s, whites=w, blacks=b)
+    curve = stages.tone_curve_stops(params, black, black + width)
+    assert (np.diff(curve) > 0).all()
+    pivot = black + width / 2
+    assert float(np.interp(pivot, stages.TONE_GRID, curve)) == pytest.approx(pivot, abs=1e-9)
+
+
+def test_tone_preserves_color_ratios() -> None:
+    rgb = PATCHES.astype(np.float32)
+    out = stages.tone(rgb, Tone(contrast=40, shadows=30, highlights=-50), BLACK, WHITE)
+    ratios = out / rgb
+    np.testing.assert_allclose(ratios, ratios[..., :1].repeat(3, axis=-1), rtol=1e-5)
+
+
+@pytest.mark.parametrize(
+    ("name", "beyond"),
+    [("whites", 3.5), ("highlights", 3.5), ("shadows", -9.5), ("blacks", -9.5)],
+)
+def test_each_slider_moves_everything_past_its_band_by_its_shift(name: str, beyond: float) -> None:
+    shift = stages.TONE_SHIFTS[name]
+    assert stops_after(Tone(**{name: 100}), beyond) == pytest.approx(beyond + shift, abs=0.01)
+    assert stops_after(Tone(**{name: -100}), beyond) == pytest.approx(beyond - shift, abs=0.01)
+    assert stops_after(Tone(**{name: 50}), beyond) == pytest.approx(beyond + shift / 2, abs=0.01)
+
+
+def test_slope_stays_within_limits_on_a_narrow_photo() -> None:
+    # A 4-stop photo: lifting its blacks 2.5 stops inside a 2-stop band would need an almost flat curve, so
+    # the lift stops short where the slope reaches 1/8 instead of crushing the tones together.
+    params = Tone(blacks=100)
+    curve = stages.tone_curve_stops(params, -4.0, 0.0)
+    slope = np.diff(curve) * 64
+    assert slope.min() >= 1 / 8 - 1e-6
+    assert -6.5 + 1 < stops_after(params, -6.5, -4.0, 0.0) < -6.5 + stages.TONE_SHIFTS["blacks"]
+
+
+def test_whites_and_highlights_leave_the_lower_half_alone() -> None:
+    for params in (Tone(whites=100), Tone(highlights=-100)):
+        assert stops_after(params, PIVOT - 1) == pytest.approx(PIVOT - 1, abs=1e-9)
+        assert stops_after(params, BLACK) == pytest.approx(BLACK, abs=1e-9)
+    assert stops_after(Tone(whites=100), WHITE) > WHITE + 0.5
+    assert stops_after(Tone(highlights=-100), -0.5) < -0.5 - 0.3
+
+
+def test_shadows_and_blacks_leave_the_upper_half_alone() -> None:
+    for params in (Tone(shadows=100), Tone(blacks=-100)):
+        assert stops_after(params, PIVOT + 1) == pytest.approx(PIVOT + 1, abs=1e-9)
+        assert stops_after(params, WHITE) == pytest.approx(WHITE, abs=1e-9)
+    assert stops_after(Tone(blacks=-100), BLACK) < BLACK - 1
+    assert stops_after(Tone(shadows=100), -5.5) > -5.5 + 0.5
+
+
+def test_bands_follow_the_photo() -> None:
+    # A darker photo (or the same one after -1 EV): the same slider moves the same tones of it.
+    params = Tone(contrast=30, highlights=-60, shadows=40, whites=20, blacks=-70)
+    curve = stages.tone_curve_stops(params, BLACK, WHITE)
+    darker = stages.tone_curve_stops(params, BLACK - 1, WHITE - 1)
+    steps = 64  # grid steps per stop
+    np.testing.assert_allclose(darker[:-steps], curve[steps:] - 1, atol=1e-9)
+
+
+def test_a_flat_photo_still_gets_usable_bands() -> None:
+    pivot, bands = stages.tone_bands(-1.0, -1.0)
+    assert pivot == -1.0
+    assert bands["whites"][1] == bands["blacks"][1] == 1.0  # the 4-stop minimum range
+    assert stops_after(Tone(whites=100), 2.0, -1.0, -1.0) == pytest.approx(3.0, abs=0.01)
+
+
+def test_contrast_spreads_tones_around_the_pivot() -> None:
+    more = Tone(contrast=50)
+    assert stops_after(more, PIVOT - 3) < PIVOT - 3 and stops_after(more, PIVOT + 3) > PIVOT + 3
+    assert stops_after(more, PIVOT) == pytest.approx(PIVOT, abs=1e-6)
+    less = Tone(contrast=-50)
+    assert stops_after(less, PIVOT - 3) > PIVOT - 3 and stops_after(less, PIVOT + 3) < PIVOT + 3
+
+
+# ----------------------------------------------------------------- color (OKLab)
+
+
+def srgb_patches(*rgbs: tuple[float, float, float]) -> np.ndarray:
+    """Display-linear Rec.2020 pixels for sRGB-encoded colors."""
+    encoded = np.array([list(rgbs)], dtype=np.float64)
+    return color.apply_matrix(color.srgb_decode(encoded), color.REC2020_FROM_SRGB).astype(np.float32)
+
+
+RED, BLUE, GRAY, DARK_GRAY, LIGHT_GRAY = (
+    (0.8, 0.15, 0.1),
+    (0.1, 0.2, 0.8),
+    (0.5, 0.5, 0.5),
+    (0.1, 0.1, 0.1),
+    (0.9, 0.9, 0.9),
+)
+
+
+def lch(display_linear: np.ndarray) -> np.ndarray:
+    return color.oklab_to_oklch(color.rec2020_to_oklab(display_linear.astype(np.float64)))
+
+
+def adjust(pixels: np.ndarray, **kwargs: object) -> np.ndarray:
+    from photoedit.models.adjustments import ColorGrading, Hsl, Presence
+
+    return stages.color_adjust(
+        pixels,
+        kwargs.get("profile_hsl", Hsl()),  # type: ignore[arg-type]
+        kwargs.get("hsl", Hsl()),  # type: ignore[arg-type]
+        kwargs.get("grading", ColorGrading()),  # type: ignore[arg-type]
+        kwargs.get("presence", Presence()),  # type: ignore[arg-type]
+    )
+
+
+def test_neutral_color_stage_returns_the_same_array() -> None:
+    pixels = srgb_patches(RED, GRAY)
+    assert adjust(pixels) is pixels
+
+
+def test_band_weights_cross_fade_and_sum_to_one() -> None:
+    hues = np.arange(0, 360, 0.5, dtype=np.float32)
+    weights = stages.band_weights(hues)
+    np.testing.assert_allclose(sum(weights.values()), 1, atol=1e-6)
+    for name, center in stages.BAND_HUES.items():
+        assert float(stages.band_weights(np.array([center], dtype=np.float32))[name][0]) == pytest.approx(
+            1, abs=1e-5
+        )
+
+
+def test_red_saturation_minus_100_grays_out_red_only() -> None:
+    from photoedit.models.adjustments import Hsl, HslBand
+
+    pixels = srgb_patches(RED, BLUE)
+    out = adjust(pixels, hsl=Hsl(red=HslBand(saturation=-100)))
+    before, after = lch(pixels)[0], lch(out)[0]
+    assert after[0, 1] < 5e-4  # red has no chroma left (float32 round-trip noise only)
+    assert after[0, 0] == pytest.approx(before[0, 0], abs=1e-5)  # same lightness
+    np.testing.assert_allclose(out[0, 1], pixels[0, 1], atol=1e-5)  # blue untouched
+
+
+def test_red_hue_plus_100_moves_red_toward_orange() -> None:
+    from photoedit.models.adjustments import Hsl, HslBand
+
+    pixels = srgb_patches(RED)
+    shifted = lch(adjust(pixels, hsl=Hsl(red=HslBand(hue=100))))[0, 0, 2]
+    original = lch(pixels)[0, 0, 2]
+    assert 15 < (shifted - original) % 360 <= 30
+
+
+def test_hsl_luminance_leaves_grays_alone() -> None:
+    from photoedit.models.adjustments import Hsl, HslBand
+
+    pixels = srgb_patches(RED, GRAY)
+    out = adjust(pixels, hsl=Hsl(red=HslBand(luminance=100), blue=HslBand(luminance=-100)))
+    assert lch(out)[0, 0, 0] > lch(pixels)[0, 0, 0] + 0.05
+    np.testing.assert_allclose(out[0, 1], pixels[0, 1], atol=1e-5)
+
+
+def test_profile_hsl_works_like_user_hsl() -> None:
+    from photoedit.models.adjustments import Hsl, HslBand
+
+    pixels = srgb_patches(RED, BLUE)
+    tweak = Hsl(blue=HslBand(saturation=-50))
+    np.testing.assert_allclose(adjust(pixels, profile_hsl=tweak), adjust(pixels, hsl=tweak), atol=1e-6)
+
+
+def test_shadow_grading_tints_darks_not_lights() -> None:
+    from photoedit.models.adjustments import ColorGrading, GradeWheel
+
+    pixels = srgb_patches(DARK_GRAY, LIGHT_GRAY)
+    out = adjust(pixels, grading=ColorGrading(shadows=GradeWheel(hue=220, saturation=100)))
+    dark, light = lch(out)[0]
+    assert dark[1] > 0.02 and light[1] < 0.005
+    assert 220 < dark[2] < 280  # a blue tint (OKLab blue sits near 264°)
+
+
+def test_global_grading_and_luminance() -> None:
+    from photoedit.models.adjustments import ColorGrading, GradeWheel
+
+    pixels = srgb_patches(DARK_GRAY, LIGHT_GRAY)
+    out = adjust(pixels, grading=ColorGrading(global_=GradeWheel(hue=30, saturation=50, luminance=20)))
+    before, after = lch(pixels)[0], lch(out)[0]
+    assert (after[:, 1] > 0.01).all()
+    assert (after[:, 0] > before[:, 0]).all()
+
+
+def test_grading_masks_and_balance() -> None:
+    from photoedit.models.adjustments import ColorGrading
+
+    lightness = np.linspace(0, 1, 101, dtype=np.float32)
+    masks = stages.grading_masks(lightness, ColorGrading())
+    assert masks["shadows"][0] == 1 and masks["highlights"][-1] == 1 and masks["midtones"][50] == 1
+    assert ((masks["shadows"] + masks["midtones"] + masks["highlights"]) <= 1 + 1e-6).all()
+    favor_highlights = stages.grading_masks(lightness, ColorGrading(balance=100))
+    assert favor_highlights["highlights"].sum() > masks["highlights"].sum()
+
+
+def test_saturation_and_vibrance() -> None:
+    from photoedit.models.adjustments import Presence
+
+    pixels = srgb_patches(RED, (0.55, 0.5, 0.45), GRAY)
+    gray_out = adjust(pixels, presence=Presence(saturation=-100))
+    assert (lch(gray_out)[0, :, 1] < 5e-4).all()
+    np.testing.assert_allclose(lch(gray_out)[0, :, 0], lch(pixels)[0, :, 0], atol=1e-5)
+    boosted = lch(adjust(pixels, presence=Presence(vibrance=100)))[0]
+    original = lch(pixels)[0]
+    gain_vivid, gain_muted = boosted[0, 1] / original[0, 1], boosted[1, 1] / original[1, 1]
+    assert gain_muted > gain_vivid > 1  # vibrance favours muted colors
+    np.testing.assert_allclose(boosted[2, :2], original[2, :2], atol=1e-5)  # gray stays gray (hue: noise)
+
+
+# ----------------------------------------------------------------- vignette
+
+
+def flat(height: int = 41, width: int = 61, value: float = 0.5) -> np.ndarray:
+    return np.full((height, width, 3), value, dtype=np.float32)
+
+
+def test_neutral_vignette_returns_the_same_array() -> None:
+    from photoedit.models.adjustments import Vignette
+
+    image = flat()
+    assert stages.vignette(image, Vignette()) is image
+
+
+@pytest.mark.parametrize("roundness", [-100, 0, 100])
+@pytest.mark.parametrize("midpoint", [0, 50, 100])
+def test_vignette_darkens_corners_and_never_the_center(roundness: float, midpoint: float) -> None:
+    from photoedit.models.adjustments import Vignette
+
+    image = flat()
+    out = stages.vignette(image, Vignette(amount=-100, roundness=roundness, midpoint=midpoint))
+    assert out[20, 30, 0] == image[20, 30, 0]
+    assert out[0, 0, 0] < image[0, 0, 0] * 0.5
+    np.testing.assert_allclose(out, out[::-1, ::-1], atol=1e-6)  # symmetric
+
+
+def test_positive_vignette_lightens_toward_white() -> None:
+    from photoedit.models.adjustments import Vignette
+
+    out = stages.vignette(flat(), Vignette(amount=100))
+    assert 0.5 < out[0, 0, 0] <= 1.0 and out[20, 30, 0] == pytest.approx(0.5)
+
+
+def test_feather_controls_the_transition_width() -> None:
+    from photoedit.models.adjustments import Vignette
+
+    hard = stages.vignette_mask(101, 101, Vignette(amount=-100, feather=0))
+    soft = stages.vignette_mask(101, 101, Vignette(amount=-100, feather=100))
+    partial = lambda m: int(((m > 0.01) & (m < 0.99)).sum())  # noqa: E731
+    assert partial(hard) < partial(soft)
+
+
+# ----------------------------------------------------------------- sharpening
+
+
+def edge(width: int = 40) -> np.ndarray:
+    image = np.full((8, width, 3), 0.3, dtype=np.float32)
+    image[:, width // 2 :] = 0.6
+    return image
+
+
+def test_no_sharpening_cases_return_the_same_array() -> None:
+    from photoedit.models.adjustments import Sharpening
+
+    image = edge()
+    assert stages.sharpen(image, Sharpening(amount=0), 1.0) is image
+    assert stages.sharpen(image, Sharpening(amount=100, radius=1.0), 0.1) is image  # tiny thumbnails
+
+
+def test_sharpening_adds_contrast_at_edges_only() -> None:
+    from photoedit.models.adjustments import Sharpening
+
+    image = edge()
+    out = stages.sharpen(image, Sharpening(amount=100, radius=1.5), 1.0)
+    assert out[4, 20, 0] > 0.6 and out[4, 19, 0] < 0.3  # overshoot on both sides of the edge
+    np.testing.assert_allclose(out[:, :5], image[:, :5], atol=1e-6)  # flat areas stay flat
+    np.testing.assert_allclose(stages.sharpen(flat(), Sharpening(amount=150), 1.0), flat(), atol=1e-6)
+
+
+def test_detail_limits_halos() -> None:
+    from photoedit.models.adjustments import Sharpening
+
+    image = edge()
+    low = stages.sharpen(image, Sharpening(amount=100, radius=1.5, detail=0), 1.0)
+    high = stages.sharpen(image, Sharpening(amount=100, radius=1.5, detail=100), 1.0)
+    assert high[4, 20, 0] - 0.6 > low[4, 20, 0] - 0.6 > 0
+
+
+def test_masking_skips_low_contrast_texture() -> None:
+    from photoedit.models.adjustments import Sharpening
+
+    rng = np.random.default_rng(3)
+    texture = (0.5 + rng.normal(0, 0.005, (32, 32, 1)).repeat(3, -1)).astype(np.float32)
+    unmasked = stages.sharpen(texture, Sharpening(amount=150, masking=0), 1.0)
+    masked = stages.sharpen(texture, Sharpening(amount=150, masking=100), 1.0)
+    assert np.abs(masked - texture).mean() < np.abs(unmasked - texture).mean() / 4
+
+
+def test_sharpening_is_deterministic_and_luminance_only() -> None:
+    from photoedit.models.adjustments import Sharpening
+
+    image = edge()
+    image[..., 0] += 0.1  # colored
+    first = stages.sharpen(image, Sharpening(amount=80), 1.0)
+    np.testing.assert_array_equal(first, stages.sharpen(image, Sharpening(amount=80), 1.0))
+    change = first - image
+    np.testing.assert_allclose(change[..., 0], change[..., 1], atol=1e-6)  # same delta on every channel

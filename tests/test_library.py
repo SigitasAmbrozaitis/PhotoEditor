@@ -38,8 +38,13 @@ class Env:
     workspace: Path
 
     def run_import(self, folder: Path | None = None, **kwargs: bool) -> object:
+        """Import and wait, including the thumbnail job it starts (which reads the photos)."""
         job = self.library.import_folder(folder or self.photos, **kwargs)
-        return self.library.jobs.wait(job.id, TIMEOUT)
+        done = self.library.jobs.wait(job.id, TIMEOUT)
+        for other in self.library.jobs.list():
+            if other.kind == "render" and other.finished_at is None:
+                self.library.jobs.wait(other.id, TIMEOUT)
+        return done
 
     def reopen(self) -> Library:
         catalog = Catalog(self.workspace / "catalog.sqlite", self.guard)
@@ -84,7 +89,7 @@ def test_first_import(env: Env) -> None:
     thumb = Image.open(io.BytesIO(env.library.thumbnail(first.id)))
     assert thumb.size == (320, 200)  # small originals are not enlarged
     preview = Image.open(io.BytesIO(env.library.preview(first.id, 1600)))
-    assert preview.size == (160, 100)  # the half-size preview
+    assert preview.size == (320, 200)  # rendered at its own size: never enlarged
     assert env.library.photo_detail(first.id).edit.style_id is None
 
 
@@ -164,13 +169,19 @@ def test_raw_pairs_record_the_sidecar(env: Env, monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(
         library_module,
         "_read_metadata_and_thumbnail",
-        lambda path: (PhotoMetadata(width=6240, height=4160, camera="FUJIFILM X-T3"), fake_thumb),
+        lambda path: (
+            PhotoMetadata(width=6240, height=4160, camera="FUJIFILM X-T3"),
+            fake_thumb,
+            (5000.0, -5.0),
+        ),
     )
     env.run_import()
     (photo,) = env.library.list_photos().items
     assert photo.filename == "DSCF1.RAF"
     assert photo.sidecar_jpeg == (env.photos / "DSCF1.JPG").resolve().as_posix()
     assert (photo.width, photo.camera) == (6240, "FUJIFILM X-T3")
+    stored = env.library.photo(photo.id)
+    assert (stored.as_shot_temperature, stored.as_shot_tint) == (5000.0, -5.0)
 
 
 def test_unreadable_photo_fails_its_item_only(env: Env) -> None:
@@ -250,3 +261,87 @@ def test_cancelled_import_keeps_what_was_done(env: Env, monkeypatch: pytest.Monk
     assert done.status == JobStatus.CANCELLED
     assert done.summary is None  # finish() doesn't run, so nothing is flagged missing
     assert env.library.info().photo_count == 1  # the photo in progress was finished
+
+
+# ----------------------------------------------------------------- edits (Phase 3)
+
+
+def test_edits_save_show_and_reset(env: Env) -> None:
+    from photoedit.core.render.pipeline import UnsupportedParameterError
+    from photoedit.models import AdjustmentParams
+
+    fill_folder(env.photos)
+    env.run_import()
+    pid = env.library.list_photos(sort=PhotoSort.NAME).items[0].id
+    # Like the UI: start from the photo's current parameters (JPEGs default to no sharpening) and change two.
+    edited = env.library.edit(pid).adjustments.model_copy(deep=True)
+    edited.tone.exposure = 0.7
+    edited.presence.vibrance = 20
+    result = env.library.save_edit(pid, edited)
+    assert result.overridden == ["presence.vibrance", "tone.exposure"]
+    detail = env.library.photo_detail(pid)
+    assert detail.edit.adjustments.tone.exposure == 0.7 and detail.edit.overridden == result.overridden
+    assert detail.photo.has_overrides
+    assert env.library.list_photos(sort=PhotoSort.NAME).items[0].has_overrides
+    assert env.reopen().edit(pid).adjustments.tone.exposure == 0.7  # survives a restart
+
+    with pytest.raises(UnsupportedParameterError):
+        env.library.save_edit(pid, AdjustmentParams.model_validate({"lens": {"profile_corrections": True}}))
+    assert env.library.edit(pid).adjustments.tone.exposure == 0.7  # the rejected save changed nothing
+
+    reset = env.library.reset_edit(pid)
+    assert reset.overridden == [] and not env.library.photo_detail(pid).photo.has_overrides
+
+
+def test_jpeg_originals_default_to_no_sharpening(env: Env) -> None:
+    fill_folder(env.photos)
+    env.run_import()
+    pid = env.library.list_photos().items[0].id
+    assert env.library.edit(pid).adjustments.detail.sharpening.amount == 0
+
+
+def test_image_version_changes_with_the_edit(env: Env) -> None:
+    fill_folder(env.photos)
+    env.run_import()
+    first = env.library.list_photos(sort=PhotoSort.NAME).items[0]
+    edited = env.library.edit(first.id).adjustments.model_copy(deep=True)
+    edited.tone.exposure = 0.5
+    env.library.save_edit(first.id, edited)
+    after = env.library.list_photos(sort=PhotoSort.NAME).items[0]
+    assert after.image_version != first.image_version
+    env.library.reset_edit(first.id)
+    assert env.library.list_photos(sort=PhotoSort.NAME).items[0].image_version == first.image_version
+
+
+def test_import_renders_thumbnails_in_the_background(env: Env) -> None:
+    fill_folder(env.photos)
+    env.run_import()
+    render_job = next(j for j in env.library.jobs.list() if j.kind == "render")
+    done = env.library.jobs.wait(render_job.id, TIMEOUT)
+    assert done.status == JobStatus.DONE and done.total == 3
+    for photo in env.library.list_photos().items:
+        stored = env.library.photo(photo.id)
+        assert env.library.renderer.has_thumbnail(stored, env.library.edit(photo.id))
+    env.run_import()  # nothing left to render: no new render job
+    assert sum(1 for j in env.library.jobs.list() if j.kind == "render") == 1
+
+
+def test_rendering_stores_tone_anchors_in_the_catalog(env: Env) -> None:
+    fill_folder(env.photos)
+    env.run_import()  # the thumbnail job measures them
+    for photo in env.library.list_photos().items:
+        stored = env.library.photo(photo.id)
+        assert stored.tone_anchors_identity == env.library.renderer.identity
+        assert stored.tone_black is not None and stored.tone_white is not None
+        assert stored.tone_black <= stored.tone_white
+
+
+def test_before_and_after_previews(env: Env) -> None:
+    fill_folder(env.photos)
+    env.run_import()
+    pid = env.library.list_photos(sort=PhotoSort.NAME).items[0].id
+    assert env.library.preview(pid, 256) == env.library.preview(pid, 256, before=True)
+    edited = env.library.edit(pid).adjustments.model_copy(deep=True)
+    edited.presence.saturation = -100
+    env.library.save_edit(pid, edited)
+    assert env.library.preview(pid, 256) != env.library.preview(pid, 256, before=True)

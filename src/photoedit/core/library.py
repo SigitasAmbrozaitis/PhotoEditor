@@ -11,14 +11,19 @@ from pathlib import Path
 
 from PIL import Image
 
+from photoedit.core import color
 from photoedit.core.cache import ImageCache
 from photoedit.core.catalog import Catalog, CatalogPhoto, FolderRecord, photo_id
 from photoedit.core.decode import is_raw, oriented_image, read_raw_info
+from photoedit.core.edits import EditStore, EffectiveEdit
 from photoedit.core.errors import NotFoundError
 from photoedit.core.jobs import ItemResult, ItemSpec, JobManager
 from photoedit.core.metadata import MetadataError, PhotoMetadata, read_metadata, read_metadata_from_bytes
+from photoedit.core.renderer import Renderer
 from photoedit.core.scan import ScannedPhoto, SourceKind, scan_folder
 from photoedit.models import (
+    AdjustmentParams,
+    AsShot,
     Job,
     JobKind,
     LibraryFolder,
@@ -34,6 +39,7 @@ from photoedit.safety import PathGuard
 
 CURRENT_FOLDER = "current_folder"
 IMPORT_THREADS = 4  # hashing and JPEG decoding release the GIL, so a few threads overlap disk and CPU
+RENDER_THREADS = 4  # LibRaw and the numpy stages also release the GIL for most of their work
 _HASH_CHUNK = 1 << 20
 
 type Clock = Callable[[], datetime]
@@ -55,8 +61,13 @@ class Library:
         *,
         suggested_folder: Path | None = None,
         clock: Clock | None = None,
+        edits: EditStore | None = None,
+        renderer: Renderer | None = None,
     ) -> None:
         self.catalog = catalog
+        # Edits live next to the catalog in the workspace unless told otherwise.
+        self.edits = edits or EditStore(catalog.path.parent / "edits", guard)
+        self.renderer = renderer or Renderer(cache.root, guard, remember_anchors=catalog.set_tone_anchors)
         self.cache = cache
         self.jobs = jobs
         self._guard = guard
@@ -100,6 +111,7 @@ class Library:
             self.catalog.save_folder(
                 FolderRecord(path=root, include_subfolders=include_subfolders, last_imported_at=self._clock())
             )
+            self.render_thumbnails([pid for pid, _ in outcomes.values()])
             return _summary(
                 Counter(o for _, o in outcomes.values()), len(scan.photos), len(scan.skipped), missing
             )
@@ -132,7 +144,7 @@ class Library:
             return existing, ImportOutcome.UNCHANGED
 
         sha256 = _sha256(path)
-        meta, thumbnail = _read_metadata_and_thumbnail(path)
+        meta, thumbnail, as_shot = _read_metadata_and_thumbnail(path)
         previous = self.catalog.get(photo_id(sha256))
         photo = CatalogPhoto(
             id=photo_id(sha256),
@@ -153,6 +165,10 @@ class Library:
             width=meta.width,
             height=meta.height,
             rating=meta.rating,
+            film_simulation=meta.film_simulation,
+            dynamic_range=meta.dynamic_range,
+            as_shot_temperature=as_shot[0] if as_shot else None,
+            as_shot_tint=as_shot[1] if as_shot else None,
         )
         # Thumbnail first: a file that can't be decoded fails here and never enters the catalog half-done.
         if thumbnail is not None:
@@ -225,7 +241,8 @@ class Library:
             offset=offset,
             limit=limit,
         )
-        return Page[Photo](items=[p.to_photo() for p in items], total=total, offset=offset, limit=limit)
+        photos = [p.to_photo(self.image_version(p)) for p in items]
+        return Page[Photo](items=photos, total=total, offset=offset, limit=limit)
 
     def photo(self, photo_id: str) -> CatalogPhoto:
         photo = self.catalog.get(photo_id)
@@ -235,21 +252,118 @@ class Library:
 
     def photo_detail(self, photo_id: str) -> PhotoDetail:
         photo = self.photo(photo_id)
-        # Edits arrive in Phase 3/4; until then every photo shows its neutral, unedited state.
-        return PhotoDetail(photo=photo.to_photo(), edit=PhotoEdit(photo_id=photo.id, style_id=photo.style_id))
+        edit = self.edits.effective(photo)
+        as_shot = self.as_shot(photo)
+        return PhotoDetail(
+            photo=photo.to_photo(self.image_version(photo)),
+            edit=PhotoEdit(
+                photo_id=photo.id,
+                style_id=edit.style_id,
+                adjustments=edit.adjustments,
+                overridden=edit.overridden,
+                revision=edit.revision,
+                defaults=self.edits.default(photo).adjustments,
+            ),
+            as_shot=AsShot(temperature=as_shot[0], tint=as_shot[1]) if as_shot else None,
+        )
+
+    def as_shot(self, photo: CatalogPhoto) -> tuple[float, float] | None:
+        """The recorded white balance; read from the RAW (and remembered) for photos imported before
+        Phase 3. JPEG/TIFF originals count as balanced for D65."""
+        if photo.as_shot_temperature is not None and photo.as_shot_tint is not None:
+            return photo.as_shot_temperature, photo.as_shot_tint
+        if not is_raw(photo.path):
+            return color.xy_to_temperature_tint(color.D65)
+        if not photo.path.is_file():
+            return None
+        found = read_raw_info(photo.path).as_shot
+        if found is not None:
+            self.catalog.set_as_shot(photo.id, *found)
+        return found
+
+    # ---- edits
+
+    def edit(self, photo_id: str) -> EffectiveEdit:
+        return self.edits.effective(self.photo(photo_id))
+
+    def save_edit(self, photo_id: str, adjustments: AdjustmentParams) -> EffectiveEdit:
+        photo = self.photo(photo_id)
+        result = self.edits.save(photo, adjustments)
+        self._record_edit(photo, result)
+        return result
+
+    def reset_edit(self, photo_id: str) -> EffectiveEdit:
+        photo = self.photo(photo_id)
+        self.edits.reset(photo.id)
+        result = self.edits.effective(photo)
+        self._record_edit(photo, result)
+        return result
+
+    def _record_edit(self, photo: CatalogPhoto, edit: EffectiveEdit) -> None:
+        default = self.edits.default(photo).revision
+        self.catalog.set_edit(photo.id, edit.revision if edit.revision != default else None)
+        # Renders of older edits are dead weight now; keep the current edit and the unedited "before".
+        self.renderer.prune(photo.id, keep={edit.revision, default})
+
+    def image_version(self, photo: CatalogPhoto) -> str:
+        """Changes whenever the photo renders differently (new edit, new engine or library version)."""
+        key = f"{self.renderer.identity}|{photo.edit_revision or 'unedited'}"
+        return hashlib.sha256(key.encode()).hexdigest()[:10]
+
+    # ---- images
 
     def thumbnail(self, photo_id: str) -> bytes:
+        """The rendered thumbnail; for an unedited photo not rendered yet, the camera's embedded one meanwhile
+        (the thumbnail job renders them after an import)."""
         photo = self.photo(photo_id)
-        if self.cache.has_thumbnail(photo.id):
+        edit = self.edits.effective(photo)
+        if self.renderer.has_thumbnail(photo, edit):
+            return self.renderer.thumbnail(photo, edit)
+        if photo.edit_revision is None and self.cache.has_thumbnail(photo.id):
             return self.cache.thumbnail(photo)
         self._require_original(photo)
-        return self.cache.thumbnail(photo)
+        return self.renderer.thumbnail(photo, edit)
 
-    def preview(self, photo_id: str, long_edge: int) -> bytes:
+    def preview(self, photo_id: str, long_edge: int, *, before: bool = False) -> bytes:
+        """The photo with its edit (``before`` = unedited) at ``long_edge`` px."""
         photo = self.photo(photo_id)
-        if not self.cache.preview_path(photo.id).is_file():
+        edit = self.edits.default(photo) if before else self.edits.effective(photo)
+        if not self.renderer.preview_path(photo, edit, long_edge).is_file():
             self._require_original(photo)
-        return self.cache.preview(photo, long_edge)
+        return self.renderer.preview(photo, edit, long_edge)
+
+    def sidecar(self, photo_id: str, long_edge: int) -> bytes:
+        """The camera's own JPEG saved next to a RAW (read-only), scaled to ``long_edge``, for comparison."""
+        photo = self.photo(photo_id)
+        if photo.sidecar_jpeg is None:
+            raise NotFoundError(f"'{photo.path.name}' has no camera JPEG next to it")
+        if not photo.sidecar_jpeg.is_file():
+            raise NotFoundError(f"the camera JPEG is no longer at {photo.sidecar_jpeg}")
+        return self.cache.sidecar(photo, long_edge)
+
+    def render_thumbnails(self, photo_ids: list[str]) -> Job | None:
+        """Background job rendering the thumbnails that aren't rendered yet. None if nothing to do."""
+        todo: list[CatalogPhoto] = []
+        for pid in photo_ids:
+            photo = self.catalog.get(pid)
+            if photo is not None and not self.renderer.has_thumbnail(photo, self.edits.effective(photo)):
+                todo.append(photo)
+        if not todo:
+            return None
+
+        def work(index: int) -> ItemResult:
+            photo = todo[index]
+            self.renderer.thumbnail(photo, self.edits.effective(photo))
+            return ItemResult(photo_id=photo.id)
+
+        noun = "photo" if len(todo) == 1 else "photos"
+        return self.jobs.submit(
+            JobKind.RENDER,
+            f"Render thumbnails for {len(todo)} {noun}",
+            [ItemSpec(filename=p.path.name, photo_id=p.id) for p in todo],
+            work,
+            parallel=RENDER_THREADS,
+        )
 
     def _require_original(self, photo: CatalogPhoto) -> None:
         if not photo.path.is_file():
@@ -264,20 +378,23 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _read_metadata_and_thumbnail(path: Path) -> tuple[PhotoMetadata, Image.Image | None]:
-    """Metadata, plus an upright thumbnail source when it comes for free (a RAW's embedded JPEG)."""
+def _read_metadata_and_thumbnail(
+    path: Path,
+) -> tuple[PhotoMetadata, Image.Image | None, tuple[float, float] | None]:
+    """Metadata, an upright thumbnail source when it comes for free (a RAW's embedded JPEG), and the as-shot
+    white balance (RAWs only)."""
     if not is_raw(path):
-        return read_metadata(path), None
+        return read_metadata(path), None, None
     info = read_raw_info(path)
     if info.embedded_jpeg is None:
-        return PhotoMetadata(width=info.width, height=info.height), None
+        return PhotoMetadata(width=info.width, height=info.height), None, info.as_shot
     try:
         meta = read_metadata_from_bytes(info.embedded_jpeg)
     except MetadataError:
         meta = PhotoMetadata(width=info.width, height=info.height)
     # The embedded JPEG is smaller than the sensor; the RAW knows the real size.
     meta = meta.model_copy(update={"width": info.width, "height": info.height})
-    return meta, oriented_image(info.embedded_jpeg, info.flip)
+    return meta, oriented_image(info.embedded_jpeg, info.flip), info.as_shot
 
 
 def _summary(outcomes: Counter[ImportOutcome], photos: int, skipped: int, missing: int) -> str:

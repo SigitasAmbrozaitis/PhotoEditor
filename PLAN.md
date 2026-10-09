@@ -23,7 +23,16 @@
 | Photo identity | **Content hash (SHA-256).** Moved/renamed folders keep their edits; identical copies are one photo | 2026-10-07 |
 | Phase 2 preview | **LibRaw half-size, camera WB, sRGB, auto-brightness on** (temporary until the Phase 3 pipeline) | 2026-10-07 |
 | LibRaw threading | **Single-threaded LibRaw; parallelism via worker processes.** LibRaw's OpenMP decode of X-T3 RAFs is not deterministic (two decodes differed by up to 184 levels); 1 thread is bit-identical but ~5× slower per photo (full-size ≈ 13 s) | 2026-10-07 |
+| Default look (Phase 3) | **Match the camera JPEGs**: a per-camera profile (baseline EV, 3×3 matrix, tone curve, 8-band HSL) fitted from RAF + camera JPEG pairs; first profile "X-T3 · Provia" (all samples: Provia, DR100). Generic profile for other cameras; none for JPEG/TIFF originals | 2026-10-08 |
+| Thumbnails (Phase 3) | **Rendered by the pipeline** (background job after import; re-render on edit), embedded JPEG only until then | 2026-10-08 |
+| Golden images | **Real-photo references stay local** (git-ignored); only synthetic references are committed | 2026-10-08 |
+| Later-phase parameters | **Rejected with a clear error** when set to non-default values before their phase | 2026-10-08 |
 | ExifTool / OpenCV timing | **ExifTool joins in Phase 5** (writing export metadata); Phase 2 reads EXIF with Pillow. **OpenCV joins in Phase 3** | 2026-10-07 |
+| Tone sliders (Phase 3 feedback) | **Highlights/shadows/whites/blacks are relative to each photo's own white and black points** (Lightroom-like), not fixed scene stops. Measured once per photo, stored in the catalog, so previews and exports agree. Reason: with fixed stops, Whites ±100 changed nothing on DSCF5437 (its brightest pixel is +2.4 stops; the band started at +2) | 2026-10-09 |
+| Contrast pivot (P3.24) | **Contrast and the four tone bands pivot on the middle of the photo's own range** (between its black and white points), not on scene mid gray, which lies above the median pixel of every sample (Contrast +100 turned a night shot almost black) | 2026-10-09 |
+| Phase 3b timing | **Deferred** after the Phase 3 human test (preview speed is better but still has a delay; fine for now, since the AI drives edits and the user won't move sliders by hand yet). **Phase 4 (Styles) comes next**; 3b moves after Phase 9 or folds into its performance work | 2026-10-09 |
+| Live preview speed | **New Phase 3b** after Phase 3: (A) draft renders while dragging, latest-wins, save on release; (B) **instant GPU preview in the browser via a 3D LUT built by `core`**. Reason: a slider change took ~0.6 s after the mouse stopped and showed nothing while dragging | 2026-10-09 |
+| Sharpening preview | Sharpening is invisible at fit-to-screen size (radius 1 px → 0.26 px); it needs a **1:1 zoom view, deferred to Phase 6** | 2026-10-09 |
 
 **Target machine**: i7-12700H (14 cores / 20 threads), 16 GB RAM, RTX 3060 Laptop (6 GB), Windows 11.
 .NET 9 SDK is installed. Python and uv are not installed yet.
@@ -211,6 +220,14 @@ shot the same way. A **per-photo edit** = style + overrides. Overrides always wi
 
 Previews use LibRaw's half-size decode and are cached, so the AI and the UI get fast feedback (~0.5 s). Exports use full resolution.
 
+**Live preview while editing (Phase 3b, decided 2026-10-09; deferred).** Every stage except vignette and sharpening is a per-pixel
+color function: a pixel's output depends only on its own input color. So `core` evaluates the exact pipeline on a 3D grid
+of input colors (a 3D LUT, e.g. 33³–65³ colors instead of ~1.7 M pixels: milliseconds), and the browser applies that LUT
+to the photo's linear base image in a WebGL shader at screen refresh rate. The browser only interpolates numbers made by
+`core`, so the editing logic stays in one place (principle 4). The GPU image is a draft: after the slider is released,
+the exact CPU render replaces it, and exports never use the LUT. Vignette and sharpening (not per-pixel) use fast
+server-side draft renders while dragging instead.
+
 ### 4.4 AI interface (MCP tools, first draft)
 
 | Tool | Purpose |
@@ -272,17 +289,16 @@ Try these in order. Each is a self-contained addition, so we can switch to one w
 
 ## 5. Phases (each one ends with something you can test by hand)
 
-| # | Phase | You can check it by… |
-|---|---|---|
 | # | Phase | Backend | UI part | You can check it by… |
 |---|---|---|---|---|
 | 0 | **Project setup + AI rules** | uv project, folder structure, `CLAUDE.md` rules, ruff/mypy/pytest, `.gitignore` (RAWs, output, cache) | Vite + React + TS scaffold, served by FastAPI | `uv run pytest` is green; `uv run photoedit --version` works; `photoedit ui` opens an empty page |
 | 1 | **UI skeleton (no functionality)** | Mock API that returns fake data | All screens, clickable with placeholder images: Library grid, Photo view (before/after, adjustment panel), Style library (card with description + samples), Style detail, Export dialog (all settings), Jobs/progress | Click through the full use loop and judge the look and feel. Give feedback, and the layout gets adjusted before real work starts |
 | 2 | **Import & decode + benchmark** | Catalog, EXIF read, thumbnails, half-size preview render, **go/no-go speed benchmark on the X-T3 RAFs** | Library grid shows real thumbnails and EXIF | Import `2026-08-11` → real thumbnails in UI; previews look neutral and correct; originals' hashes unchanged; benchmark report |
 | 3 | **Edit engine (MVP params)** | Parameter model + render pipeline + per-photo edit JSON | Adjustment panel works (sliders for testing, even though AI is the main user); before/after toggle | Move sliders → preview updates; contact sheet of each slider at −/0/+ |
+| 3b | **Live preview speed** (added 2026-10-09; **deferred** 2026-10-09, after Phase 9) | Draft render endpoint, faster CPU render, 3D LUT of the per-pixel pipeline, linear base for the browser | Drafts while dragging (latest-wins, save on release); WebGL preview applying the LUT; exact render swaps in after release | Drag any color/tone slider → the image follows the mouse with no visible delay; the final image settles within about half a second of release |
 | 4 | **Styles** | Style file format, library, apply to one/many, adaptive rules, overrides | Style library and detail screens are live; "apply style to selection" | Apply a hand-written test style to the folder → before/after looks consistent |
 | 5 | **Export** | Presets, resize, color space + ICC, output sharpening, metadata, naming, aspect crop | Export dialog is live; job progress | Instagram preset → 1080×1350, sRGB tagged, EXIF as configured; print preset → correct PPI/size |
-| 6 | **Geometry & centering** | Crop/rotate/straighten/zoom, subject detection, `suggest_crop` | Crop overlay in the Photo view | Auto 4:5 crop keeps subjects well framed |
+| 6 | **Geometry & centering** | Crop/rotate/straighten/zoom, subject detection, `suggest_crop`, full-resolution crops for a 1:1 view | Crop overlay in the Photo view; 1:1 zoom view (where sharpening can be judged) | Auto 4:5 crop keeps subjects well framed; sharpening is visible at 1:1 |
 | 7 | **MCP server (agentic workflow)** | Exposes the core API to Claude Code | UI auto-refreshes when the AI changes something | In Claude Code: "apply style X to folder Y and export for Instagram to Z" works end to end |
 | 8 | **AI style creation**. ⛔ **STOP at the start and ask the user for style samples** | Analysis tools, parameter fitting from pairs (developed and tested first on the camera JPEG + RAF pairs), README + samples generation, fallbacks F1–F3, F5 | "Create style" flow; A/B variant picker (F1) | Give sample photos → style created, saved, and its samples look like the references |
 | 9 | **Polish** | Parallel batch tuning, caching, clarity/texture/dehaze, noise reduction, lens corrections, more formats | UI refinements from your feedback | 100 RAFs export in acceptable time; extra sliders behave |

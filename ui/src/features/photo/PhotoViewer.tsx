@@ -4,7 +4,7 @@ import type { Photo } from '../../api/types'
 import { Spinner } from '../../components/ui'
 import { fitInside, useElementSize } from '../../hooks/useElementSize'
 
-export type ViewMode = 'after' | 'before' | 'split'
+export type ViewMode = 'after' | 'before' | 'split' | 'camera'
 
 interface Crop {
   left: number
@@ -40,9 +40,9 @@ export function PhotoViewer({ photo, mode, crop }: { photo: Photo; mode: ViewMod
   const box = useElementSize(boxRef)
   const fitted = fitInside(box, photo.width / photo.height)
   const [split, setSplit] = useState(50)
-  const after = imageUrls.preview(photo.id, { size: 1600 })
+  const after = imageUrls.preview(photo.id, { size: 1600, version: photo.image_version })
   const before = imageUrls.preview(photo.id, { size: 1600, before: true })
-  const shown = mode === 'before' ? before : after
+  const shown = mode === 'before' ? before : mode === 'camera' ? imageUrls.sidecar(photo.id, 1600) : after
   // The first preview of a RAW takes a second or two to render; show a spinner until the image arrives.
   const [settled, setSettled] = useState<{ src: string; ok: boolean } | null>(null)
 
@@ -51,16 +51,23 @@ export function PhotoViewer({ photo, mode, crop }: { photo: Photo; mode: ViewMod
       <div className="relative" style={fitted.width ? { width: fitted.width, height: fitted.height } : undefined}>
         <img
           src={shown}
-          alt={`${photo.filename} (${mode === 'before' ? 'before' : 'after'})`}
+          alt={`${photo.filename} (${mode === 'split' ? 'after' : mode === 'camera' ? 'camera JPEG' : mode})`}
           draggable={false}
           onLoad={() => setSettled({ src: shown, ok: true })}
           onError={() => setSettled({ src: shown, ok: false })}
           className="block h-full w-full object-contain select-none"
         />
         {settled?.src !== shown ? (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Spinner className="size-8" label="Rendering preview" />
-          </div>
+          settled?.ok ? (
+            // An earlier image is still showing: keep it in view and just signal the update in a corner.
+            <div className="absolute top-2 right-2 rounded-full bg-black/60 p-1">
+              <Spinner className="size-4" label="Rendering preview" />
+            </div>
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Spinner className="size-8" label="Rendering preview" />
+            </div>
+          )
         ) : (
           !settled.ok && (
             <div role="alert" className="absolute inset-0 flex items-center justify-center text-sm text-muted">

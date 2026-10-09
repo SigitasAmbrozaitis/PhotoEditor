@@ -16,6 +16,7 @@ from helpers import fill_folder, write_jpeg
 from photoedit.api import create_app
 from photoedit.config import Settings, load_settings
 from photoedit.models import (
+    AdjustmentParams,
     ExportPreset,
     Job,
     LibraryFolder,
@@ -64,9 +65,14 @@ def _wait(client: TestClient, job_id: str) -> Job:
 
 
 def _import(client: TestClient, folder: Path, **extra: object) -> Job:
+    """Import and wait, including the thumbnail job it starts (which reads the photos)."""
     r = client.post("/api/library/import", json={"folder": str(folder), **extra})
     assert r.status_code == 201, r.text
-    return _wait(client, Job.model_validate(r.json()).id)
+    done = _wait(client, Job.model_validate(r.json()).id)
+    for job in TypeAdapter(list[Job]).validate_python(client.get("/api/jobs").json()):
+        if job.kind == "render" and job.finished_at is None:
+            _wait(client, job.id)
+    return done
 
 
 def _photo_ids(client: TestClient) -> list[str]:
@@ -146,7 +152,7 @@ def test_photo_detail_thumbnail_preview(client: TestClient, photos: Path) -> Non
     assert thumb.status_code == 200 and thumb.headers["content-type"] == "image/jpeg"
     assert "max-age" in thumb.headers["cache-control"]
     preview = client.get(f"/api/photos/{pid}/preview", params={"size": 256})
-    assert Image.open(io.BytesIO(preview.content)).size == (160, 100)  # half of 320×200, never enlarged
+    assert Image.open(io.BytesIO(preview.content)).size == (256, 160)
     before = client.get(f"/api/photos/{pid}/preview", params={"size": 256, "before": True})
     assert before.content == preview.content  # no edits until Phase 3
     assert client.get(f"/api/photos/{pid}/preview", params={"size": 10}).status_code == 422
@@ -244,7 +250,7 @@ def test_apply_and_export_job_on_real_photos(client: TestClient, photos: Path) -
         "C:/Users/ambro/Pictures/Exports/b.jpg",
     ]
     listed = TypeAdapter(list[Job]).validate_python(client.get("/api/jobs").json())
-    assert [j.kind for j in listed] == ["apply_and_export", "import"]  # newest first
+    assert [j.kind for j in listed] == ["apply_and_export", "render", "import"]  # newest first
 
 
 def test_cancel_job_endpoint(client: TestClient, photos: Path) -> None:
@@ -285,3 +291,74 @@ def test_job_with_unknown_photo_or_style_404(client: TestClient, photos: Path) -
 def test_create_app_alone_does_not_touch_the_workspace(settings: Settings) -> None:
     create_app(settings).openapi()
     assert not settings.workspace_dir.exists()
+
+
+# ----------------------------------------------------------------- edits (Phase 3)
+
+
+def test_save_and_reset_an_edit(client: TestClient, photos: Path) -> None:
+    _import(client, photos)
+    pid = _photo_ids(client)[0]
+    detail = PhotoDetail.model_validate(client.get(f"/api/photos/{pid}").json())
+    assert detail.edit.overridden == [] and detail.as_shot is not None
+    assert detail.as_shot.temperature == pytest.approx(6504, abs=10)  # a JPEG counts as balanced for D65
+
+    adjustments = detail.edit.adjustments.model_dump(mode="json", by_alias=True)
+    adjustments["tone"]["exposure"] = 0.8
+    adjustments["hsl"]["blue"]["saturation"] = -40
+    r = client.put(f"/api/photos/{pid}/edit", json=adjustments)
+    assert r.status_code == 200, r.text
+    saved = PhotoDetail.model_validate(r.json())
+    assert saved.edit.overridden == ["hsl.blue.saturation", "tone.exposure"]
+    assert saved.edit.revision != detail.edit.revision
+    assert saved.photo.image_version != detail.photo.image_version and saved.photo.has_overrides
+    edited = client.get(f"/api/photos/{pid}/preview", params={"size": 256}).content
+    before = client.get(f"/api/photos/{pid}/preview", params={"size": 256, "before": True}).content
+    assert edited != before
+
+    reset = PhotoDetail.model_validate(client.delete(f"/api/photos/{pid}/edit").json())
+    assert reset.edit.overridden == [] and reset.photo.image_version == detail.photo.image_version
+
+
+def test_edit_errors(client: TestClient, photos: Path) -> None:
+    _import(client, photos)
+    pid = _photo_ids(client)[0]
+    body = AdjustmentParams().model_dump(mode="json", by_alias=True)
+    body["geometry"]["angle"] = 5
+    r = client.put(f"/api/photos/{pid}/edit", json=body)
+    assert r.status_code == 400 and "geometry.angle (Phase 6)" in r.json()["detail"]
+    body["geometry"]["angle"] = 0
+    body["tone"]["exposure"] = 9
+    assert client.put(f"/api/photos/{pid}/edit", json=body).status_code == 422
+    assert (
+        client.put("/api/photos/nope/edit", json=AdjustmentParams().model_dump(mode="json")).status_code
+        == 404
+    )
+    assert client.delete("/api/photos/nope/edit").status_code == 404
+
+
+def test_engine_info(client: TestClient) -> None:
+    from photoedit.models import EngineInfo
+
+    info = EngineInfo.model_validate(client.get("/api/engine").json())
+    assert (
+        info.later_phase_parameters["geometry"] == 6 and info.later_phase_parameters["presence.clarity"] == 9
+    )
+    assert "-eng" in info.render_identity
+
+
+def test_detail_includes_defaults(client: TestClient, photos: Path) -> None:
+    _import(client, photos)
+    detail = PhotoDetail.model_validate(client.get(f"/api/photos/{_photo_ids(client)[0]}").json())
+    assert detail.edit.defaults.detail.sharpening.amount == 0  # a JPEG starts unsharpened
+
+
+def test_sidecar_camera_jpeg(client: TestClient, tmp_path: Path) -> None:
+    from helpers import write_jpeg
+
+    folder = tmp_path / "pair"
+    write_jpeg(folder / "x.jpg", (10, 200, 30), size=(600, 400))  # a lone JPEG: no sidecar
+    _import(client, folder)
+    pid = _photo_ids(client)[0]
+    r = client.get(f"/api/photos/{pid}/sidecar")
+    assert r.status_code == 404 and "no camera JPEG" in r.json()["detail"]

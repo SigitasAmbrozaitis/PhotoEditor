@@ -17,6 +17,8 @@ from photoedit.models.job import (
     JobStatus,
 )
 from photoedit.models.photo import (
+    AsShot,
+    EngineInfo,
     ImportRequest,
     LibraryFolder,
     LibraryInfo,
@@ -46,6 +48,8 @@ __all__ = [
     "AdjustmentParams",
     "ApplyAndExportRequest",
     "ApplyStyleRequest",
+    "AsShot",
+    "EngineInfo",
     "ExportPreset",
     "ExportRequest",
     "ExportSettings",

@@ -21,7 +21,7 @@ from photoedit.core.scan import SourceKind
 from photoedit.models import Photo, PhotoSort, SortOrder
 from photoedit.safety import PathGuard
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 3
 ID_LENGTH = 16  # hex digits of the SHA-256 used as photo id: 64 bits, collisions are not a practical concern
 
 _SCHEMA = """
@@ -54,14 +54,46 @@ CREATE TABLE photos (
     height INTEGER NOT NULL,
     rating INTEGER NOT NULL DEFAULT 0,
     style_id TEXT,
-    missing INTEGER NOT NULL DEFAULT 0
+    missing INTEGER NOT NULL DEFAULT 0,
+    has_edits INTEGER NOT NULL DEFAULT 0,
+    edit_revision TEXT,
+    as_shot_temperature REAL,
+    as_shot_tint REAL,
+    film_simulation TEXT,
+    dynamic_range INTEGER,
+    tone_black REAL,
+    tone_white REAL,
+    tone_anchors_identity TEXT
 );
 CREATE INDEX photos_parent ON photos (parent_key);
 CREATE TABLE state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
+
+def _v1_to_v2(db: sqlite3.Connection) -> None:
+    # Phase 3: edit flag, as-shot white balance and Fujifilm look settings. Photos imported before get the
+    # new facts on their next (incremental) re-import; until then they read as unknown.
+    for column in (
+        "has_edits INTEGER NOT NULL DEFAULT 0",
+        "edit_revision TEXT",
+        "as_shot_temperature REAL",
+        "as_shot_tint REAL",
+        "film_simulation TEXT",
+        "dynamic_range INTEGER",
+    ):
+        db.execute(f"ALTER TABLE photos ADD COLUMN {column}")
+
+
+def _v2_to_v3(db: sqlite3.Connection) -> None:
+    # P3.24: each photo's tone anchors (black/white point), measured lazily on the first render.
+    for column in ("tone_black REAL", "tone_white REAL", "tone_anchors_identity TEXT"):
+        db.execute(f"ALTER TABLE photos ADD COLUMN {column}")
+
+
 # Migrations from version N to N + 1, applied in order when an older catalog is opened.
-_MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {}
+_MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {1: _v1_to_v2, 2: _v2_to_v3}
+
+_TONE_ANCHOR_COLUMNS = ("tone_black", "tone_white", "tone_anchors_identity")
 
 _SORT_SQL = {
     # NULL dates sort last in ascending order; filename breaks ties so the order is stable.
@@ -100,8 +132,18 @@ class CatalogPhoto(BaseModel):
     rating: int = Field(default=0, ge=0, le=5)
     style_id: str | None = None
     missing: bool = False
+    has_edits: bool = False
+    edit_revision: str | None = None
+    as_shot_temperature: float | None = None
+    as_shot_tint: float | None = None
+    film_simulation: str | None = None
+    dynamic_range: int | None = None
+    # Tone anchors in stops (see core.render.anchors) and the render identity they were measured with.
+    tone_black: float | None = None
+    tone_white: float | None = None
+    tone_anchors_identity: str | None = None
 
-    def to_photo(self) -> Photo:
+    def to_photo(self, image_version: str = "") -> Photo:
         return Photo(
             id=self.id,
             path=self.path.as_posix(),
@@ -119,6 +161,8 @@ class CatalogPhoto(BaseModel):
             height=self.height,
             rating=self.rating,
             style_id=self.style_id,
+            has_overrides=self.has_edits,
+            image_version=image_version,
             sidecar_jpeg=self.sidecar_jpeg.as_posix() if self.sidecar_jpeg else None,
         )
 
@@ -164,6 +208,15 @@ class Catalog:
         row = self._one("SELECT * FROM photos WHERE id = ?", (photo_id,))
         return _photo(row) if row else None
 
+    def find(self, name: str) -> CatalogPhoto | None:
+        """A photo by id, file name or file name without extension (case-insensitive); newest import first."""
+        row = self._one(
+            "SELECT * FROM photos WHERE missing = 0 AND (id = ? OR filename = ? COLLATE NOCASE OR "
+            "filename LIKE ? ESCAPE '!' COLLATE NOCASE) ORDER BY rowid DESC LIMIT 1",
+            (name, name, name.replace("!", "!!").replace("%", "!%").replace("_", "!_") + ".%"),
+        )
+        return _photo(row) if row else None
+
     def get_by_path(self, path: Path) -> CatalogPhoto | None:
         row = self._one("SELECT * FROM photos WHERE path_key = ?", (path_key(path),))
         return _photo(row) if row else None
@@ -173,7 +226,12 @@ class Catalog:
         values = _row_values(photo)
         columns = ", ".join(values)
         placeholders = ", ".join(f":{name}" for name in values)
-        updates = ", ".join(f"{name} = excluded.{name}" for name in values if name not in ("id", "rating"))
+        updates = ", ".join(
+            f"{name} = excluded.{name}"
+            for name in values
+            # The id is the content hash, so facts measured from the pixels stay valid for the same id.
+            if name not in ("id", "rating", "has_edits", "edit_revision", *_TONE_ANCHOR_COLUMNS)
+        )
         with self._transaction() as db:
             # Another row may hold this path with older content (the file was edited elsewhere): replace it.
             db.execute("DELETE FROM photos WHERE path_key = :path_key AND id != :id", values)
@@ -181,6 +239,28 @@ class Catalog:
                 f"INSERT INTO photos ({columns}) VALUES ({placeholders}) "
                 f"ON CONFLICT(id) DO UPDATE SET {updates}",
                 values,
+            )
+
+    def set_as_shot(self, photo_id: str, temperature: float, tint: float) -> None:
+        with self._transaction() as db:
+            db.execute(
+                "UPDATE photos SET as_shot_temperature = ?, as_shot_tint = ? WHERE id = ?",
+                (temperature, tint, photo_id),
+            )
+
+    def set_tone_anchors(self, photo_id: str, black: float, white: float, identity: str) -> None:
+        with self._transaction() as db:
+            db.execute(
+                "UPDATE photos SET tone_black = ?, tone_white = ?, tone_anchors_identity = ? WHERE id = ?",
+                (black, white, identity, photo_id),
+            )
+
+    def set_edit(self, photo_id: str, revision: str | None) -> None:
+        """Record a photo's current edit revision (None = unedited)."""
+        with self._transaction() as db:
+            db.execute(
+                "UPDATE photos SET has_edits = ?, edit_revision = ? WHERE id = ?",
+                (int(revision is not None), revision, photo_id),
             )
 
     def mark_missing(self, folder: Path, *, recursive: bool, present_ids: set[str]) -> int:
@@ -341,6 +421,15 @@ def _row_values(photo: CatalogPhoto) -> dict[str, Any]:
         "rating": photo.rating,
         "style_id": photo.style_id,
         "missing": int(photo.missing),
+        "has_edits": int(photo.has_edits),
+        "edit_revision": photo.edit_revision,
+        "as_shot_temperature": photo.as_shot_temperature,
+        "as_shot_tint": photo.as_shot_tint,
+        "film_simulation": photo.film_simulation,
+        "dynamic_range": photo.dynamic_range,
+        "tone_black": photo.tone_black,
+        "tone_white": photo.tone_white,
+        "tone_anchors_identity": photo.tone_anchors_identity,
     }
 
 
@@ -349,6 +438,7 @@ def _photo(row: sqlite3.Row) -> CatalogPhoto:
     for name in ("path_key", "parent_key", "filename"):
         data.pop(name)
     data["missing"] = bool(data["missing"])
+    data["has_edits"] = bool(data["has_edits"])
     return CatalogPhoto.model_validate(data)
 
 
