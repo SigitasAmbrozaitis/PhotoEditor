@@ -354,3 +354,63 @@ class ConsistencyReport(_Model):
     look_hash: str | None
     photos: list[ReportPhoto]
     spread: list[Spread]
+
+
+# ----------------------------------------------------------------- editing + history
+
+
+class StyleUpdate(_Model):
+    """A change to a style. Fields left out stay as they are."""
+
+    expected_version: int = Field(ge=1, description="The version the change is based on (conflict if newer).")
+    change_note: str = Field(default="", max_length=500)
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    description: str | None = Field(default=None, max_length=2000)
+    best_for: list[str] | None = None
+    avoid_on: list[str] | None = None
+    values: dict[str, Any] | None = None
+    rules: list[StyleRule] | None = None
+    test_photo_ids: list[str] | None = None
+
+
+class StyleCreate(_Model):
+    """A new style from explicit values (creating one from a photo uses ``StyleFromPhoto``)."""
+
+    name: str = Field(min_length=1, max_length=80)
+    description: str = Field(default="", max_length=2000)
+    best_for: list[str] = Field(default_factory=list)
+    avoid_on: list[str] = Field(default_factory=list)
+    values: dict[str, Any] = Field(default_factory=dict)
+    rules: list[StyleRule] = Field(default_factory=list)
+    test_photo_ids: list[str] = Field(default_factory=list)
+
+
+class StyleVersionInfo(_Model):
+    version: int
+    updated_at: datetime
+    change_note: str
+    look_hash: str
+
+
+class ValueChange(_Model):
+    name: str
+    before: Any = Field(description="None = not set by that version.")
+    after: Any
+
+
+class RuleChange(_Model):
+    type: str
+    before: dict[str, Any] | None = Field(description="None = no such rule in that version.")
+    after: dict[str, Any] | None
+
+
+class StyleDiff(_Model):
+    """What differs between two versions of a style."""
+
+    style_id: str
+    a: int
+    b: int
+    values: list[ValueChange]
+    rules: list[RuleChange]
+    fields: list[str] = Field(description="Other changed fields (name, description, test set, …).")
+    same_look: bool

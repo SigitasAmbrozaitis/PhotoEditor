@@ -651,7 +651,7 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
   `PhotoEdit` also has `style_error` and `group` (`GroupReference`); `AdjustmentParams.with_values()` / `dotted()`
   handle dotted names. Later-phase names are rejected by core when a style is saved or used (P4.3/P4.5), because
   the list lives in the engine. The mock styles were adapted to the new format until P4.7 removes them.
-- [ ] **P4.3** `core/styles.py` `StyleLibrary` over `styles/` (all writes atomic and through the path guard):
+- [x] **P4.3** `core/styles.py` `StyleLibrary` over `styles/` (all writes atomic and through the path guard):
   - list (a broken `style.json` is listed as broken with its error, so it doesn't break the list), get, create (id
     from the name; slug collision → `-2`, `-3`…), update (optimistic: `expected_version` mismatch → conflict error),
     duplicate, delete (removes the folder).
@@ -664,6 +664,9 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
 
   Tests in `tmp_path`: CRUD, slug collisions, version conflict, a broken file, a newer schema, README content,
   history/diff/revert, and writes outside `styles/` refused.
+  Done: saving samples (`set_samples`) is not a new version (samples are derived from the look). Duplicates copy
+  the look, text and test set but not the samples. `ConflictError` maps to HTTP 409. Request models
+  `StyleCreate`, `StyleUpdate`, `StyleDiff` and `StyleVersionInfo` live in `models/style.py`.
 - [ ] **P4.4** Photo measurements for the rules: extend the anchor measurement into `PhotoStats` (black, white,
   **middle** = median, and the **neutral WB estimate**: the temperature/tint that makes the photo's near-neutral
   midtone pixels gray, found in camera space and converted with `color.as_shot_temperature_tint`). One pass, the same
