@@ -780,7 +780,7 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
   version as a `StyleView`), `POST /duplicate` (`{name?}`) and `DELETE` returns `{id, photos}`. Invalid style values
   are 400 with the reason (checked when the style is built); malformed bodies are 422. `DELETE /photos/{id}/edit`
   keeps the style (P4.6).
-- [ ] **P4.9** CLI:
+- [x] **P4.9** CLI:
   - `photoedit style list | show ID | check` (validates every style file)
   - `photoedit style apply ID [PHOTO…|--folder] [--even-out]` and `--remove`
   - `photoedit style samples ID PHOTO…`
@@ -791,6 +791,11 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
   - `photoedit style history ID`, `diff ID A B`, `revert ID N`.
 
   Tests with `CliRunner`.
+  Done: removing is `photoedit style remove [PHOTO…]` (not `apply --remove`); photos default to the Library's
+  current folder. The contact sheet (`core/style_sheet.py`) is one row per photo, labeled with its middle
+  brightness before → after and every rule's result; `--version N` adds a column with version N. Found while
+  testing: a hand-written `style.json` has no history, so the first change now saves the replaced version to
+  `history/` too.
 
 ### UI
 - [ ] **P4.10** Styles screens on real data (the `DEMO DATA` tag leaves them):

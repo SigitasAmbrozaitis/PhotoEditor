@@ -7,12 +7,17 @@ import sys
 import threading
 import webbrowser
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 
 from photoedit import __version__
 from photoedit.config import load_settings
+
+if TYPE_CHECKING:
+    from photoedit.core.catalog import CatalogPhoto
+    from photoedit.models import Job
+    from photoedit.services import Services
 
 app = typer.Typer(
     name="photoedit", help="Agent-driven, non-destructive RAW photo editor.", no_args_is_help=True
@@ -27,6 +32,10 @@ golden_app = typer.Typer(
     help="Golden reference renders of your sample photos (kept local).", no_args_is_help=True
 )
 app.add_typer(golden_app, name="golden")
+style_app = typer.Typer(
+    help="Styles: list, apply, samples, contact sheets, reports, history.", no_args_is_help=True
+)
+app.add_typer(style_app, name="style")
 
 ConfigOption = Annotated[
     Path | None,
@@ -318,6 +327,253 @@ def contact_sheet(
                 raise typer.BadParameter(str(exc), param_hint="--group") from None
             path = services.guard.write_atomic(out_dir / f"{found.path.stem}-{name}.jpg", data)
             typer.echo(f"wrote {path}")
+    finally:
+        services.close()
+
+
+# ----------------------------------------------------------------- styles
+
+StyleArg = Annotated[str, typer.Argument(help="Style id (its folder name under styles/).")]
+PhotosArg = Annotated[
+    list[str] | None,
+    typer.Argument(help="Imported photos (file names like DSCF5437, or ids). Default: the current folder."),
+]
+
+
+def _open_services(config: Path | None) -> Services:
+    from photoedit.services import Services
+
+    return Services(load_settings(config))
+
+
+def _find_photos(services: Services, names: list[str] | None) -> list[CatalogPhoto]:
+    """The named photos, or every photo of the Library's current folder."""
+    if not names:
+        page = services.library.list_photos(limit=500)
+        return [services.library.photo(p.id) for p in page.items]
+    found = []
+    for name in names:
+        photo = services.catalog.find(name)
+        if photo is None:
+            raise typer.BadParameter(
+                f"no imported photo called '{name}' (import its folder first)", param_hint="PHOTO"
+            )
+        found.append(photo)
+    return found
+
+
+def _run_job(services: Services, job: Job) -> Job:
+    from photoedit.models import JobStatus
+
+    typer.echo(f"{job.title}...")
+    done = services.jobs.wait(job.id)
+    for item in done.items:
+        if item.status is JobStatus.FAILED:
+            typer.echo(f"  failed: {item.filename}: {item.message}", err=True)
+    typer.echo(done.summary or done.status.value)
+    if done.status is JobStatus.FAILED:
+        raise typer.Exit(1)
+    return done
+
+
+@style_app.command("list")
+def style_list(config: ConfigOption = None) -> None:
+    """List the styles with their version and how many photos use them."""
+    services = _open_services(config)
+    try:
+        for s in services.styling.summaries():
+            status = f"ERROR: {s.error}" if s.error else f"v{s.version}, {s.photo_count} photos"
+            typer.echo(f"{s.id:<28} {s.name:<28} {status}")
+    finally:
+        services.close()
+
+
+@style_app.command("show")
+def style_show(style: StyleArg, config: ConfigOption = None) -> None:
+    """Print a style as JSON (with derived fields: look hash, photo count, samples)."""
+    services = _open_services(config)
+    try:
+        typer.echo(services.styling.view(style).model_dump_json(indent=2))
+    finally:
+        services.close()
+
+
+@style_app.command("check")
+def style_check(config: ConfigOption = None) -> None:
+    """Validate every style file. Exits with 1 if any is invalid."""
+    services = _open_services(config)
+    try:
+        listings = services.styles.listings()
+    finally:
+        services.close()
+    for entry in listings:
+        typer.echo(f"{entry.id}: {'ok' if entry.style else entry.error}")
+    if any(entry.style is None for entry in listings):
+        raise typer.Exit(1)
+    typer.echo(f"{len(listings)} style{'s' if len(listings) != 1 else ''} valid")
+
+
+@style_app.command("apply")
+def style_apply(
+    style: StyleArg,
+    photos: PhotosArg = None,
+    even_out: Annotated[
+        bool, typer.Option("--even-out", help="Even the photos out as a group (the style's exposure rule).")
+    ] = False,
+    config: ConfigOption = None,
+) -> None:
+    """Apply a style to photos (writes edit files only; the originals are never touched)."""
+    services = _open_services(config)
+    try:
+        found = _find_photos(services, photos)
+        _run_job(services, services.styling.apply([p.id for p in found], style, even_out=even_out))
+    finally:
+        services.close()
+
+
+@style_app.command("remove")
+def style_remove(photos: PhotosArg = None, config: ConfigOption = None) -> None:
+    """Remove the style from photos (their own tweaks are kept)."""
+    services = _open_services(config)
+    try:
+        found = _find_photos(services, photos)
+        _run_job(services, services.styling.apply([p.id for p in found], None))
+    finally:
+        services.close()
+
+
+@style_app.command("samples")
+def style_samples(
+    style: StyleArg,
+    photos: Annotated[
+        list[str], typer.Argument(help="1-12 imported photos to render as before/after pairs.")
+    ],
+    config: ConfigOption = None,
+) -> None:
+    """Render the style's sample pairs into styles/<id>/samples/."""
+    services = _open_services(config)
+    try:
+        found = _find_photos(services, photos)
+        _run_job(services, services.styling.render_samples(style, [p.id for p in found]))
+    finally:
+        services.close()
+
+
+@style_app.command("contact-sheet")
+def style_contact_sheet(
+    style: StyleArg,
+    test_set: Annotated[bool, typer.Option("--test-set", help="Use the style's test set.")] = False,
+    count: Annotated[int, typer.Option(min=1, max=60, help="Photos of the current folder.")] = 12,
+    version: Annotated[
+        int | None, typer.Option(help="Also render this older version, next to the current one.")
+    ] = None,
+    config: ConfigOption = None,
+) -> None:
+    """Before/after of one style across many photos into output/contact-sheets/, labeled with what the rules
+    did on each photo."""
+    from photoedit.core.style_sheet import render_style_sheet
+
+    services = _open_services(config)
+    try:
+        current = services.styles.get(style)
+        if test_set:
+            if not current.test_photo_ids:
+                raise typer.BadParameter("the style has no test set", param_hint="--test-set")
+            found = [services.library.photo(pid) for pid in current.test_photo_ids]
+        else:
+            found = _find_photos(services, None)[:count]
+        if not found:
+            raise typer.BadParameter("no photos: open a folder in the Library first, or use --test-set")
+        compare = services.styles.version(style, version) if version is not None else None
+        data = render_style_sheet(services.library, current, found, compare=compare)
+        suffix = f"-v{version}-v{current.version}" if version is not None else f"-v{current.version}"
+        out = services.settings.output_dir / "contact-sheets" / f"style-{style}{suffix}.jpg"
+        typer.echo(f"wrote {services.guard.write_atomic(out, data)}")
+    finally:
+        services.close()
+
+
+@style_app.command("report")
+def style_report(
+    style: StyleArg,
+    photos: Annotated[
+        list[str] | None, typer.Argument(help="Photos to report on. Default: the test set, else its photos.")
+    ] = None,
+    as_json: Annotated[bool, typer.Option("--json", help="Print the full report as JSON.")] = False,
+    config: ConfigOption = None,
+) -> None:
+    """How consistent the style makes the photos: each photo's brightness before -> after, and the spread."""
+    services = _open_services(config)
+    try:
+        ids = [p.id for p in _find_photos(services, photos)] if photos else None
+        report = services.styling.report(style, ids)
+    finally:
+        services.close()
+    if as_json:
+        typer.echo(report.model_dump_json(indent=2))
+        return
+    for p in report.photos:
+        before, after = p.before.middle, p.after.middle
+        middle = (
+            f"{before:+.2f} -> {after:+.2f}" if before is not None and after is not None else "not measured"
+        )
+        rules = " | ".join(r.summary for r in p.rules)
+        typer.echo(f"{p.filename:<16} middle {middle}  dev {p.deviation:+.2f}  {rules}")
+    typer.echo("")
+    typer.echo(
+        f"{'spread':<12} {'MAD before':>10} {'MAD after':>10} {'range before':>13} {'range after':>12}"
+    )
+    for s in report.spread:
+        mads = f"{s.before_mad:>10.2f} {s.after_mad:>10.2f}"
+        typer.echo(f"{s.measure:<12} {mads} {s.before_range:>13.2f} {s.after_range:>12.2f}")
+
+
+@style_app.command("history")
+def style_history(style: StyleArg, config: ConfigOption = None) -> None:
+    """The style's saved versions, newest first."""
+    services = _open_services(config)
+    try:
+        for v in services.styles.history(style):
+            typer.echo(f"v{v.version:<4} {v.updated_at:%Y-%m-%d %H:%M}  look {v.look_hash}  {v.change_note}")
+    finally:
+        services.close()
+
+
+@style_app.command("diff")
+def style_diff(
+    style: StyleArg,
+    a: Annotated[int, typer.Argument(help="Older version.")],
+    b: Annotated[int, typer.Argument(help="Newer version.")],
+    config: ConfigOption = None,
+) -> None:
+    """What changed between two versions of a style."""
+    services = _open_services(config)
+    try:
+        diff = services.styles.diff(style, a, b)
+    finally:
+        services.close()
+    for change in diff.values:
+        typer.echo(f"{change.name}: {change.before} -> {change.after}")
+    for rule in diff.rules:
+        typer.echo(f"rule {rule.type}: {rule.before} -> {rule.after}")
+    if diff.fields:
+        typer.echo(f"also changed: {', '.join(diff.fields)}")
+    if diff.same_look:
+        typer.echo("same look")
+
+
+@style_app.command("revert")
+def style_revert(
+    style: StyleArg,
+    version: Annotated[int, typer.Argument(help="The version to bring back (saved as a new version).")],
+    config: ConfigOption = None,
+) -> None:
+    """Bring back an older version of a style; every photo using it follows."""
+    services = _open_services(config)
+    try:
+        current = services.styles.get(style)
+        reverted = services.styling.revert(style, version, expected_version=current.version)
+        typer.echo(f"{style}: version {reverted.version} = version {version}")
     finally:
         services.close()
 

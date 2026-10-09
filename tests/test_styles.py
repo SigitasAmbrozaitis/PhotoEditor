@@ -260,3 +260,21 @@ def protected_lib(tmp_path: Path) -> Iterator[StyleLibrary]:
 def test_styles_folder_inside_a_protected_photo_folder_is_refused(protected_lib: StyleLibrary) -> None:
     with pytest.raises(WriteNotAllowedError, match="protected"):
         _create(protected_lib)
+
+
+def test_a_hand_written_style_keeps_its_first_version_in_history(lib: StyleLibrary, root: Path) -> None:
+    folder = root / "hand"
+    folder.mkdir(parents=True)
+    data = {
+        "id": "hand",
+        "name": "Hand",
+        "values": {"tone.contrast": 5},
+        "created_at": T0.isoformat(),
+        "updated_at": T0.isoformat(),
+        "version": 3,
+    }
+    (folder / "style.json").write_text(json.dumps(data), encoding="utf-8")
+    assert [v.version for v in lib.history("hand")] == []
+    _update(lib, "hand", 3, "first change", values={})
+    assert [v.version for v in lib.history("hand")] == [4, 3]
+    assert lib.version("hand", 3).values == {"tone.contrast": 5.0}

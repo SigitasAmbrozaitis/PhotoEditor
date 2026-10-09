@@ -229,6 +229,10 @@ class StyleLibrary:
             "change_note": note,
         }
         style = _build(data, f"style '{current.id}'")
+        # A style written by hand (or by an older tool) has no history yet: keep the version being replaced.
+        replaced = self.folder(current.id) / HISTORY_DIR / f"v{current.version}.json"
+        if not replaced.is_file():
+            self._guard.write_atomic(replaced, (current.model_dump_json(indent=2) + "\n").encode("utf-8"))
         self._write(style)
         return style
 
