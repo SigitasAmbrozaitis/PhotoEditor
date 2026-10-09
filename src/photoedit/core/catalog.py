@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -17,11 +17,12 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from photoedit.core.metadata import camera_ev, parse_shutter
 from photoedit.core.scan import SourceKind
 from photoedit.models import Photo, PhotoSort, SortOrder
 from photoedit.safety import PathGuard
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 ID_LENGTH = 16  # hex digits of the SHA-256 used as photo id: 64 bits, collisions are not a practical concern
 
 _SCHEMA = """
@@ -63,7 +64,11 @@ CREATE TABLE photos (
     dynamic_range INTEGER,
     tone_black REAL,
     tone_white REAL,
-    tone_anchors_identity TEXT
+    tone_anchors_identity TEXT,
+    tone_middle REAL,
+    neutral_temperature REAL,
+    neutral_tint REAL,
+    exposure_time REAL
 );
 CREATE INDEX photos_parent ON photos (parent_key);
 CREATE TABLE state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -90,10 +95,30 @@ def _v2_to_v3(db: sqlite3.Connection) -> None:
         db.execute(f"ALTER TABLE photos ADD COLUMN {column}")
 
 
-# Migrations from version N to N + 1, applied in order when an older catalog is opened.
-_MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {1: _v1_to_v2, 2: _v2_to_v3}
+def _v3_to_v4(db: sqlite3.Connection) -> None:
+    # P4.4: the measurements styles' adaptive rules use (filled lazily with the anchors, which are measured
+    # again once so all of them come from the same pass), and the exact exposure time for the camera EV, read
+    # back from the stored shutter text for photos imported before (accurate to < 0.01 EV).
+    for column in ("tone_middle REAL", "neutral_temperature REAL", "neutral_tint REAL", "exposure_time REAL"):
+        db.execute(f"ALTER TABLE photos ADD COLUMN {column}")
+    rows = db.execute("SELECT id, shutter FROM photos WHERE shutter IS NOT NULL").fetchall()
+    db.executemany(
+        "UPDATE photos SET exposure_time = ? WHERE id = ?", [(parse_shutter(r[1]), r[0]) for r in rows]
+    )
 
-_TONE_ANCHOR_COLUMNS = ("tone_black", "tone_white", "tone_anchors_identity")
+
+# Migrations from version N to N + 1, applied in order when an older catalog is opened.
+_MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {1: _v1_to_v2, 2: _v2_to_v3, 3: _v3_to_v4}
+
+# Measured from the pixels, so they stay valid for the same id across re-imports.
+_MEASURED_COLUMNS = (
+    "tone_black",
+    "tone_white",
+    "tone_middle",
+    "neutral_temperature",
+    "neutral_tint",
+    "tone_anchors_identity",
+)
 
 _SORT_SQL = {
     # NULL dates sort last in ascending order; filename breaks ties so the order is stable.
@@ -138,10 +163,20 @@ class CatalogPhoto(BaseModel):
     as_shot_tint: float | None = None
     film_simulation: str | None = None
     dynamic_range: int | None = None
-    # Tone anchors in stops (see core.render.anchors) and the render identity they were measured with.
+    # Per-photo measurements in stops / Kelvin (see core.render.anchors.PhotoStats) and the render identity
+    # they were measured with.
     tone_black: float | None = None
     tone_white: float | None = None
+    tone_middle: float | None = None
+    neutral_temperature: float | None = None
+    neutral_tint: float | None = None
     tone_anchors_identity: str | None = None
+    exposure_time: float | None = Field(default=None, gt=0, description="Seconds.")
+
+    @property
+    def camera_ev(self) -> float | None:
+        """The exposure dialed in (EV100), from EXIF; None if a setting is unknown."""
+        return camera_ev(self.aperture, self.exposure_time, self.iso)
 
     def to_photo(self, image_version: str = "") -> Photo:
         return Photo(
@@ -230,7 +265,7 @@ class Catalog:
             f"{name} = excluded.{name}"
             for name in values
             # The id is the content hash, so facts measured from the pixels stay valid for the same id.
-            if name not in ("id", "rating", "has_edits", "edit_revision", *_TONE_ANCHOR_COLUMNS)
+            if name not in ("id", "rating", "has_edits", "edit_revision", *_MEASURED_COLUMNS)
         )
         with self._transaction() as db:
             # Another row may hold this path with older content (the file was edited elsewhere): replace it.
@@ -248,11 +283,22 @@ class Catalog:
                 (temperature, tint, photo_id),
             )
 
-    def set_tone_anchors(self, photo_id: str, black: float, white: float, identity: str) -> None:
+    def set_photo_stats(self, photo_id: str, stats: Mapping[str, float], identity: str) -> None:
+        """Store a photo's measurements (``PhotoStats`` fields: black, white, middle, neutral_temperature,
+        neutral_tint) with the render identity they were measured with."""
         with self._transaction() as db:
             db.execute(
-                "UPDATE photos SET tone_black = ?, tone_white = ?, tone_anchors_identity = ? WHERE id = ?",
-                (black, white, identity, photo_id),
+                "UPDATE photos SET tone_black = ?, tone_white = ?, tone_middle = ?, neutral_temperature = ?,"
+                " neutral_tint = ?, tone_anchors_identity = ? WHERE id = ?",
+                (
+                    stats["black"],
+                    stats["white"],
+                    stats["middle"],
+                    stats["neutral_temperature"],
+                    stats["neutral_tint"],
+                    identity,
+                    photo_id,
+                ),
             )
 
     def set_edit(self, photo_id: str, revision: str | None) -> None:
@@ -430,6 +476,10 @@ def _row_values(photo: CatalogPhoto) -> dict[str, Any]:
         "tone_black": photo.tone_black,
         "tone_white": photo.tone_white,
         "tone_anchors_identity": photo.tone_anchors_identity,
+        "tone_middle": photo.tone_middle,
+        "neutral_temperature": photo.neutral_temperature,
+        "neutral_tint": photo.neutral_tint,
+        "exposure_time": photo.exposure_time,
     }
 
 

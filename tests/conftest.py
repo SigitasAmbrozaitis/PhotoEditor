@@ -39,6 +39,13 @@ def sample_raw(sample_photos_dir: Path) -> Path:
     return raws[0]
 
 
+@pytest.fixture(scope="session")
+def style_sample_dirs() -> dict[str, Path]:
+    """The configured style sample folders that exist (read-only!), by folder name. Golden tests that need
+    one skip without it."""
+    return {d.name: d for d in load_settings().style_sample_dirs if d.is_dir()}
+
+
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
     """Settings rooted in a temporary project folder, ignoring any real config.local.toml."""

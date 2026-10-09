@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import math
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -11,7 +12,9 @@ from PIL.TiffImagePlugin import IFDRational
 
 from photoedit.core.metadata import (
     MetadataError,
+    camera_ev,
     format_shutter,
+    parse_shutter,
     read_metadata,
     read_metadata_from_bytes,
 )
@@ -53,6 +56,7 @@ def test_reads_the_fuji_fields() -> None:
     assert meta.lens == "XF18-55mmF2.8-4 R LM OIS"
     assert meta.iso == 6400
     assert meta.shutter == "1/4000"
+    assert meta.exposure_time == pytest.approx(1 / 4000)
     assert meta.aperture == 4.5
     assert meta.focal_length == 55.0
     assert meta.captured_at == datetime(2026, 8, 11, 6, 2, 51)
@@ -95,6 +99,26 @@ def test_size_follows_orientation(orientation: int) -> None:
 )
 def test_format_shutter(seconds: float, shown: str) -> None:
     assert format_shutter(seconds) == shown
+    # The displayed text reads back to within the display rounding (< 0.01 EV).
+    parsed = parse_shutter(shown)
+    assert parsed is not None and abs(math.log2(parsed / seconds)) < 0.01
+
+
+@pytest.mark.parametrize("text", [None, "", "fast", "1/0", "0s", "-1s", "1/x"])
+def test_parse_shutter_rejects_garbage(text: str | None) -> None:
+    assert parse_shutter(text) is None
+
+
+def test_camera_ev() -> None:
+    # Sunny 16: f/16, 1/100 s, ISO 100 is EV100 ≈ 14.6.
+    assert camera_ev(16, 1 / 100, 100) == pytest.approx(math.log2(256 * 100))
+    # A faster shutter (less light) at the same aperture/ISO is exactly one stop more.
+    assert camera_ev(4.5, 1 / 500, 1000) - camera_ev(4.5, 1 / 250, 1000) == pytest.approx(1)  # type: ignore[operator]
+    # Doubling ISO is one stop less.
+    assert camera_ev(4.5, 1 / 500, 2000) - camera_ev(4.5, 1 / 500, 1000) == pytest.approx(-1)  # type: ignore[operator]
+    assert camera_ev(None, 1 / 500, 100) is None
+    assert camera_ev(4, None, 100) is None
+    assert camera_ev(4, 1 / 500, None) is None
 
 
 @pytest.mark.parametrize(
@@ -122,6 +146,7 @@ def test_missing_exif_gives_empty_fields() -> None:
         "lens": None,
         "iso": None,
         "shutter": None,
+        "exposure_time": None,
         "aperture": None,
         "focal_length": None,
         "film_simulation": None,

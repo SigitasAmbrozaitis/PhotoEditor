@@ -603,7 +603,7 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
     the group's reference instead of the style's fixed target.
   - **Style sample folders** (given 2026-10-09, read-only; all X-T3 · Provia · DR100, so the existing profile fits).
     They're configured as `style_sample_dirs` in `config.local.toml` (a new list setting, also used by the
-    `@pytest.mark.golden` tests) and imported into the catalog during P4.4:
+    `@pytest.mark.golden` tests) and imported into the catalog in P4.12 (where the test sets are chosen):
     - `2026-08-17`: orange cat + sunsets (6 photos; ISO 800, 1/60, EV spread 0.7 stops)
     - `2026-08-11`: both cats, orange and **black** (67; the existing sample folder; EV spread 6.9 stops)
     - `2026-07-26`: drift (113; old XF18-55 lens; 1/500–1/4000, ISO 1000/4000; EV spread 2.3 stops in one
@@ -667,7 +667,7 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
   Done: saving samples (`set_samples`) is not a new version (samples are derived from the look). Duplicates copy
   the look, text and test set but not the samples. `ConflictError` maps to HTTP 409. Request models
   `StyleCreate`, `StyleUpdate`, `StyleDiff` and `StyleVersionInfo` live in `models/style.py`.
-- [ ] **P4.4** Photo measurements for the rules: extend the anchor measurement into `PhotoStats` (black, white,
+- [x] **P4.4** Photo measurements for the rules: extend the anchor measurement into `PhotoStats` (black, white,
   **middle** = median, and the **neutral WB estimate**: the temperature/tint that makes the photo's near-neutral
   midtone pixels gray, found in camera space and converted with `color.as_shot_temperature_tint`). One pass, the same
   512 px input. Catalog schema v4 adds `tone_middle`, `neutral_temperature`, `neutral_tint`, filled lazily and
@@ -683,6 +683,17 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
   default target.
   Config: a `style_sample_dirs: list[Path]` setting (`config.example.toml` lists the four folders, commented).
   Golden tests skip a folder that isn't configured or present.
+  Done. Neutral estimate: a gray world over midtones near gray, starting from the median color with a radius
+  shrinking from 1.0 to 0.35 (log2 channel ratio), so a strong cast (tungsten on daylight balance) is found while
+  saturated subjects drop out. It falls back to as shot when fewer than 2 % of midtones qualify or the result is
+  no plausible light (outside 2500–12000 K or tint ±50: a frame filled by one colored subject).
+  Measured on all 369 sample RAFs (half size, 5 min): middle median **−2.7** (p10 −5.2, p90 −2.0), white point
+  median **−0.1** → `DEFAULT_EXPOSURE_TARGETS` (middle −2.7, highlights −0.1). Neutral − as shot: rally (daylight)
+  median −251 K (80 % within −582…+137 K); drift +834 K (asphalt and smoke read bluish); 2026-08-11 down to
+  −1800 K on the 06:00 sunrise shots (auto WB would remove the golden light, as expected: it's opt-in). As-shot
+  fallbacks: 18/67, 28/183, 4/6. Measurements are filled lazily (every stored photo is measured again once, in
+  one pass with the anchors, which keep their values).
+  `Settings.photo_dirs` = sample + style sample folders, all protected by the path guard.
 - [ ] **P4.5** Resolving a style for a photo (`core/styles.py`, pure functions): `resolve(defaults, style, stats,
   as_shot) → (AdjustmentParams, RuleResults)`.
   - Exposure: style exposure + the auto delta, per metering mode: `middle` moves the median to the target;

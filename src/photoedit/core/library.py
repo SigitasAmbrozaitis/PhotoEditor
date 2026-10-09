@@ -67,7 +67,7 @@ class Library:
         self.catalog = catalog
         # Edits live next to the catalog in the workspace unless told otherwise.
         self.edits = edits or EditStore(catalog.path.parent / "edits", guard)
-        self.renderer = renderer or Renderer(cache.root, guard, remember_anchors=catalog.set_tone_anchors)
+        self.renderer = renderer or Renderer(cache.root, guard, remember_stats=catalog.set_photo_stats)
         self.cache = cache
         self.jobs = jobs
         self._guard = guard
@@ -159,6 +159,7 @@ class Library:
             lens=meta.lens,
             iso=meta.iso,
             shutter=meta.shutter,
+            exposure_time=meta.exposure_time,
             aperture=meta.aperture,
             focal_length=meta.focal_length,
             orientation=meta.orientation,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import sqlite3
 import threading
 from datetime import datetime
@@ -249,8 +250,8 @@ def test_v1_catalog_is_migrated(workspace: Path) -> None:
         photo_path = PHOTOS / "old.RAF"
         db.execute(
             "INSERT INTO photos (id, sha256, path, path_key, parent_key, filename, kind, file_size,"
-            " mtime_ns, orientation, width, height, rating)"
-            " VALUES (?, ?, ?, ?, ?, 'old.RAF', 'raw', 1, 1, 1, 60, 40, 3)",
+            " mtime_ns, orientation, width, height, rating, shutter)"
+            " VALUES (?, ?, ?, ?, ?, 'old.RAF', 'raw', 1, 1, 1, 60, 40, 3, '1/500')",
             (
                 photo_id(_sha(9)),
                 _sha(9),
@@ -270,8 +271,11 @@ def test_v1_catalog_is_migrated(workspace: Path) -> None:
         None,
     )
     assert (old.tone_black, old.tone_white, old.tone_anchors_identity) == (None, None, None)
+    # v4: measurements are filled lazily; the exposure time is read back from the stored shutter text.
+    assert (old.tone_middle, old.neutral_temperature, old.neutral_tint) == (None, None, None)
+    assert old.exposure_time == pytest.approx(1 / 500)
     with sqlite3.connect(path) as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 3
+        assert db.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 4
 
 
 def test_has_edits_flag_survives_reimport(catalog: Catalog) -> None:
@@ -288,14 +292,31 @@ def test_has_edits_flag_survives_reimport(catalog: Catalog) -> None:
     )
 
 
-def test_tone_anchors_are_stored_and_survive_reimport(catalog: Catalog) -> None:
+def test_photo_stats_are_stored_and_survive_reimport(catalog: Catalog) -> None:
     catalog.upsert(_photo(1))
     pid = photo_id(_sha(1))
-    catalog.set_tone_anchors(pid, -7.5, 1.25, "identity-1")
-    catalog.upsert(_photo(1))  # a re-import knows nothing about anchors, and must not wipe them
+    stats = {"black": -7.5, "white": 1.25, "middle": -2.0, "neutral_temperature": 4800.0, "neutral_tint": 3.5}
+    catalog.set_photo_stats(pid, stats, "identity-1")
+    catalog.upsert(_photo(1))  # a re-import knows nothing about measurements, and must not wipe them
     stored = catalog.get(pid)
     assert stored is not None
-    assert (stored.tone_black, stored.tone_white, stored.tone_anchors_identity) == (-7.5, 1.25, "identity-1")
+    assert (stored.tone_black, stored.tone_white, stored.tone_middle, stored.tone_anchors_identity) == (
+        -7.5,
+        1.25,
+        -2.0,
+        "identity-1",
+    )
+    assert (stored.neutral_temperature, stored.neutral_tint) == (4800.0, 3.5)
+
+
+def test_camera_ev_and_exposure_time(catalog: Catalog) -> None:
+    catalog.upsert(_photo(1, aperture=4.5, iso=1000, exposure_time=1 / 500))
+    stored = catalog.get(photo_id(_sha(1)))
+    assert stored is not None and stored.exposure_time == pytest.approx(1 / 500)
+    assert stored.camera_ev == pytest.approx(math.log2(4.5**2 * 500) - math.log2(10))
+    catalog.upsert(_photo(2, aperture=4.5, iso=None, exposure_time=1 / 500))
+    unknown = catalog.get(photo_id(_sha(2)))
+    assert unknown is not None and unknown.camera_ev is None
 
 
 def test_find_by_id_or_file_name(catalog: Catalog) -> None:

@@ -20,7 +20,7 @@ from photoedit.core.cache import THUMBNAIL_LONG_EDGE, LinearCache, resize_linear
 from photoedit.core.catalog import CatalogPhoto
 from photoedit.core.decode import LinearImage, decode_linear, is_raw
 from photoedit.core.edits import EffectiveEdit
-from photoedit.core.render.anchors import ToneAnchors, measure_anchors
+from photoedit.core.render.anchors import PhotoStats, ToneAnchors, measure_stats
 from photoedit.core.render.pipeline import render, render_identity
 from photoedit.core.render.profile import CameraProfile, profile_for
 from photoedit.core.render.stages import quantize
@@ -29,8 +29,8 @@ from photoedit.safety import PathGuard
 PREVIEW_QUALITY = 90
 THUMBNAIL_QUALITY = 85
 
-# Stores a photo's tone anchors (photo id, black, white, render identity), e.g. in the catalog.
-type AnchorSink = Callable[[str, float, float, str], None]
+# Stores a photo's measurements (photo id, PhotoStats fields, render identity), e.g. in the catalog.
+type StatsSink = Callable[[str, dict[str, float], str], None]
 
 
 def profile_of(photo: CatalogPhoto) -> CameraProfile | None:
@@ -48,6 +48,20 @@ def profile_of(photo: CatalogPhoto) -> CameraProfile | None:
     return profile
 
 
+def stored_stats(photo: CatalogPhoto, identity: str) -> PhotoStats | None:
+    """The catalog's measurements of ``photo`` if they are complete and from render identity ``identity``."""
+    values = {
+        "black": photo.tone_black,
+        "white": photo.tone_white,
+        "middle": photo.tone_middle,
+        "neutral_temperature": photo.neutral_temperature,
+        "neutral_tint": photo.neutral_tint,
+    }
+    if photo.tone_anchors_identity != identity or any(v is None for v in values.values()):
+        return None
+    return PhotoStats.model_validate(values)
+
+
 class Renderer:
     def __init__(
         self,
@@ -55,37 +69,37 @@ class Renderer:
         guard: PathGuard,
         linear: LinearCache | None = None,
         *,
-        remember_anchors: AnchorSink | None = None,
+        remember_stats: StatsSink | None = None,
     ) -> None:
         self._guard = guard
         self.identity = render_identity()
         self._root = cache_dir / "renders" / self.identity
         self.linear = linear or LinearCache()
-        self._remember_anchors = remember_anchors
-        self._anchors: dict[str, ToneAnchors] = {}
+        self._remember_stats = remember_stats
+        self._stats: dict[str, PhotoStats] = {}
         self._locks: dict[Path, threading.Lock] = {}
         self._locks_lock = threading.Lock()
 
     def anchors(self, photo: CatalogPhoto, base: LinearImage | None = None) -> ToneAnchors:
-        """The photo's tone anchors: the stored ones if this engine measured them, else measured now (on
-        ``base``, the in-memory base, or a fresh decode) and handed to ``remember_anchors``."""
-        if (
-            photo.tone_anchors_identity == self.identity
-            and photo.tone_black is not None
-            and photo.tone_white is not None
-        ):
-            return ToneAnchors(black=photo.tone_black, white=photo.tone_white)
+        return self.stats(photo, base).anchors
+
+    def stats(self, photo: CatalogPhoto, base: LinearImage | None = None) -> PhotoStats:
+        """The photo's measurements: the stored ones if this engine measured them, else measured now (on
+        ``base``, the in-memory base, or a fresh decode) and handed to ``remember_stats``."""
+        stored = stored_stats(photo, self.identity)
+        if stored is not None:
+            return stored
         with self._locks_lock:
-            known = self._anchors.get(photo.id)
+            known = self._stats.get(photo.id)
         if known is not None:
             return known
         if base is None:
             base = self.linear.peek(photo.id) or decode_linear(photo.path, half_size=is_raw(photo.path))
-        measured = measure_anchors(base, profile_of(photo))
+        measured = measure_stats(base, profile_of(photo))
         with self._locks_lock:
-            self._anchors[photo.id] = measured
-        if self._remember_anchors is not None:
-            self._remember_anchors(photo.id, measured.black, measured.white, self.identity)
+            self._stats[photo.id] = measured
+        if self._remember_stats is not None:
+            self._remember_stats(photo.id, measured.model_dump(), self.identity)
         return measured
 
     def preview_path(self, photo: CatalogPhoto, edit: EffectiveEdit, long_edge: int) -> Path:

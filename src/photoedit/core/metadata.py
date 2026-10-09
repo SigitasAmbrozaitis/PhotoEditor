@@ -75,6 +75,7 @@ class PhotoMetadata(BaseModel):
     lens: str | None = None
     iso: int | None = Field(default=None, ge=1)
     shutter: str | None = None
+    exposure_time: float | None = Field(default=None, gt=0, description="Seconds, as recorded.")
     aperture: float | None = Field(default=None, gt=0)
     focal_length: float | None = Field(default=None, gt=0)
     orientation: int = Field(default=1, ge=1, le=8, description="EXIF orientation of the stored pixels.")
@@ -116,6 +117,29 @@ def format_shutter(seconds: float) -> str:
     return "1/" + f"{denominator:.1f}".rstrip("0").rstrip(".")
 
 
+def parse_shutter(text: str | None) -> float | None:
+    """Seconds from a displayed exposure time (``format_shutter``'s output); None if it can't be read."""
+    if not text:
+        return None
+    value = text.strip().removesuffix("s")
+    try:
+        seconds = 1 / float(value[2:]) if value.startswith("1/") else float(value)
+    except (ValueError, ZeroDivisionError):
+        return None
+    return seconds if seconds > 0 else None
+
+
+def camera_ev(aperture: float | None, exposure_time: float | None, iso: int | None) -> float | None:
+    """The exposure the photographer dialed in, as EV100 = log2(N² / t) - log2(ISO / 100).
+
+    One stop less light (a faster shutter, a smaller aperture or a lower ISO) is +1. Two photos of the same
+    scene in the same light differ in brightness by exactly their EV100 difference, whatever they show.
+    """
+    if aperture is None or exposure_time is None or iso is None:
+        return None
+    return math.log2(aperture**2 / exposure_time) - math.log2(iso / 100)
+
+
 def _from_image(image: Image.Image) -> PhotoMetadata:
     try:
         exif = image.getexif()
@@ -141,6 +165,7 @@ def _from_image(image: Image.Image) -> PhotoMetadata:
         lens=_text(tag(_LENS_MODEL)),
         iso=_iso(tag(_ISO)),
         shutter=format_shutter(exposure) if exposure is not None else None,
+        exposure_time=exposure,
         aperture=_positive_float(tag(_FNUMBER)),
         focal_length=_positive_float(tag(_FOCAL_LENGTH)),
         orientation=orientation,

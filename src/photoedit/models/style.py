@@ -20,6 +20,10 @@ from photoedit.models.adjustments import AdjustmentParams
 STYLE_ID_PATTERN = r"^[a-z0-9]+(-[a-z0-9]+)*$"
 STYLE_SCHEMA_VERSION = 1
 RULE_VERSIONS = {"exposure": 1, "white_balance": 1}
+# Default exposure targets in stops relative to mid gray: the medians over the 369 style sample photos
+# (P4.4, docs/styles.md), so an average photo barely changes. camera_settings has no fixed target: it evens
+# out a group, and without one it meters like ``middle``.
+DEFAULT_EXPOSURE_TARGETS = {"middle": -2.7, "highlights": -0.1}
 
 # Parameter groups a style may not set: geometry is per photo, white balance goes through a white_balance rule
 # (a fixed Kelvin value would look wrong on photos shot under other light).
