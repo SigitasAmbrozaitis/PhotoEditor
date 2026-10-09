@@ -600,9 +600,19 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
     changes. It's measured in P4.4 and written into `docs/styles.md`.
   - **Even out a group** is a checkbox in "Apply style…", **off by default**. When it's on, the exposure rule targets
     the group's reference instead of the style's fixed target.
-  - **The cat and rally photos aren't in the catalog yet.** The test styles' test sets start from the
-    `2026-08-11` samples (bright, dark, backlit, night). Before the human test, add a folder with a few cat and car
-    shots to cover the hard cases (optional, but it makes step 2 meaningful).
+  - **Style sample folders** (given 2026-10-09, read-only; all X-T3 · Provia · DR100, so the existing profile fits).
+    They're configured as `style_sample_dirs` in `config.local.toml` (a new list setting, also used by the
+    `@pytest.mark.golden` tests) and imported into the catalog during P4.4:
+    - `2026-08-17`: orange cat + sunsets (6 photos; ISO 800, 1/60, EV spread 0.7 stops)
+    - `2026-08-11`: both cats, orange and **black** (67; the existing sample folder; EV spread 6.9 stops)
+    - `2026-07-26`: drift (113; 1/500–1/4000, ISO 1000/4000; EV spread 2.3 stops in one session, a good
+      "even out" test). Framing will be tighter in future shoots (new longer lens), so nothing may depend on it.
+    - `2026-08-16`: rally (183; f/9–14, **1/60–1/3195**: panning and freeze shots mixed, light changes between
+      stages; EV spread 4.7 stops). Camera-settings evening-out only holds within a run of shots in the same
+      light, so whole-folder grouping is left to later (see Phase 8).
+
+    The test styles' test sets (P4.12) pick hard cases from all four folders: the black cat, the orange cat, a
+    sunset, a backlit or night shot, drift shots at different settings, and rally panning vs. freeze shots.
 
 ### Core
 - [ ] **P4.2** Models (`models/style.py`, the API contract):
@@ -656,7 +666,10 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
   results.
   Tests: synthetic images with a known median and a known color cast (estimate within 100 K / 3 tint), EV100 math
   (known settings → known EV), catalog v4 migration, lazy fill. Golden: on the samples, the daylight shots' neutral
-  estimate is near as-shot. Print the median-of-middles for P4.1's default target.
+  estimate is near as-shot. Print the median-of-middles over all four style sample folders (369 photos) for P4.1's
+  default target.
+  Config: a `style_sample_dirs: list[Path]` setting (`config.example.toml` lists the four folders, commented).
+  Golden tests skip a folder that isn't configured or present.
 - [ ] **P4.5** Resolving a style for a photo (`core/styles.py`, pure functions): `resolve(defaults, style, stats,
   as_shot) → (AdjustmentParams, RuleResults)`.
   - Exposure: style exposure + the auto delta, per metering mode: `middle` moves the median to the target;
@@ -763,7 +776,8 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
     blacks (tone curve), highlights −30; greens toned down; warm highlight / cool shadow grading; a light vignette.
   - `test-classic-bw`: auto exposure (`highlights` metering), saturation −100, strong contrast, deep blacks.
 
-  Their test sets are 6–8 varied `2026-08-11` photos (bright, dark, backlit, night). Render their samples locally,
+  Their test sets are 8–10 photos chosen across the four style sample folders (P4.1): black cat, orange cat,
+  sunset, backlit/night, drift at two settings, rally panning and freeze. Render their samples locally,
   run the report and the contact sheet over the whole folder, and record the before → after spread in
   `docs/styles.md`. That file documents the format, precedence, rules and metering modes (when to use which, with
   the black-cat and manual-series cases), the measured default target, how to write a style by hand, and **how to
@@ -786,9 +800,10 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
 2. Library (`2026-08-11`) → select all → **Apply style…** → **Test · Warm Matte** → apply without export → a job
    runs and the thumbnails switch to the style. They look **consistent** across bright, dark and backlit shots
    (auto exposure evens them out). Night shots get brighter only within the style's max change.
-2b. Select a series shot in the same light with different settings → apply with **Even out these photos** → their
-   brightness matches more closely than without it. If you added cat/car photos: on the black cat, **highlights**
-   metering keeps it black, while **middle** pulls it toward gray (switch the rule in the style and compare).
+2b. Open the drift folder (`2026-07-26`) → select a run of shots in the same light with different settings → apply
+   with **Even out these photos** → their brightness matches more closely than without it. In `2026-08-11`, on the
+   black cat, **highlights** metering keeps it black, while **middle** pulls it toward gray (switch the rule in
+   the style and compare). In the rally folder, a panning shot and a freeze shot of the same stage come out alike.
 2c. Style detail → **Consistency** → the spread after the style is smaller than before, and the photos furthest
    from the group are highlighted. Change a rule, save with a note, then **History** → compare the two versions on
    the test set → **revert**.
@@ -841,6 +856,9 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
 - [ ] Analysis tools; parameter fitting from pairs (developed first on the X-T3 camera JPEG + RAF pairs).
 - [ ] Style creation flow: AI proposal → render → compare → iterate → save with README + samples.
 - [ ] Fallbacks as needed: F1 A/B picker, F2 statistical transfer, F3 learned 3D LUT, F5 ML (only with the user's approval).
+- [ ] Series detection for inconsistent shoots (from Phase 4's preparation): split a folder into runs of shots in
+  the same light (capture-time gaps + scene similarity), so "even out" works per series on a whole folder (e.g. a
+  rally day with panning and freeze shots across stages). Subject-weighted metering once Phase 6 detects subjects.
 - 🧑 Human test + ⛔ STOP.
 
 ## Phase 9: Polish (outline)
