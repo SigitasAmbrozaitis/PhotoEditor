@@ -176,9 +176,29 @@ export interface paths {
         post?: never;
         /**
          * Reset Edit
-         * @description Back to the unedited photo.
+         * @description Drop the photo's own tweaks (its style stays; PUT /style with null removes the style).
          */
         delete: operations["reset_edit_api_photos__photo_id__edit_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photos/{photo_id}/style": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Photo Style
+         * @description Give the photo a style right away (null removes it). Tweaks of what the style sets are replaced.
+         */
+        put: operations["set_photo_style_api_photos__photo_id__style_put"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -245,7 +265,8 @@ export interface paths {
         /** List Styles */
         get: operations["list_styles_api_styles_get"];
         put?: never;
-        post?: never;
+        /** Create Style */
+        post: operations["create_style_api_styles_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -261,8 +282,181 @@ export interface paths {
         };
         /** Style */
         get: operations["style_api_styles__style_id__get"];
+        /**
+         * Update Style
+         * @description Change a style (409 if it changed since ``expected_version``). Every photo using it follows.
+         */
+        put: operations["update_style_api_styles__style_id__put"];
+        post?: never;
+        /**
+         * Delete Style
+         * @description Delete a style; the photos using it drop back to no style and keep their own tweaks.
+         */
+        delete: operations["delete_style_api_styles__style_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/styles/from-photo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Style From Photo
+         * @description A new style from a photo's current look (chosen groups; exposure and white balance as rules).
+         */
+        post: operations["create_style_from_photo_api_styles_from_photo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/styles/{style_id}/from-photo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Update Style From Photo */
+        post: operations["update_style_from_photo_api_styles__style_id__from_photo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/styles/{style_id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Duplicate Style */
+        post: operations["duplicate_style_api_styles__style_id__duplicate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/styles/{style_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Style History
+         * @description Saved versions, newest first.
+         */
+        get: operations["style_history_api_styles__style_id__history_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/styles/{style_id}/versions/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Style Version */
+        get: operations["style_version_api_styles__style_id__versions__version__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/styles/{style_id}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Style Diff */
+        get: operations["style_diff_api_styles__style_id__diff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/styles/{style_id}/revert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revert Style */
+        post: operations["revert_style_api_styles__style_id__revert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/styles/{style_id}/samples": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Render Style Samples
+         * @description Render before/after sample pairs from library photos (a job).
+         */
+        post: operations["render_style_samples_api_styles__style_id__samples_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/styles/{style_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Style Report
+         * @description How consistent the style makes the photos (default: its test set, else the photos using it).
+         */
+        post: operations["style_report_api_styles__style_id__report_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -379,6 +573,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AdjustmentGroup
+         * @enum {string}
+         */
+        AdjustmentGroup: "white_balance" | "tone" | "presence" | "tone_curve" | "hsl" | "color_grading" | "detail" | "effects" | "geometry" | "lens";
         /**
          * AdjustmentParams
          * @description Complete set of global adjustments. All defaults = identity (no change).
@@ -556,6 +755,17 @@ export interface components {
          * @enum {string}
          */
         ColorSpace: "srgb" | "display_p3" | "adobe_rgb";
+        /** ConsistencyReport */
+        ConsistencyReport: {
+            /** Style Id */
+            style_id: string | null;
+            /** Look Hash */
+            look_hash: string | null;
+            /** Photos */
+            photos: components["schemas"]["ReportPhoto"][];
+            /** Spread */
+            spread: components["schemas"]["Spread"][];
+        };
         /**
          * CropAnchor
          * @enum {string}
@@ -777,6 +987,11 @@ export interface components {
          */
         ExportTarget: "instagram" | "print" | "web" | "custom";
         /**
+         * ExposureFromPhoto
+         * @enum {string}
+         */
+        ExposureFromPhoto: "none" | "value" | "match";
+        /**
          * ExposureMetering
          * @enum {string}
          */
@@ -785,7 +1000,52 @@ export interface components {
          * ExposureRule
          * @description Auto exposure: moves a measure of the photo toward a target, so differently exposed photos match.
          */
-        ExposureRule: {
+        "ExposureRule-Input": {
+            /**
+             * Rule Version
+             * @description Format version of this rule type.
+             * @default 1
+             */
+            rule_version: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "exposure";
+            /**
+             * @description What is measured. middle: the median brightness (ordinary scenes). highlights: the white point, so dark subjects (a black cat, night streets) stay dark. camera_settings: the exposure dialed in (shutter, aperture, ISO); evens out a series shot in the same light, needs a group reference.
+             * @default middle
+             */
+            metering: components["schemas"]["ExposureMetering"];
+            /**
+             * Target
+             * @description Target in stops relative to mid gray. None = the metering's default (docs/styles.md).
+             */
+            target?: number | null;
+            /**
+             * Use Group
+             * @description Target the photo's group reference when it has one ('even out').
+             * @default true
+             */
+            use_group: boolean;
+            /**
+             * Strength
+             * @description How far toward the target, in percent.
+             * @default 100
+             */
+            strength: number;
+            /**
+             * Max Change
+             * @description Largest exposure change in EV either way.
+             * @default 1.5
+             */
+            max_change: number;
+        };
+        /**
+         * ExposureRule
+         * @description Auto exposure: moves a measure of the photo toward a target, so differently exposed photos match.
+         */
+        "ExposureRule-Output": {
             /**
              * Rule Version
              * @description Format version of this rule type.
@@ -1535,10 +1795,38 @@ export interface components {
             group: components["schemas"]["GroupReference"] | null;
         };
         /**
+         * PhotoMeasurements
+         * @description Measurements of one render: brightness in stops relative to mid gray, white balance in Kelvin/tint.
+         */
+        PhotoMeasurements: {
+            /**
+             * Middle
+             * @description Median brightness.
+             */
+            middle: number | null;
+            /**
+             * White
+             * @description White point (99.5th percentile).
+             */
+            white: number | null;
+            /** Temperature */
+            temperature: number | null;
+            /** Tint */
+            tint: number | null;
+        };
+        /**
          * PhotoSort
          * @enum {string}
          */
         PhotoSort: "date" | "name" | "rating";
+        /** PhotoStyleRequest */
+        PhotoStyleRequest: {
+            /**
+             * Style Id
+             * @description None removes the photo's style.
+             */
+            style_id: string | null;
+        };
         /** Presence */
         "Presence-Input": {
             /**
@@ -1605,11 +1893,48 @@ export interface components {
              */
             dehaze: number;
         };
+        /** ReportPhoto */
+        ReportPhoto: {
+            /** Photo Id */
+            photo_id: string;
+            /** Filename */
+            filename: string;
+            /**
+             * Camera Ev
+             * @description Exposure dialed in (EV100) from EXIF.
+             */
+            camera_ev: number | null;
+            before: components["schemas"]["PhotoMeasurements"];
+            after: components["schemas"]["PhotoMeasurements"];
+            /** Rules */
+            rules: components["schemas"]["RuleResult"][];
+            /**
+             * Deviation
+             * @description Distance of 'after' middle from the set's median, in stops.
+             */
+            deviation: number;
+        };
         /**
          * ResizeMode
          * @enum {string}
          */
         ResizeMode: "original" | "long_edge" | "short_edge" | "width_height" | "megapixels" | "percentage";
+        /** RuleChange */
+        RuleChange: {
+            /** Type */
+            type: string;
+            /**
+             * Before
+             * @description None = no such rule in that version.
+             */
+            before: {
+                [key: string]: unknown;
+            } | null;
+            /** After */
+            after: {
+                [key: string]: unknown;
+            } | null;
+        };
         /**
          * RuleResult
          * @description What one rule did on one photo (for display, reports and the AI).
@@ -1788,6 +2113,136 @@ export interface components {
          * @enum {string}
          */
         SortOrder: "asc" | "desc";
+        /**
+         * Spread
+         * @description How far apart one measurement is across the set (smaller = more consistent).
+         */
+        Spread: {
+            /** Measure */
+            measure: string;
+            /**
+             * Before Mad
+             * @description Median absolute deviation before the style.
+             */
+            before_mad: number;
+            /** After Mad */
+            after_mad: number;
+            /**
+             * Before Range
+             * @description Largest minus smallest before the style.
+             */
+            before_range: number;
+            /** After Range */
+            after_range: number;
+        };
+        /**
+         * StyleCreate
+         * @description A new style from explicit values (creating one from a photo uses ``StyleFromPhoto``).
+         */
+        StyleCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Best For */
+            best_for?: string[];
+            /** Avoid On */
+            avoid_on?: string[];
+            /** Values */
+            values?: {
+                [key: string]: unknown;
+            };
+            /** Rules */
+            rules?: (components["schemas"]["ExposureRule-Input"] | components["schemas"]["WhiteBalanceRule-Input"])[];
+            /** Test Photo Ids */
+            test_photo_ids?: string[];
+        };
+        /** StyleDeleted */
+        StyleDeleted: {
+            /** Id */
+            id: string;
+            /**
+             * Photos
+             * @description Photos that dropped back to no style (their tweaks are kept).
+             */
+            photos: number;
+        };
+        /**
+         * StyleDiff
+         * @description What differs between two versions of a style.
+         */
+        StyleDiff: {
+            /** Style Id */
+            style_id: string;
+            /** A */
+            a: number;
+            /** B */
+            b: number;
+            /** Values */
+            values: components["schemas"]["ValueChange"][];
+            /** Rules */
+            rules: components["schemas"]["RuleChange"][];
+            /**
+             * Fields
+             * @description Other changed fields (name, description, test set, …).
+             */
+            fields: string[];
+            /** Same Look */
+            same_look: boolean;
+        };
+        /** StyleDuplicate */
+        StyleDuplicate: {
+            /**
+             * Name
+             * @description Default: '<name> (copy)'.
+             */
+            name?: string | null;
+        };
+        /**
+         * StyleFromPhoto
+         * @description Create a style from a photo's current look.
+         */
+        StyleFromPhoto: {
+            /** Photo Id */
+            photo_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Groups
+             * @description Which parameter groups to take.
+             */
+            groups?: components["schemas"]["AdjustmentGroup"][];
+            /** @default match */
+            exposure: components["schemas"]["ExposureFromPhoto"];
+            /** @default offset */
+            white_balance: components["schemas"]["WhiteBalanceFromPhoto"];
+        };
+        /** StyleReportRequest */
+        StyleReportRequest: {
+            /**
+             * Photo Ids
+             * @description None = the style's test set, else the photos using it.
+             */
+            photo_ids?: string[] | null;
+        };
+        /** StyleRevert */
+        StyleRevert: {
+            /**
+             * Version
+             * @description The version whose look and text come back (as a new version).
+             */
+            version: number;
+            /** Expected Version */
+            expected_version: number;
+        };
         /** StyleSampleView */
         StyleSampleView: {
             /** Photo Id */
@@ -1803,6 +2258,11 @@ export interface components {
              * @description Rendered with an older look of the style.
              */
             stale: boolean;
+        };
+        /** StyleSamplesRequest */
+        StyleSamplesRequest: {
+            /** Photo Ids */
+            photo_ids: string[];
         };
         /** StyleSummary */
         StyleSummary: {
@@ -1840,6 +2300,69 @@ export interface components {
             error: string | null;
         };
         /**
+         * StyleUpdate
+         * @description A change to a style. Fields left out stay as they are.
+         */
+        StyleUpdate: {
+            /**
+             * Expected Version
+             * @description The version the change is based on (conflict if newer).
+             */
+            expected_version: number;
+            /**
+             * Change Note
+             * @default
+             */
+            change_note: string;
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Best For */
+            best_for?: string[] | null;
+            /** Avoid On */
+            avoid_on?: string[] | null;
+            /** Values */
+            values?: {
+                [key: string]: unknown;
+            } | null;
+            /** Rules */
+            rules?: (components["schemas"]["ExposureRule-Input"] | components["schemas"]["WhiteBalanceRule-Input"])[] | null;
+            /** Test Photo Ids */
+            test_photo_ids?: string[] | null;
+        };
+        /**
+         * StyleUpdateFromPhoto
+         * @description Replace the given groups of a style with a photo's values.
+         */
+        StyleUpdateFromPhoto: {
+            /** Photo Id */
+            photo_id: string;
+            /** Groups */
+            groups: components["schemas"]["AdjustmentGroup"][];
+            /** Expected Version */
+            expected_version: number;
+            /**
+             * Change Note
+             * @default
+             */
+            change_note: string;
+        };
+        /** StyleVersionInfo */
+        StyleVersionInfo: {
+            /** Version */
+            version: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Change Note */
+            change_note: string;
+            /** Look Hash */
+            look_hash: string;
+        };
+        /**
          * StyleView
          * @description API response for a style: the stored style plus derived, read-only information.
          */
@@ -1859,7 +2382,7 @@ export interface components {
                 [key: string]: unknown;
             };
             /** Rules */
-            rules: (components["schemas"]["ExposureRule"] | components["schemas"]["WhiteBalanceRule"])[];
+            rules: (components["schemas"]["ExposureRule-Output"] | components["schemas"]["WhiteBalanceRule-Output"])[];
             /** Test Photo Ids */
             test_photo_ids: string[];
             /** Samples */
@@ -2063,6 +2586,18 @@ export interface components {
             /** Context */
             ctx?: Record<string, never>;
         };
+        /** ValueChange */
+        ValueChange: {
+            /** Name */
+            name: string;
+            /**
+             * Before
+             * @description None = not set by that version.
+             */
+            before: unknown;
+            /** After */
+            after: unknown;
+        };
         /** Vignette */
         "Vignette-Input": {
             /**
@@ -2144,6 +2679,11 @@ export interface components {
             tint: number | null;
         };
         /**
+         * WhiteBalanceFromPhoto
+         * @enum {string}
+         */
+        WhiteBalanceFromPhoto: "none" | "offset";
+        /**
          * WhiteBalanceMode
          * @enum {string}
          */
@@ -2152,7 +2692,51 @@ export interface components {
          * WhiteBalanceRule
          * @description White balance relative to each photo, instead of a fixed Kelvin value.
          */
-        WhiteBalanceRule: {
+        "WhiteBalanceRule-Input": {
+            /**
+             * Rule Version
+             * @description Format version of this rule type.
+             * @default 1
+             */
+            rule_version: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "white_balance";
+            /**
+             * @description as_shot: the camera's white balance plus the offsets. auto: a neutral estimate from the photo plus the offsets (can remove intentional warm light). fixed: temperature and tint as given.
+             * @default as_shot
+             */
+            mode: components["schemas"]["WhiteBalanceMode"];
+            /**
+             * Temperature Offset
+             * @description Kelvin at 5500 K, applied as the same mired shift (looks alike under any light).
+             * @default 0
+             */
+            temperature_offset: number;
+            /**
+             * Tint Offset
+             * @description Added to the tint.
+             * @default 0
+             */
+            tint_offset: number;
+            /**
+             * Temperature
+             * @description Kelvin (fixed mode only).
+             */
+            temperature?: number | null;
+            /**
+             * Tint
+             * @description Tint (fixed mode only).
+             */
+            tint?: number | null;
+        };
+        /**
+         * WhiteBalanceRule
+         * @description White balance relative to each photo, instead of a fixed Kelvin value.
+         */
+        "WhiteBalanceRule-Output": {
             /**
              * Rule Version
              * @description Format version of this rule type.
@@ -2527,6 +3111,41 @@ export interface operations {
             };
         };
     };
+    set_photo_style_api_photos__photo_id__style_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoStyleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhotoDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     engine_api_engine_get: {
         parameters: {
             query?: never;
@@ -2634,6 +3253,39 @@ export interface operations {
             };
         };
     };
+    create_style_api_styles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StyleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StyleView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     style_api_styles__style_id__get: {
         parameters: {
             query?: never;
@@ -2652,6 +3304,377 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StyleView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_style_api_styles__style_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                style_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StyleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StyleView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_style_api_styles__style_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                style_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StyleDeleted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_style_from_photo_api_styles_from_photo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StyleFromPhoto"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StyleView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_style_from_photo_api_styles__style_id__from_photo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                style_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StyleUpdateFromPhoto"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StyleView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    duplicate_style_api_styles__style_id__duplicate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                style_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StyleDuplicate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StyleView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    style_history_api_styles__style_id__history_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                style_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StyleVersionInfo"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    style_version_api_styles__style_id__versions__version__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                style_id: string;
+                version: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StyleView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    style_diff_api_styles__style_id__diff_get: {
+        parameters: {
+            query: {
+                a: number;
+                b: number;
+            };
+            header?: never;
+            path: {
+                style_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StyleDiff"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revert_style_api_styles__style_id__revert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                style_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StyleRevert"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StyleView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    render_style_samples_api_styles__style_id__samples_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                style_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StyleSamplesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    style_report_api_styles__style_id__report_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                style_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StyleReportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsistencyReport"];
                 };
             };
             /** @description Validation Error */

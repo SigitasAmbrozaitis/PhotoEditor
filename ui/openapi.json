@@ -461,7 +461,7 @@
           "edit"
         ],
         "summary": "Reset Edit",
-        "description": "Back to the unedited photo.",
+        "description": "Drop the photo's own tweaks (its style stays; PUT /style with null removes the style).",
         "operationId": "reset_edit_api_photos__photo_id__edit_delete",
         "parameters": [
           {
@@ -474,6 +474,59 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/photos/{photo_id}/style": {
+      "put": {
+        "tags": [
+          "edit"
+        ],
+        "summary": "Set Photo Style",
+        "description": "Give the photo a style right away (null removes it). Tweaks of what the style sets are replaced.",
+        "operationId": "set_photo_style_api_photos__photo_id__style_put",
+        "parameters": [
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhotoStyleRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -644,6 +697,45 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "styles"
+        ],
+        "summary": "Create Style",
+        "operationId": "create_style_api_styles_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StyleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/styles/{style_id}": {
@@ -671,6 +763,562 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/StyleView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "styles"
+        ],
+        "summary": "Update Style",
+        "description": "Change a style (409 if it changed since ``expected_version``). Every photo using it follows.",
+        "operationId": "update_style_api_styles__style_id__put",
+        "parameters": [
+          {
+            "name": "style_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Style Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StyleUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "styles"
+        ],
+        "summary": "Delete Style",
+        "description": "Delete a style; the photos using it drop back to no style and keep their own tweaks.",
+        "operationId": "delete_style_api_styles__style_id__delete",
+        "parameters": [
+          {
+            "name": "style_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Style Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleDeleted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/styles/from-photo": {
+      "post": {
+        "tags": [
+          "styles"
+        ],
+        "summary": "Create Style From Photo",
+        "description": "A new style from a photo's current look (chosen groups; exposure and white balance as rules).",
+        "operationId": "create_style_from_photo_api_styles_from_photo_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StyleFromPhoto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/styles/{style_id}/from-photo": {
+      "post": {
+        "tags": [
+          "styles"
+        ],
+        "summary": "Update Style From Photo",
+        "operationId": "update_style_from_photo_api_styles__style_id__from_photo_post",
+        "parameters": [
+          {
+            "name": "style_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Style Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StyleUpdateFromPhoto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/styles/{style_id}/duplicate": {
+      "post": {
+        "tags": [
+          "styles"
+        ],
+        "summary": "Duplicate Style",
+        "operationId": "duplicate_style_api_styles__style_id__duplicate_post",
+        "parameters": [
+          {
+            "name": "style_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Style Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StyleDuplicate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/styles/{style_id}/history": {
+      "get": {
+        "tags": [
+          "styles"
+        ],
+        "summary": "Style History",
+        "description": "Saved versions, newest first.",
+        "operationId": "style_history_api_styles__style_id__history_get",
+        "parameters": [
+          {
+            "name": "style_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Style Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StyleVersionInfo"
+                  },
+                  "title": "Response Style History Api Styles  Style Id  History Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/styles/{style_id}/versions/{version}": {
+      "get": {
+        "tags": [
+          "styles"
+        ],
+        "summary": "Style Version",
+        "operationId": "style_version_api_styles__style_id__versions__version__get",
+        "parameters": [
+          {
+            "name": "style_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Style Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/styles/{style_id}/diff": {
+      "get": {
+        "tags": [
+          "styles"
+        ],
+        "summary": "Style Diff",
+        "operationId": "style_diff_api_styles__style_id__diff_get",
+        "parameters": [
+          {
+            "name": "style_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Style Id"
+            }
+          },
+          {
+            "name": "a",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "A"
+            }
+          },
+          {
+            "name": "b",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "B"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleDiff"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/styles/{style_id}/revert": {
+      "post": {
+        "tags": [
+          "styles"
+        ],
+        "summary": "Revert Style",
+        "operationId": "revert_style_api_styles__style_id__revert_post",
+        "parameters": [
+          {
+            "name": "style_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Style Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StyleRevert"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/styles/{style_id}/samples": {
+      "post": {
+        "tags": [
+          "styles"
+        ],
+        "summary": "Render Style Samples",
+        "description": "Render before/after sample pairs from library photos (a job).",
+        "operationId": "render_style_samples_api_styles__style_id__samples_post",
+        "parameters": [
+          {
+            "name": "style_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Style Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StyleSamplesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/styles/{style_id}/report": {
+      "post": {
+        "tags": [
+          "styles"
+        ],
+        "summary": "Style Report",
+        "description": "How consistent the style makes the photos (default: its test set, else the photos using it).",
+        "operationId": "style_report_api_styles__style_id__report_post",
+        "parameters": [
+          {
+            "name": "style_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Style Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StyleReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsistencyReport"
                 }
               }
             }
@@ -978,6 +1626,22 @@
   },
   "components": {
     "schemas": {
+      "AdjustmentGroup": {
+        "type": "string",
+        "enum": [
+          "white_balance",
+          "tone",
+          "presence",
+          "tone_curve",
+          "hsl",
+          "color_grading",
+          "detail",
+          "effects",
+          "geometry",
+          "lens"
+        ],
+        "title": "AdjustmentGroup"
+      },
       "AdjustmentParams-Input": {
         "properties": {
           "white_balance": {
@@ -1348,6 +2012,55 @@
           "adobe_rgb"
         ],
         "title": "ColorSpace"
+      },
+      "ConsistencyReport": {
+        "properties": {
+          "style_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style Id"
+          },
+          "look_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Look Hash"
+          },
+          "photos": {
+            "items": {
+              "$ref": "#/components/schemas/ReportPhoto"
+            },
+            "type": "array",
+            "title": "Photos"
+          },
+          "spread": {
+            "items": {
+              "$ref": "#/components/schemas/Spread"
+            },
+            "type": "array",
+            "title": "Spread"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "style_id",
+          "look_hash",
+          "photos",
+          "spread"
+        ],
+        "title": "ConsistencyReport"
       },
       "CropAnchor": {
         "type": "string",
@@ -1822,6 +2535,15 @@
         ],
         "title": "ExportTarget"
       },
+      "ExposureFromPhoto": {
+        "type": "string",
+        "enum": [
+          "none",
+          "value",
+          "match"
+        ],
+        "title": "ExposureFromPhoto"
+      },
       "ExposureMetering": {
         "type": "string",
         "enum": [
@@ -1831,7 +2553,68 @@
         ],
         "title": "ExposureMetering"
       },
-      "ExposureRule": {
+      "ExposureRule-Input": {
+        "properties": {
+          "rule_version": {
+            "type": "integer",
+            "title": "Rule Version",
+            "description": "Format version of this rule type.",
+            "default": 1
+          },
+          "type": {
+            "type": "string",
+            "const": "exposure",
+            "title": "Type",
+            "default": "exposure"
+          },
+          "metering": {
+            "$ref": "#/components/schemas/ExposureMetering",
+            "description": "What is measured. middle: the median brightness (ordinary scenes). highlights: the white point, so dark subjects (a black cat, night streets) stay dark. camera_settings: the exposure dialed in (shutter, aperture, ISO); evens out a series shot in the same light, needs a group reference.",
+            "default": "middle"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 4.0,
+                "minimum": -4.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target",
+            "description": "Target in stops relative to mid gray. None = the metering's default (docs/styles.md)."
+          },
+          "use_group": {
+            "type": "boolean",
+            "title": "Use Group",
+            "description": "Target the photo's group reference when it has one ('even out').",
+            "default": true
+          },
+          "strength": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Strength",
+            "description": "How far toward the target, in percent.",
+            "default": 100
+          },
+          "max_change": {
+            "type": "number",
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Max Change",
+            "description": "Largest exposure change in EV either way.",
+            "default": 1.5
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ExposureRule",
+        "description": "Auto exposure: moves a measure of the photo toward a target, so differently exposed photos match."
+      },
+      "ExposureRule-Output": {
         "properties": {
           "rule_version": {
             "type": "integer",
@@ -3431,6 +4214,66 @@
         "title": "PhotoEdit",
         "description": "The edit of one photo: an optional style plus per-photo overrides. Overrides always win."
       },
+      "PhotoMeasurements": {
+        "properties": {
+          "middle": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Middle",
+            "description": "Median brightness."
+          },
+          "white": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "White",
+            "description": "White point (99.5th percentile)."
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature"
+          },
+          "tint": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tint"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "middle",
+          "white",
+          "temperature",
+          "tint"
+        ],
+        "title": "PhotoMeasurements",
+        "description": "Measurements of one render: brightness in stops relative to mid gray, white balance in Kelvin/tint."
+      },
       "PhotoSort": {
         "type": "string",
         "enum": [
@@ -3439,6 +4282,28 @@
           "rating"
         ],
         "title": "PhotoSort"
+      },
+      "PhotoStyleRequest": {
+        "properties": {
+          "style_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style Id",
+            "description": "None removes the photo's style."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "style_id"
+        ],
+        "title": "PhotoStyleRequest"
       },
       "Presence-Input": {
         "properties": {
@@ -3541,6 +4406,60 @@
         ],
         "title": "Presence"
       },
+      "ReportPhoto": {
+        "properties": {
+          "photo_id": {
+            "type": "string",
+            "title": "Photo Id"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "camera_ev": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera Ev",
+            "description": "Exposure dialed in (EV100) from EXIF."
+          },
+          "before": {
+            "$ref": "#/components/schemas/PhotoMeasurements"
+          },
+          "after": {
+            "$ref": "#/components/schemas/PhotoMeasurements"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/RuleResult"
+            },
+            "type": "array",
+            "title": "Rules"
+          },
+          "deviation": {
+            "type": "number",
+            "title": "Deviation",
+            "description": "Distance of 'after' middle from the set's median, in stops."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "photo_id",
+          "filename",
+          "camera_ev",
+          "before",
+          "after",
+          "rules",
+          "deviation"
+        ],
+        "title": "ReportPhoto"
+      },
       "ResizeMode": {
         "type": "string",
         "enum": [
@@ -3552,6 +4471,47 @@
           "percentage"
         ],
         "title": "ResizeMode"
+      },
+      "RuleChange": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before",
+            "description": "None = no such rule in that version."
+          },
+          "after": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "type",
+          "before",
+          "after"
+        ],
+        "title": "RuleChange"
       },
       "RuleResult": {
         "properties": {
@@ -3954,6 +4914,299 @@
         ],
         "title": "SortOrder"
       },
+      "Spread": {
+        "properties": {
+          "measure": {
+            "type": "string",
+            "title": "Measure"
+          },
+          "before_mad": {
+            "type": "number",
+            "title": "Before Mad",
+            "description": "Median absolute deviation before the style."
+          },
+          "after_mad": {
+            "type": "number",
+            "title": "After Mad"
+          },
+          "before_range": {
+            "type": "number",
+            "title": "Before Range",
+            "description": "Largest minus smallest before the style."
+          },
+          "after_range": {
+            "type": "number",
+            "title": "After Range"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "measure",
+          "before_mad",
+          "after_mad",
+          "before_range",
+          "after_range"
+        ],
+        "title": "Spread",
+        "description": "How far apart one measurement is across the set (smaller = more consistent)."
+      },
+      "StyleCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Description",
+            "default": ""
+          },
+          "best_for": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Best For"
+          },
+          "avoid_on": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Avoid On"
+          },
+          "values": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Values"
+          },
+          "rules": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ExposureRule-Input"
+                },
+                {
+                  "$ref": "#/components/schemas/WhiteBalanceRule-Input"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "type",
+                "mapping": {
+                  "exposure": "#/components/schemas/ExposureRule-Input",
+                  "white_balance": "#/components/schemas/WhiteBalanceRule-Input"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Rules"
+          },
+          "test_photo_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Test Photo Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "StyleCreate",
+        "description": "A new style from explicit values (creating one from a photo uses ``StyleFromPhoto``)."
+      },
+      "StyleDeleted": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "photos": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Photos",
+            "description": "Photos that dropped back to no style (their tweaks are kept)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "photos"
+        ],
+        "title": "StyleDeleted"
+      },
+      "StyleDiff": {
+        "properties": {
+          "style_id": {
+            "type": "string",
+            "title": "Style Id"
+          },
+          "a": {
+            "type": "integer",
+            "title": "A"
+          },
+          "b": {
+            "type": "integer",
+            "title": "B"
+          },
+          "values": {
+            "items": {
+              "$ref": "#/components/schemas/ValueChange"
+            },
+            "type": "array",
+            "title": "Values"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/RuleChange"
+            },
+            "type": "array",
+            "title": "Rules"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fields",
+            "description": "Other changed fields (name, description, test set, …)."
+          },
+          "same_look": {
+            "type": "boolean",
+            "title": "Same Look"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "style_id",
+          "a",
+          "b",
+          "values",
+          "rules",
+          "fields",
+          "same_look"
+        ],
+        "title": "StyleDiff",
+        "description": "What differs between two versions of a style."
+      },
+      "StyleDuplicate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Default: '<name> (copy)'."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "StyleDuplicate"
+      },
+      "StyleFromPhoto": {
+        "properties": {
+          "photo_id": {
+            "type": "string",
+            "title": "Photo Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Description",
+            "default": ""
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/AdjustmentGroup"
+            },
+            "type": "array",
+            "title": "Groups",
+            "description": "Which parameter groups to take."
+          },
+          "exposure": {
+            "$ref": "#/components/schemas/ExposureFromPhoto",
+            "default": "match"
+          },
+          "white_balance": {
+            "$ref": "#/components/schemas/WhiteBalanceFromPhoto",
+            "default": "offset"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "photo_id",
+          "name"
+        ],
+        "title": "StyleFromPhoto",
+        "description": "Create a style from a photo's current look."
+      },
+      "StyleReportRequest": {
+        "properties": {
+          "photo_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "maxItems": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Ids",
+            "description": "None = the style's test set, else the photos using it."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "StyleReportRequest"
+      },
+      "StyleRevert": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "The version whose look and text come back (as a new version)."
+          },
+          "expected_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "expected_version"
+        ],
+        "title": "StyleRevert"
+      },
       "StyleSampleView": {
         "properties": {
           "photo_id": {
@@ -3988,6 +5241,25 @@
           "stale"
         ],
         "title": "StyleSampleView"
+      },
+      "StyleSamplesRequest": {
+        "properties": {
+          "photo_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Photo Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "photo_ids"
+        ],
+        "title": "StyleSamplesRequest"
       },
       "StyleSummary": {
         "properties": {
@@ -4068,6 +5340,202 @@
         ],
         "title": "StyleSummary"
       },
+      "StyleUpdate": {
+        "properties": {
+          "expected_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "description": "The version the change is based on (conflict if newer)."
+          },
+          "change_note": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Change Note",
+            "default": ""
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "best_for": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Best For"
+          },
+          "avoid_on": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avoid On"
+          },
+          "values": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Values"
+          },
+          "rules": {
+            "anyOf": [
+              {
+                "items": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ExposureRule-Input"
+                    },
+                    {
+                      "$ref": "#/components/schemas/WhiteBalanceRule-Input"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "type",
+                    "mapping": {
+                      "exposure": "#/components/schemas/ExposureRule-Input",
+                      "white_balance": "#/components/schemas/WhiteBalanceRule-Input"
+                    }
+                  }
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rules"
+          },
+          "test_photo_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Photo Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_version"
+        ],
+        "title": "StyleUpdate",
+        "description": "A change to a style. Fields left out stay as they are."
+      },
+      "StyleUpdateFromPhoto": {
+        "properties": {
+          "photo_id": {
+            "type": "string",
+            "title": "Photo Id"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/AdjustmentGroup"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Groups"
+          },
+          "expected_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Version"
+          },
+          "change_note": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Change Note",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "photo_id",
+          "groups",
+          "expected_version"
+        ],
+        "title": "StyleUpdateFromPhoto",
+        "description": "Replace the given groups of a style with a photo's values."
+      },
+      "StyleVersionInfo": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "change_note": {
+            "type": "string",
+            "title": "Change Note"
+          },
+          "look_hash": {
+            "type": "string",
+            "title": "Look Hash"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "updated_at",
+          "change_note",
+          "look_hash"
+        ],
+        "title": "StyleVersionInfo"
+      },
       "StyleView": {
         "properties": {
           "id": {
@@ -4105,17 +5573,17 @@
             "items": {
               "oneOf": [
                 {
-                  "$ref": "#/components/schemas/ExposureRule"
+                  "$ref": "#/components/schemas/ExposureRule-Output"
                 },
                 {
-                  "$ref": "#/components/schemas/WhiteBalanceRule"
+                  "$ref": "#/components/schemas/WhiteBalanceRule-Output"
                 }
               ],
               "discriminator": {
                 "propertyName": "type",
                 "mapping": {
-                  "exposure": "#/components/schemas/ExposureRule",
-                  "white_balance": "#/components/schemas/WhiteBalanceRule"
+                  "exposure": "#/components/schemas/ExposureRule-Output",
+                  "white_balance": "#/components/schemas/WhiteBalanceRule-Output"
                 }
               }
             },
@@ -4538,6 +6006,29 @@
         ],
         "title": "ValidationError"
       },
+      "ValueChange": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "before": {
+            "title": "Before",
+            "description": "None = not set by that version."
+          },
+          "after": {
+            "title": "After"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "before",
+          "after"
+        ],
+        "title": "ValueChange"
+      },
       "Vignette-Input": {
         "properties": {
           "amount": {
@@ -4696,6 +6187,14 @@
         ],
         "title": "WhiteBalance"
       },
+      "WhiteBalanceFromPhoto": {
+        "type": "string",
+        "enum": [
+          "none",
+          "offset"
+        ],
+        "title": "WhiteBalanceFromPhoto"
+      },
       "WhiteBalanceMode": {
         "type": "string",
         "enum": [
@@ -4705,7 +6204,76 @@
         ],
         "title": "WhiteBalanceMode"
       },
-      "WhiteBalanceRule": {
+      "WhiteBalanceRule-Input": {
+        "properties": {
+          "rule_version": {
+            "type": "integer",
+            "title": "Rule Version",
+            "description": "Format version of this rule type.",
+            "default": 1
+          },
+          "type": {
+            "type": "string",
+            "const": "white_balance",
+            "title": "Type",
+            "default": "white_balance"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/WhiteBalanceMode",
+            "description": "as_shot: the camera's white balance plus the offsets. auto: a neutral estimate from the photo plus the offsets (can remove intentional warm light). fixed: temperature and tint as given.",
+            "default": "as_shot"
+          },
+          "temperature_offset": {
+            "type": "number",
+            "maximum": 3000.0,
+            "minimum": -3000.0,
+            "title": "Temperature Offset",
+            "description": "Kelvin at 5500 K, applied as the same mired shift (looks alike under any light).",
+            "default": 0
+          },
+          "tint_offset": {
+            "type": "number",
+            "maximum": 50.0,
+            "minimum": -50.0,
+            "title": "Tint Offset",
+            "description": "Added to the tint.",
+            "default": 0
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 50000.0,
+                "minimum": 2000.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature",
+            "description": "Kelvin (fixed mode only)."
+          },
+          "tint": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 150.0,
+                "minimum": -150.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tint",
+            "description": "Tint (fixed mode only)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "WhiteBalanceRule",
+        "description": "White balance relative to each photo, instead of a fixed Kelvin value."
+      },
+      "WhiteBalanceRule-Output": {
         "properties": {
           "rule_version": {
             "type": "integer",

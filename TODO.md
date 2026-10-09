@@ -762,7 +762,7 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
   style routes and `POST /api/jobs` already use the real code (the rest of the API follows in P4.8).
 
 ### API + CLI
-- [ ] **P4.8** Real style endpoints (replace the mock ones; `409` on a version conflict, `404`/`422` with clear
+- [x] **P4.8** Real style endpoints (replace the mock ones; `409` on a version conflict, `404`/`422` with clear
   messages):
   - `GET /api/styles`, `GET /api/styles/{id}`, `POST /api/styles` (create: blank, or from a photo with groups and
     modes), `PUT /api/styles/{id}` (text, values, rules; with `expected_version`), `POST /api/styles/{id}/duplicate`,
@@ -776,6 +776,10 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
   - `POST /api/jobs` `apply_style` / `apply_and_export` become real.
 
   Regenerate `openapi.json` + `schema.d.ts`. Tests for every endpoint.
+  Done: creating from a photo is `POST /api/styles/from-photo` (a separate path). Also `GET /versions/{n}` (a
+  version as a `StyleView`), `POST /duplicate` (`{name?}`) and `DELETE` returns `{id, photos}`. Invalid style values
+  are 400 with the reason (checked when the style is built); malformed bodies are 422. `DELETE /photos/{id}/edit`
+  keeps the style (P4.6).
 - [ ] **P4.9** CLI:
   - `photoedit style list | show ID | check` (validates every style file)
   - `photoedit style apply ID [PHOTO…|--folder] [--even-out]` and `--remove`

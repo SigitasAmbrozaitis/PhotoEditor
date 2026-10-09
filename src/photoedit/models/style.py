@@ -497,3 +497,19 @@ class StyleReportRequest(_Model):
 
 class PhotoStyleRequest(_Model):
     style_id: str | None = Field(description="None removes the photo's style.")
+
+
+class StyleDuplicate(_Model):
+    name: str | None = Field(
+        default=None, min_length=1, max_length=80, description="Default: '<name> (copy)'."
+    )
+
+
+class StyleRevert(_Model):
+    version: int = Field(ge=1, description="The version whose look and text come back (as a new version).")
+    expected_version: int = Field(ge=1)
+
+
+class StyleDeleted(_Model):
+    id: str
+    photos: int = Field(ge=0, description="Photos that dropped back to no style (their tweaks are kept).")

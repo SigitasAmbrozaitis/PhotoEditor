@@ -12,6 +12,7 @@ from photoedit.core.render.pipeline import LATER_PHASE_PARAMETERS
 from photoedit.models import (
     AdjustmentParams,
     ApplyAndExportRequest,
+    ConsistencyReport,
     EngineInfo,
     ExportPreset,
     ExportRequest,
@@ -30,6 +31,21 @@ from photoedit.models import (
     StyleView,
 )
 from photoedit.models.fs import DirListing
+from photoedit.models.style import (
+    PhotoStyleRequest,
+    StyleCreate,
+    StyleDeleted,
+    StyleDiff,
+    StyleDuplicate,
+    StyleFromPhoto,
+    StyleReportRequest,
+    StyleRevert,
+    StyleSamplesRequest,
+    StyleUpdate,
+    StyleUpdateFromPhoto,
+    StyleVersionInfo,
+    style_view,
+)
 from photoedit.services import Services
 
 JPEG = "image/jpeg"
@@ -118,9 +134,16 @@ def save_edit(photo_id: str, adjustments: Annotated[AdjustmentParams, Body()], s
     return svc.library.photo_detail(photo_id)
 
 
+@router.put("/photos/{photo_id}/style", response_model=PhotoDetail, tags=["edit"])
+def set_photo_style(photo_id: str, request: Annotated[PhotoStyleRequest, Body()], svc: Svc) -> PhotoDetail:
+    """Give the photo a style right away (null removes it). Tweaks of what the style sets are replaced."""
+    svc.styling.set_photo_style(photo_id, request.style_id)
+    return svc.library.photo_detail(photo_id)
+
+
 @router.delete("/photos/{photo_id}/edit", response_model=PhotoDetail, tags=["edit"])
 def reset_edit(photo_id: str, svc: Svc) -> PhotoDetail:
-    """Back to the unedited photo."""
+    """Drop the photo's own tweaks (its style stays; PUT /style with null removes the style)."""
     svc.library.reset_edit(photo_id)
     return svc.library.photo_detail(photo_id)
 
@@ -163,6 +186,87 @@ def list_styles(svc: Svc) -> list[StyleSummary]:
 @router.get("/styles/{style_id}", response_model=StyleView, tags=["styles"])
 def style(style_id: str, svc: Svc) -> StyleView:
     return svc.styling.view(style_id)
+
+
+@router.post("/styles", response_model=StyleView, status_code=status.HTTP_201_CREATED, tags=["styles"])
+def create_style(request: Annotated[StyleCreate, Body()], svc: Svc) -> StyleView:
+    return svc.styling.create(request)
+
+
+@router.post(
+    "/styles/from-photo", response_model=StyleView, status_code=status.HTTP_201_CREATED, tags=["styles"]
+)
+def create_style_from_photo(request: Annotated[StyleFromPhoto, Body()], svc: Svc) -> StyleView:
+    """A new style from a photo's current look (chosen groups; exposure and white balance as rules)."""
+    return svc.styling.create_from_photo(request)
+
+
+@router.put("/styles/{style_id}", response_model=StyleView, tags=["styles"])
+def update_style(style_id: str, update: Annotated[StyleUpdate, Body()], svc: Svc) -> StyleView:
+    """Change a style (409 if it changed since ``expected_version``). Every photo using it follows."""
+    return svc.styling.update(style_id, update)
+
+
+@router.post("/styles/{style_id}/from-photo", response_model=StyleView, tags=["styles"])
+def update_style_from_photo(
+    style_id: str, request: Annotated[StyleUpdateFromPhoto, Body()], svc: Svc
+) -> StyleView:
+    return svc.styling.update_from_photo(style_id, request)
+
+
+@router.post(
+    "/styles/{style_id}/duplicate",
+    response_model=StyleView,
+    status_code=status.HTTP_201_CREATED,
+    tags=["styles"],
+)
+def duplicate_style(style_id: str, request: Annotated[StyleDuplicate, Body()], svc: Svc) -> StyleView:
+    return svc.styling.duplicate(style_id, request.name)
+
+
+@router.delete("/styles/{style_id}", response_model=StyleDeleted, tags=["styles"])
+def delete_style(style_id: str, svc: Svc) -> StyleDeleted:
+    """Delete a style; the photos using it drop back to no style and keep their own tweaks."""
+    return StyleDeleted(id=style_id, photos=svc.styling.delete(style_id))
+
+
+@router.get("/styles/{style_id}/history", response_model=list[StyleVersionInfo], tags=["styles"])
+def style_history(style_id: str, svc: Svc) -> list[StyleVersionInfo]:
+    """Saved versions, newest first."""
+    return svc.styles.history(style_id)
+
+
+@router.get("/styles/{style_id}/versions/{version}", response_model=StyleView, tags=["styles"])
+def style_version(style_id: str, version: int, svc: Svc) -> StyleView:
+    return style_view(svc.styles.version(style_id, version))
+
+
+@router.get("/styles/{style_id}/diff", response_model=StyleDiff, tags=["styles"])
+def style_diff(
+    style_id: str, svc: Svc, a: Annotated[int, Query(ge=1)], b: Annotated[int, Query(ge=1)]
+) -> StyleDiff:
+    return svc.styles.diff(style_id, a, b)
+
+
+@router.post("/styles/{style_id}/revert", response_model=StyleView, tags=["styles"])
+def revert_style(style_id: str, request: Annotated[StyleRevert, Body()], svc: Svc) -> StyleView:
+    return svc.styling.revert(style_id, request.version, expected_version=request.expected_version)
+
+
+@router.post(
+    "/styles/{style_id}/samples", response_model=Job, status_code=status.HTTP_201_CREATED, tags=["styles"]
+)
+def render_style_samples(style_id: str, request: Annotated[StyleSamplesRequest, Body()], svc: Svc) -> Job:
+    """Render before/after sample pairs from library photos (a job)."""
+    return svc.styling.render_samples(style_id, request.photo_ids)
+
+
+@router.post("/styles/{style_id}/report", response_model=ConsistencyReport, tags=["styles"])
+def style_report(
+    style_id: str, request: Annotated[StyleReportRequest, Body()], svc: Svc
+) -> ConsistencyReport:
+    """How consistent the style makes the photos (default: its test set, else the photos using it)."""
+    return svc.styling.report(style_id, request.photo_ids)
 
 
 @router.get(
