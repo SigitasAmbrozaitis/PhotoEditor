@@ -33,6 +33,10 @@
 | Phase 3b timing | **Deferred** after the Phase 3 human test (preview speed is better but still has a delay; fine for now, since the AI drives edits and the user won't move sliders by hand yet). **Phase 4 (Styles) comes next**; 3b moves after Phase 9 or folds into its performance work | 2026-10-09 |
 | Live preview speed | **New Phase 3b** after Phase 3: (A) draft renders while dragging, latest-wins, save on release; (B) **instant GPU preview in the browser via a 3D LUT built by `core`**. Reason: a slider change took ~0.6 s after the mouse stopped and showed nothing while dragging | 2026-10-09 |
 | Sharpening preview | Sharpening is invisible at fit-to-screen size (radius 1 px → 0.26 px); it needs a **1:1 zoom view, deferred to Phase 6** | 2026-10-09 |
+| Style ↔ photo link (Phase 4) | **Live link**: a photo's edit references its style by id, so changing a style updates every photo that uses it (thumbnails re-render). The edit's revision includes a hash of the style's look, so renders stay deterministic | 2026-10-09 |
+| Applying a style over tweaks (Phase 4) | **Lightroom-like**: per-photo tweaks of parameters the style sets are dropped, so the style's value shows. Tweaks of other parameters (e.g. a crop) are kept | 2026-10-09 |
+| Adaptive rules (Phase 4) | **Auto exposure** (bring the photo's middle brightness to a target, with strength and a max ±EV), **white balance relative to as shot** (style offsets instead of fixed Kelvin) and an optional **auto-neutral white balance** + offset. Inputs are measured once per photo, like the tone anchors | 2026-10-09 |
+| Style editing UI (Phase 4) | **Managed in the UI**: save a photo's edit as a style (choose groups), edit text and rules, update a style from a photo, duplicate, delete (photos drop back to no style and keep their tweaks), render sample images from library photos | 2026-10-09 |
 
 **Target machine**: i7-12700H (14 cores / 20 threads), 16 GB RAM, RTX 3060 Laptop (6 GB), Windows 11.
 .NET 9 SDK is installed. Python and uv are not installed yet.
