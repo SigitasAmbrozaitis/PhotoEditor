@@ -226,8 +226,8 @@ def test_photo_edit_style_fields_round_trip() -> None:
             "style_values": ["tone.exposure"],
             "rules": [{"type": "exposure", "summary": "+0.4 EV", "values": {"tone.exposure": 0.4}}],
             "style_version": 3,
-            "group": {"id": "g1", "measure": "camera_settings", "reference": 11.2, "size": 8},
+            "group": {"id": "g1", "size": 8, "middle": -2.5, "white": 0.3, "camera_ev": 11.2},
         }
     )
     assert PhotoEdit.model_validate_json(edit.model_dump_json(by_alias=True)) == edit
-    assert edit.group is not None and edit.group.measure is ExposureMetering.CAMERA_SETTINGS
+    assert edit.group is not None and edit.group.camera_ev == 11.2

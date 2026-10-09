@@ -1010,8 +1010,9 @@ export interface components {
         };
         /**
          * GroupReference
-         * @description The group a photo was evened out with: the group's median of one measure. It's stored with the photo's
-         *     edit, so the photo's render doesn't depend on what is selected later.
+         * @description The group a photo was evened out with: the group's medians of every exposure measure. It's stored with
+         *     the photo's edit, so the photo's render doesn't depend on what is selected later, and any metering mode of
+         *     the style can use it.
          */
         GroupReference: {
             /**
@@ -1019,17 +1020,26 @@ export interface components {
              * @description Shared by the photos applied together.
              */
             id: string;
-            measure: components["schemas"]["ExposureMetering"];
-            /**
-             * Reference
-             * @description Stops (middle/highlights) or EV100 (camera_settings).
-             */
-            reference: number;
             /**
              * Size
              * @description Number of photos in the group.
              */
             size: number;
+            /**
+             * Middle
+             * @description Median of the photos' middles.
+             */
+            middle: number | null;
+            /**
+             * White
+             * @description Median of their white points.
+             */
+            white: number | null;
+            /**
+             * Camera Ev
+             * @description Median EV100 of those with exposure settings in EXIF.
+             */
+            camera_ev: number | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {

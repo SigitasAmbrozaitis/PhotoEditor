@@ -8,7 +8,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field
 
 from photoedit.models.adjustments import AdjustmentParams
-from photoedit.models.style import ExposureMetering, RuleResult
+from photoedit.models.style import RuleResult
 
 
 class Photo(BaseModel):
@@ -42,17 +42,19 @@ class Photo(BaseModel):
 
 
 class GroupReference(BaseModel):
-    """The group a photo was evened out with: the group's median of one measure. It's stored with the photo's
-    edit, so the photo's render doesn't depend on what is selected later."""
+    """The group a photo was evened out with: the group's medians of every exposure measure. It's stored with
+    the photo's edit, so the photo's render doesn't depend on what is selected later, and any metering mode of
+    the style can use it."""
 
     model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
 
     id: str = Field(description="Shared by the photos applied together.")
-    measure: ExposureMetering
-    reference: float = Field(
-        ge=-30, le=30, description="Stops (middle/highlights) or EV100 (camera_settings)."
-    )
     size: int = Field(ge=1, description="Number of photos in the group.")
+    middle: float | None = Field(default=None, ge=-16, le=16, description="Median of the photos' middles.")
+    white: float | None = Field(default=None, ge=-16, le=16, description="Median of their white points.")
+    camera_ev: float | None = Field(
+        default=None, ge=-10, le=30, description="Median EV100 of those with exposure settings in EXIF."
+    )
 
 
 class PhotoEdit(BaseModel):

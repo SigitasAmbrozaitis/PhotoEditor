@@ -694,7 +694,7 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
   fallbacks: 18/67, 28/183, 4/6. Measurements are filled lazily (every stored photo is measured again once, in
   one pass with the anchors, which keep their values).
   `Settings.photo_dirs` = sample + style sample folders, all protected by the path guard.
-- [ ] **P4.5** Resolving a style for a photo (`core/styles.py`, pure functions): `resolve(defaults, style, stats,
+- [x] **P4.5** Resolving a style for a photo (`core/style_rules.py`, pure functions): `resolve(defaults, style, stats,
   as_shot) → (AdjustmentParams, RuleResults)`.
   - Exposure: style exposure + the auto delta, per metering mode: `middle` moves the median to the target;
     `highlights` moves the white point to the target; `camera_settings` (with a group reference) adds
@@ -708,8 +708,14 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
     aperture/ISO → exactly 1 EV), the missing-EXIF fallback, offsets at 3200 K vs 5500 K, fixed mode, as_shot
     leaves WB `None`.
   - Hypothesis: any valid style + any stats → valid `AdjustmentParams`, deterministic.
+  Done in `core/style_rules.py` (`resolve`, `RuleInputs`, `rule_parameters`): every limit or fallback is named in
+  the rule result's `note`. Changed while implementing: `GroupReference` stores the group's medians of **all**
+  measures (middle, white point, camera EV), so switching a style's metering mode later doesn't invalidate photos
+  already evened out. Values and outputs are rounded (exposure 4 decimals, Kelvin 0.1, tint 0.01) so stored
+  numbers and revisions don't carry float noise.
 - [ ] **P4.6** Edits with styles (`core/edits.py`):
-  - `PhotoEditFile` adds an optional `group` (`{id, measure, reference}`, written by "even out"), still schema v1
+  - `PhotoEditFile` adds an optional `group` (`GroupReference`: id, size, middle, white, camera_ev; written by
+    "even out"), still schema v1
     (the field is optional and new).
   - `effective()` = defaults ← resolved style ← overrides. A missing or broken style → the photo renders as if
     unstyled, and `PhotoDetail` says why (it never crashes the Library).
@@ -725,8 +731,7 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
 - [ ] **P4.7** Library operations (`core/library.py`):
   - `apply_style(photo_ids, style_id | None, even_out=False)` as a real `APPLY_STYLE` job (each item writes one edit
     JSON), followed by the thumbnail job. With `even_out`, it first measures the selection, then stores the group's
-    median (of the measure the style's exposure rule uses) in each photo's edit. Applying without it clears the
-    group.
+    medians (middle, white point, camera EV) in each photo's edit. Applying without it clears the group.
   - `consistency_report(style_id | None, photo_ids)` → `ConsistencyReport`. The default set is the style's test
     set, otherwise the photos that use it.
   - `set_photo_style(photo_id, style_id | None)` (instant, for the Photo view).

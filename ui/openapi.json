@@ -2228,33 +2228,66 @@
             "title": "Id",
             "description": "Shared by the photos applied together."
           },
-          "measure": {
-            "$ref": "#/components/schemas/ExposureMetering"
-          },
-          "reference": {
-            "type": "number",
-            "maximum": 30.0,
-            "minimum": -30.0,
-            "title": "Reference",
-            "description": "Stops (middle/highlights) or EV100 (camera_settings)."
-          },
           "size": {
             "type": "integer",
             "minimum": 1.0,
             "title": "Size",
             "description": "Number of photos in the group."
+          },
+          "middle": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 16.0,
+                "minimum": -16.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Middle",
+            "description": "Median of the photos' middles."
+          },
+          "white": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 16.0,
+                "minimum": -16.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "White",
+            "description": "Median of their white points."
+          },
+          "camera_ev": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 30.0,
+                "minimum": -10.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera Ev",
+            "description": "Median EV100 of those with exposure settings in EXIF."
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "id",
-          "measure",
-          "reference",
-          "size"
+          "size",
+          "middle",
+          "white",
+          "camera_ev"
         ],
         "title": "GroupReference",
-        "description": "The group a photo was evened out with: the group's median of one measure. It's stored with the photo's\nedit, so the photo's render doesn't depend on what is selected later."
+        "description": "The group a photo was evened out with: the group's medians of every exposure measure. It's stored with\nthe photo's edit, so the photo's render doesn't depend on what is selected later, and any metering mode of\nthe style can use it."
       },
       "HTTPValidationError": {
         "properties": {
