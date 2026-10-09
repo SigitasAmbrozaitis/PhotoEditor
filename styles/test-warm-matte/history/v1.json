@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "id": "test-warm-matte",
+  "name": "Test · Warm Matte",
+  "description": "A soft, warm, matte look for testing styles: lower contrast with lifted blacks, recovered highlights, toned-down greens, warm highlights and cool shadows, a light vignette. Auto exposure evens out differently exposed photos (against the group when applied with 'even out'); white balance stays the camera's, 400 K warmer.",
+  "best_for": [
+    "cats",
+    "golden hour",
+    "travel",
+    "overcast landscapes"
+  ],
+  "avoid_on": [
+    "night scenes with point lights",
+    "scenes that need deep blacks"
+  ],
+  "values": {
+    "color_grading.highlights.hue": 45.0,
+    "color_grading.highlights.saturation": 15.0,
+    "color_grading.shadows.hue": 210.0,
+    "color_grading.shadows.saturation": 12.0,
+    "effects.vignette.amount": -15.0,
+    "hsl.green.luminance": -10.0,
+    "hsl.green.saturation": -25.0,
+    "hsl.yellow.saturation": -10.0,
+    "presence.vibrance": 8.0,
+    "tone.contrast": -15.0,
+    "tone.highlights": -30.0,
+    "tone.shadows": 10.0,
+    "tone_curve.rgb": [
+      {
+        "x": 0.0,
+        "y": 0.06
+      },
+      {
+        "x": 0.25,
+        "y": 0.27
+      },
+      {
+        "x": 0.75,
+        "y": 0.76
+      },
+      {
+        "x": 1.0,
+        "y": 0.97
+      }
+    ]
+  },
+  "rules": [
+    {
+      "rule_version": 1,
+      "type": "exposure",
+      "metering": "middle",
+      "target": null,
+      "use_group": true,
+      "strength": 100.0,
+      "max_change": 1.5
+    },
+    {
+      "rule_version": 1,
+      "type": "white_balance",
+      "mode": "as_shot",
+      "temperature_offset": 400.0,
+      "tint_offset": 0.0,
+      "temperature": null,
+      "tint": null
+    }
+  ],
+  "test_photo_ids": [
+    "bbb60ab3dbff8231",
+    "53bcdf58357f14f4",
+    "7b64349b7a976bb7",
+    "1423514b23238c7e",
+    "1de5a606bb97f68d",
+    "6f728b2c432c99a5",
+    "e68c8f80c49d256d",
+    "5f5d0af0aae00104",
+    "cc98da50628ee659",
+    "157004dc600a2a3c"
+  ],
+  "samples": [],
+  "created_at": "2026-10-09T20:23:15.511379Z",
+  "updated_at": "2026-10-09T20:23:15.511379Z",
+  "version": 1,
+  "change_note": "hand-written test style (P4.12)"
+}

@@ -833,7 +833,7 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
   away (on by default). The panel restarts its edit session when the photo's style or style version changes. When
   an apply job finishes, photos and styles refresh app-wide (`useRefreshAfterJobs` in the layout). "Remove style"
   is enabled when the selection has a styled photo.
-- [ ] **P4.12** Two hand-written test styles, committed in `styles/` (only `style.json` + generated `README.md`):
+- [x] **P4.12** Two hand-written test styles, committed in `styles/` (only `style.json` + generated `README.md`):
   - `test-warm-matte`: auto exposure (`middle` metering, use group); WB as shot +400 K; lower contrast, lifted
     blacks (tone curve), highlights −30; greens toned down; warm highlight / cool shadow grading; a light vignette.
   - `test-classic-bw`: auto exposure (`highlights` metering), saturation −100, strong contrast, deep blacks.
@@ -844,6 +844,14 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
   `docs/styles.md`. That file documents the format, precedence, rules and metering modes (when to use which, with
   the black-cat and manual-series cases), the measured default target, how to write a style by hand, and **how to
   iterate on a style**: edit → contact sheet / report on the test set → compare versions → keep or revert.
+  Done 2026-10-09. The four folders are imported (369 photos) and measured. Test set: DSCF5580/5601 (black cat lit /
+  dark), 5574/5598/6283 (orange cat close / lamp / night), 6286 (sunset), 5323/5414 (drift 1/2000 ISO 1000 vs.
+  1/4000 ISO 4000), 6033 (rally dust), 6278 (tree against the sun). The rally folder has no panning shots (its
+  1/60–1/125 frames are a parked car), so the into-the-sun shot stands in as the hard rally-day case. Results are in
+  `docs/styles.md`: middle metering takes the middle spread to 0 on the drift, rally and sunset folders; the cats
+  folder's 40 very dark indoor shots hit the 1.5 EV limit (a case to tune). The styles were created through the
+  library (README + history) from hand-chosen values. Slugs now join "&" and apostrophes ("B&W" → `bw`).
+  `styles/*/samples/` is git-ignored.
 - [ ] **P4.13** Tests:
   - Vitest: style detail editing, the rules editor, test set, consistency panel, history/diff/revert, delete
     confirmation, conflict handling, the Photo view style picker, Save as style, update-from-photo, the apply wizard

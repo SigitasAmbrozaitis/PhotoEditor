@@ -250,8 +250,11 @@ class StyleLibrary:
 
 
 def slugify(name: str) -> str:
-    """'Warm Matte (v2)' → 'warm-matte-v2'; accents folded, at most 40 characters, never empty."""
-    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    """'Warm Matte (v2)' → 'warm-matte-v2', 'Classic B&W' → 'classic-bw'; accents folded, at most 40
+    characters, never empty."""
+    # "&" and apostrophes join words ("B&W", "Lightroom's") instead of splitting them.
+    joined = re.sub("['\u2019&]", "", name)
+    ascii_name = unicodedata.normalize("NFKD", joined).encode("ascii", "ignore").decode()
     slug = re.sub(r"[^a-z0-9]+", "-", ascii_name.lower()).strip("-")[:_MAX_SLUG].rstrip("-")
     return slug or "style"
 

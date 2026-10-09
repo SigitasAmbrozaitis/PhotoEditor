@@ -73,6 +73,8 @@ def test_create_writes_style_readme_and_history(lib: StyleLibrary, root: Path) -
 
 def test_slugs_and_collisions(lib: StyleLibrary) -> None:
     assert slugify("Warm Matte (v2)") == "warm-matte-v2"
+    assert slugify("Test · Classic B&W") == "test-classic-bw"
+    assert slugify("Ambro's look") == "ambros-look"
     assert slugify("Šiltas rūkas") == "siltas-rukas"
     assert slugify("!!!") == "style"
     assert len(slugify("x" * 100)) == 40

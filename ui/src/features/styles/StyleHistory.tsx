@@ -19,7 +19,7 @@ export function StyleHistory({ style }: { style: Style }) {
   const diff = useStyleDiff(style.id, a, style.version)
 
   return (
-    <Section title={`History (${versions.length} versions)`}>
+    <Section title={`History (${versions.length} version${versions.length === 1 ? '' : 's'})`}>
       {history.isLoading && <Spinner />}
       {history.isError && <ErrorState error={history.error} />}
       <ul className="flex flex-col divide-y divide-line/50 text-sm" aria-label="Versions">
