@@ -7,6 +7,7 @@ from photoedit.core.cache import ImageCache
 from photoedit.core.catalog import Catalog
 from photoedit.core.jobs import JobManager
 from photoedit.core.library import Library
+from photoedit.core.styles import StyleLibrary
 from photoedit.mock import MockBackend
 from photoedit.mock.backend import SECONDS_PER_ITEM
 from photoedit.safety import PathGuard, guard_from_settings
@@ -21,8 +22,14 @@ class Services:
         self.jobs = JobManager()
         self.catalog = Catalog(settings.workspace_dir / CATALOG_FILE, self.guard)
         self.cache = ImageCache(settings.cache_dir, self.guard)
+        self.styles = StyleLibrary(settings.styles_dir, self.guard)
         self.library = Library(
-            self.catalog, self.cache, self.jobs, self.guard, suggested_folder=settings.sample_photos_dir
+            self.catalog,
+            self.cache,
+            self.jobs,
+            self.guard,
+            suggested_folder=settings.sample_photos_dir,
+            styles=self.styles,
         )
         self.mock = MockBackend(
             self.jobs, lambda pid: self.library.photo(pid).to_photo(), seconds_per_item=mock_seconds_per_item

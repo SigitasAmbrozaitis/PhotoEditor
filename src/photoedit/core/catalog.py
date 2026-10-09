@@ -265,7 +265,7 @@ class Catalog:
             f"{name} = excluded.{name}"
             for name in values
             # The id is the content hash, so facts measured from the pixels stay valid for the same id.
-            if name not in ("id", "rating", "has_edits", "edit_revision", *_MEASURED_COLUMNS)
+            if name not in ("id", "rating", "style_id", "has_edits", "edit_revision", *_MEASURED_COLUMNS)
         )
         with self._transaction() as db:
             # Another row may hold this path with older content (the file was edited elsewhere): replace it.
@@ -300,6 +300,10 @@ class Catalog:
                     photo_id,
                 ),
             )
+
+    def set_style(self, photo_id: str, style_id: str | None) -> None:
+        with self._transaction() as db:
+            db.execute("UPDATE photos SET style_id = ? WHERE id = ?", (style_id, photo_id))
 
     def set_edit(self, photo_id: str, revision: str | None) -> None:
         """Record a photo's current edit revision (None = unedited)."""

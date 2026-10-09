@@ -327,3 +327,17 @@ def test_find_by_id_or_file_name(catalog: Catalog) -> None:
         found = catalog.find(name)
         assert found is not None and found.id == pid
     assert catalog.find("DSCF54") is None
+
+
+def test_style_is_stored_and_survives_reimport(catalog: Catalog) -> None:
+    catalog.upsert(_photo(1))
+    pid = photo_id(_sha(1))
+    catalog.set_style(pid, "warm-matte")
+    catalog.upsert(_photo(1))  # a re-import knows nothing about styles, and must not wipe them
+    stored = catalog.get(pid)
+    assert (
+        stored is not None and stored.style_id == "warm-matte" and stored.to_photo().style_id == "warm-matte"
+    )
+    catalog.set_style(pid, None)
+    cleared = catalog.get(pid)
+    assert cleared is not None and cleared.style_id is None

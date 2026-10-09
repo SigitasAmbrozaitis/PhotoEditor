@@ -713,7 +713,7 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
   measures (middle, white point, camera EV), so switching a style's metering mode later doesn't invalidate photos
   already evened out. Values and outputs are rounded (exposure 4 decimals, Kelvin 0.1, tint 0.01) so stored
   numbers and revisions don't carry float noise.
-- [ ] **P4.6** Edits with styles (`core/edits.py`):
+- [x] **P4.6** Edits with styles (`core/edits.py`):
   - `PhotoEditFile` adds an optional `group` (`GroupReference`: id, size, middle, white, camera_ev; written by
     "even out"), still schema v1
     (the field is optional and new).
@@ -728,6 +728,11 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
 
   Tests: precedence, sparse overrides relative to the style, apply/replace/remove, slider back to the style value,
   revision changes on a look change but not on a rename, a missing style.
+  Done. The revision of a styled edit hashes the resolved style parameters (look + rule results), so unstyled
+  photos keep their Phase 3 revisions and nothing re-renders. Measurements are asked for only when the style has
+  rules (measuring may decode). **Reset (DELETE /edit) now drops only the per-photo tweaks and keeps the style**;
+  removing a style is its own action (P4.7). The catalog keeps `style_id` across re-imports (like the rating).
+  When an applied style is switched, kept tweaks keep the value the photo showed.
 - [ ] **P4.7** Library operations (`core/library.py`):
   - `apply_style(photo_ids, style_id | None, even_out=False)` as a real `APPLY_STYLE` job (each item writes one edit
     JSON), followed by the thumbnail job. With `even_out`, it first measures the selection, then stores the group's
