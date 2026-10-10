@@ -35,6 +35,33 @@ describe('Jobs', () => {
     expect(screen.getAllByText(/1 failed/).length).toBeGreaterThan(0)
   })
 
+  it('shows what each export wrote and reveals a file in its folder', async () => {
+    const exported = makeJob({
+      kind: 'export',
+      items: [
+        {
+          photo_id: 'p001',
+          filename: 'DSCF1001.RAF',
+          status: 'done',
+          message: 'overwritten',
+          output_path: 'C:/Exports/ig/DSCF1001_ig.jpg',
+          output_bytes: 412 * 1024,
+          output_width: 1080,
+          output_height: 1350,
+          warnings: ['enlarged 1.20×'],
+        },
+      ],
+    })
+    const calls = mockApi({ 'GET /api/jobs': () => [exported], 'GET /api/jobs/:id': () => exported })
+    const { user } = renderApp('/jobs/j0001')
+    expect(await screen.findByText('DSCF1001_ig.jpg')).toHaveAttribute('title', 'C:/Exports/ig/DSCF1001_ig.jpg')
+    expect(screen.getByText('1080×1350 · 412 KB')).toBeInTheDocument()
+    expect(screen.getByText('enlarged 1.20×')).toBeInTheDocument()
+    expect(screen.getByText('overwritten')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Show DSCF1001_ig.jpg in folder' }))
+    await waitFor(() => expect(calls.find((c) => c.path === '/api/export/reveal')?.body).toEqual({ path: 'C:/Exports/ig/DSCF1001_ig.jpg' }))
+  })
+
   it('cancels a running job', async () => {
     const running = makeJob({ status: 'running', progress: 0.5, completed: 1, finished_at: null })
     const calls = mockApi({ 'GET /api/jobs': () => [running], 'GET /api/jobs/:id': () => running })

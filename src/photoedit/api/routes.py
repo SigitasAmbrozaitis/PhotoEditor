@@ -37,6 +37,7 @@ from photoedit.models.export import (
     PresetCreate,
     PresetDuplicate,
     PresetUpdate,
+    RevealRequest,
 )
 from photoedit.models.fs import DirListing
 from photoedit.models.style import (
@@ -368,6 +369,13 @@ def export_destinations(svc: Svc) -> list[str]:
 @router.post("/export/destination-check", response_model=DestinationCheck, tags=["export"])
 def destination_check(request: Annotated[DestinationCheckRequest, Body()], svc: Svc) -> DestinationCheck:
     return svc.exporter.check_destination(request.path)
+
+
+@router.post("/export/reveal", status_code=status.HTTP_204_NO_CONTENT, tags=["export"])
+def reveal_export(request: Annotated[RevealRequest, Body()], svc: Svc) -> Response:
+    """Show an exported file in Explorer. Only files exported in this session can be shown."""
+    svc.exporter.reveal(Path(request.path))
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # ----------------------------------------------------------------- jobs

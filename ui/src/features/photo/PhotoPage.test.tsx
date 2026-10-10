@@ -99,6 +99,13 @@ describe('Photo view', () => {
     expect(within(clarity as HTMLElement).getByRole('slider')).toHaveAttribute('data-disabled')
   })
 
+  it('exports the shown photo', async () => {
+    mockApi()
+    const { user } = renderApp('/library/p001')
+    await user.click(await screen.findByRole('button', { name: /Export…/ }))
+    expect(screen.getByRole('dialog', { name: 'Export 1 photo' })).toBeInTheDocument()
+  })
+
   it('switches between after, before, split and camera JPEG views', async () => {
     mockApi()
     const { user } = renderApp('/library/p002')

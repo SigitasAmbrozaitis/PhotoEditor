@@ -347,6 +347,12 @@ class DestinationCheckRequest(BaseModel):
     path: str = Field(max_length=1000)
 
 
+class RevealRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(max_length=1000, description="A file exported in this session.")
+
+
 class DestinationCheck(BaseModel):
     """Whether a folder can take exports (checked as the user types it)."""
 

@@ -611,6 +611,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/export/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reveal Export
+         * @description Show an exported file in Explorer. Only files exported in this session can be shown.
+         */
+        post: operations["reveal_export_api_export_reveal_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs": {
         parameters: {
             query?: never;
@@ -2188,6 +2208,14 @@ export interface components {
          * @enum {string}
          */
         ResizeMode: "original" | "long_edge" | "short_edge" | "width_height" | "megapixels" | "percentage";
+        /** RevealRequest */
+        RevealRequest: {
+            /**
+             * Path
+             * @description A file exported in this session.
+             */
+            path: string;
+        };
         /** RuleChange */
         RuleChange: {
             /** Type */
@@ -4283,6 +4311,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["DestinationCheck"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reveal_export_api_export_reveal_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevealRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

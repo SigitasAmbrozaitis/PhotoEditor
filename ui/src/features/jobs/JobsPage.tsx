@@ -1,8 +1,8 @@
-import { Ban, CircleCheck, CircleX, Clock, LoaderCircle } from 'lucide-react'
+import { Ban, CircleCheck, CircleX, Clock, FolderSearch, LoaderCircle } from 'lucide-react'
 import { Link, useParams } from 'react-router'
-import { useCancelJob, useJob, useJobs, usePresets, useStyles } from '../../api/queries'
-import type { Job, JobStatus } from '../../api/types'
-import { Button, EmptyState, ErrorState, Loading, PageHeader, ProgressBar } from '../../components/ui'
+import { useCancelJob, useJob, useJobs, usePresets, useRevealFile, useStyles } from '../../api/queries'
+import type { Job, JobItem, JobStatus } from '../../api/types'
+import { Button, Chip, EmptyState, ErrorState, Loading, PageHeader, ProgressBar } from '../../components/ui'
 import { cn } from '../../lib/cn'
 
 const STATUS: Record<JobStatus, { label: string; className: string; icon: typeof Clock }> = {
@@ -154,7 +154,13 @@ function JobDetail({ jobId }: { jobId: string }) {
                     item.status === 'failed' ? 'text-err' : item.output_path ? 'font-mono text-muted' : 'text-muted',
                   )}
                 >
-                  {item.status === 'failed' ? item.message : (item.output_path ?? item.message ?? '')}
+                  {item.status === 'failed' ? (
+                    item.message
+                  ) : item.output_bytes !== null ? (
+                    <ExportedFile item={item} />
+                  ) : (
+                    (item.output_path ?? item.message ?? '')
+                  )}
                 </td>
               </tr>
             ))}
@@ -162,6 +168,37 @@ function JobDetail({ jobId }: { jobId: string }) {
         </table>
       </div>
     </div>
+  )
+}
+
+function formatBytes(bytes: number): string {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`
+}
+
+/** One written export file: its name, pixel and file size, warnings, and a button to show it in Explorer. */
+function ExportedFile({ item }: { item: JobItem }) {
+  const reveal = useRevealFile()
+  const path = item.output_path ?? ''
+  const name = path.split(/[\\/]/).pop()
+  return (
+    <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <span className="text-fg" title={path}>
+        {name}
+      </span>
+      <span>
+        {item.output_width}×{item.output_height} · {formatBytes(item.output_bytes ?? 0)}
+      </span>
+      {item.message && <Chip>{item.message}</Chip>}
+      {item.warnings.map((w) => (
+        <Chip key={w} tone="warn">
+          {w}
+        </Chip>
+      ))}
+      <Button size="sm" variant="ghost" aria-label={`Show ${name} in folder`} onClick={() => reveal.mutate(path)}>
+        <FolderSearch className="size-3.5" aria-hidden /> Show in folder
+      </Button>
+      {reveal.isError && <span className="text-err">{reveal.error.message}</span>}
+    </span>
   )
 }
 

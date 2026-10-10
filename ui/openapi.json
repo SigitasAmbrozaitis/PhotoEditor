@@ -1824,6 +1824,41 @@
         }
       }
     },
+    "/api/export/reveal": {
+      "post": {
+        "tags": [
+          "export"
+        ],
+        "summary": "Reveal Export",
+        "description": "Show an exported file in Explorer. Only files exported in this session can be shown.",
+        "operationId": "reveal_export_api_export_reveal_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevealRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs": {
       "get": {
         "tags": [
@@ -5230,6 +5265,22 @@
           "percentage"
         ],
         "title": "ResizeMode"
+      },
+      "RevealRequest": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Path",
+            "description": "A file exported in this session."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "RevealRequest"
       },
       "RuleChange": {
         "properties": {

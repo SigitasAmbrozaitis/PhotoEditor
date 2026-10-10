@@ -18,7 +18,7 @@ from helpers import write_jpeg
 from photoedit.config import Settings, load_settings
 from photoedit.core.cache import ImageCache
 from photoedit.core.catalog import Catalog
-from photoedit.core.errors import InvalidRequestError
+from photoedit.core.errors import InvalidRequestError, NotFoundError
 from photoedit.core.export import metadata as md
 from photoedit.core.export.icc import icc_profile
 from photoedit.core.export.service import Exporter, auto_workers
@@ -268,3 +268,20 @@ def test_auto_workers() -> None:
     assert auto_workers(cpus=8, available=64 * gib) == 6
     assert auto_workers(cpus=20, available=6 * gib) == 2
     assert auto_workers(cpus=2, available=1 * gib) == 1
+
+
+def test_reveal_only_exported_files(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    from photoedit.core.export import service
+
+    shown: list[Path] = []
+    monkeypatch.setattr(service, "reveal_in_file_manager", shown.append)
+    exporter = env.exporter()
+    env.run(exporter.export(env.ids()[:1], _web(), str(env.out)))
+    exported = next(env.out.iterdir())
+    exporter.reveal(exported)
+    assert shown == [exported]
+    with pytest.raises(InvalidRequestError, match="isn't a file exported in this session"):
+        exporter.reveal(env.photos / "a_early.jpg")
+    exported.unlink()
+    with pytest.raises(NotFoundError):
+        exporter.reveal(exported)

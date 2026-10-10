@@ -12,6 +12,8 @@ import math
 import multiprocessing
 import os
 import re
+import subprocess
+import sys
 import threading
 from collections import Counter
 from collections.abc import Callable, Sequence
@@ -24,7 +26,7 @@ import psutil
 from photoedit.config import Settings
 from photoedit.core.catalog import CatalogPhoto
 from photoedit.core.decode import is_raw
-from photoedit.core.errors import InvalidRequestError
+from photoedit.core.errors import InvalidRequestError, NotFoundError
 from photoedit.core.export.encode import EXTENSIONS
 from photoedit.core.export.geometry import ExportGeometry, export_geometry
 from photoedit.core.export.geometry import warnings as geometry_warnings
@@ -188,6 +190,14 @@ class Exporter:
         """True for files this process exported (the UI may reveal those in Explorer, nothing else)."""
         with self._lock:
             return Path(os.path.realpath(path)) in self._exported
+
+    def reveal(self, path: Path) -> None:
+        """Show an exported file in the system's file manager (only files this process exported)."""
+        if not self.was_exported(path):
+            raise InvalidRequestError(f"{path} isn't a file exported in this session")
+        if not path.is_file():
+            raise NotFoundError(f"{path} no longer exists")
+        reveal_in_file_manager(path)
 
     # ---- plan + export
 
@@ -354,3 +364,13 @@ class Exporter:
             copyright=item.copyright,
             creator=settings.metadata.creator or self._settings.export_creator,
         )
+
+
+def reveal_in_file_manager(path: Path) -> None:
+    """Open Explorer (Finder, or the file manager) showing ``path``. Starts a program; writes nothing."""
+    if sys.platform == "win32":
+        subprocess.Popen(["explorer", f"/select,{path}"])
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", "-R", str(path)])
+    else:
+        subprocess.Popen(["xdg-open", str(path.parent)])

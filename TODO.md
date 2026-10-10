@@ -1126,9 +1126,11 @@ threads. The library protects every imported folder in the path guard. Per-photo
   Delete with a confirmation, and broken files shown with their error (delete only). Found while testing: clearing
   the JPEG quality or PPI field snapped it to a default (typing "95" gave "9095"); those fields now keep the last
   value while empty.
-- [ ] **P5.16** Jobs page for exports: per photo the output file name, pixel size, file size and warnings, and a
+- [x] **P5.16** Jobs page for exports: per photo the output file name, pixel size, file size and warnings, and a
   **Show in folder** button (the backend opens Explorer on that file; only for files exported in this session).
   Photo view and Library: **Export…** for the current photo / the selection; "Apply & export" exports for real.
+  Done: `POST /api/export/reveal` (204; only files exported by this process, else 400/404) opens Explorer with
+  the file selected. The Library already had Export…; the Photo view got one for the shown photo.
 - [ ] **P5.17** UI tests: Vitest for the dialog (plan table, refused destination, save as preset), the presets
   screen (duplicate/edit/delete) and the jobs page's export details. Playwright: export 2 photos with a custom
   preset into `output/e2e/exports`, check the files exist with the right size; screenshots of the dialog and
