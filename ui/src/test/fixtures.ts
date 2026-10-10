@@ -266,6 +266,8 @@ export const presets: ExportPreset[] = [
     description: '1080×1350 feed format.',
     target: 'instagram',
     builtin: true,
+    version: 1,
+    error: null,
     settings: {
       file: { format: 'jpeg', jpeg_quality: 92, max_file_size_kb: null, bit_depth: 8, tiff_compression: 'lzw', decode: 'auto' },
       color_space: 'srgb',
@@ -293,6 +295,8 @@ export const presets: ExportPreset[] = [
     description: 'Long edge 2048 px.',
     target: 'web',
     builtin: true,
+    version: 1,
+    error: null,
     settings: {
       file: { format: 'jpeg', jpeg_quality: 85, max_file_size_kb: null, bit_depth: 8, tiff_compression: 'lzw', decode: 'auto' },
       color_space: 'srgb',

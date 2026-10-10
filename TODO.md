@@ -1073,10 +1073,12 @@ threads. The library protects every imported folder in the path guard. Per-photo
   (workspace, cache, styles, export-presets). Config: `export_copyright`, `export_creator`, `export_workers`
   (auto = min(10, cores − 2, free RAM × 0.8 ÷ 2 GiB) until P5.11 measures). Job items now carry the output size,
   file size and warnings. `apply_and_export` is wired with the endpoints in P5.12.
-- [ ] **P5.10** Custom presets (`core/export/presets.py` over `export-presets/<id>.json`; atomic writes through the
+- [x] **P5.10** Custom presets (`core/export/presets.py` over `export-presets/<id>.json`; atomic writes through the
   guard): list (built-ins first, then custom; a broken file is listed as broken with its error), get, create (blank
   or from settings), duplicate (built-in or custom), update (optimistic `expected_version`), delete. Ids are slugs;
   a custom preset can't take a built-in's id. Tests in `tmp_path`, like the style library.
+  Done: `ExportPreset` gained `version` and `error` (a broken file is listed with its error and can only be
+  deleted); request models `PresetCreate`, `PresetUpdate`, `PresetDuplicate`. Only slug-named `.json` files count.
 - [ ] **P5.11** Speed + memory: on the 67 samples, a full-size export (JPEG q90, original size) and an Instagram
   portrait export (half-size decode) at 1, 4, 8 and 10 workers: s/photo, min/100 photos, peak RAM per worker.
   `export_workers=auto` is set from it. `photoedit benchmark --export` prints the table; the results go into

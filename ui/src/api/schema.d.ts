@@ -948,6 +948,17 @@ export interface components {
              */
             builtin: boolean;
             settings: components["schemas"]["ExportSettings-Output"];
+            /**
+             * Version
+             * @description +1 on every saved change (for conflict checks).
+             * @default 1
+             */
+            version: number;
+            /**
+             * Error
+             * @description Set when the preset's file can't be read; it can only be deleted then.
+             */
+            error: string | null;
         };
         /** ExportRequest */
         ExportRequest: {

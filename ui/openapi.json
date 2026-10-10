@@ -2449,6 +2449,25 @@
           },
           "settings": {
             "$ref": "#/components/schemas/ExportSettings-Output"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "+1 on every saved change (for conflict checks).",
+            "default": 1
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Set when the preset's file can't be read; it can only be deleted then."
           }
         },
         "additionalProperties": false,
@@ -2459,7 +2478,9 @@
           "description",
           "target",
           "builtin",
-          "settings"
+          "settings",
+          "version",
+          "error"
         ],
         "title": "ExportPreset"
       },

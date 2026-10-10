@@ -273,6 +273,37 @@ class ExportPreset(_Section):
     target: ExportTarget = ExportTarget.CUSTOM
     builtin: bool = Field(default=False, description="Built-in presets can't be edited, only duplicated.")
     settings: ExportSettings = Field(default_factory=ExportSettings)
+    version: int = Field(default=1, ge=1, description="+1 on every saved change (for conflict checks).")
+    error: str | None = Field(
+        default=None, description="Set when the preset's file can't be read; it can only be deleted then."
+    )
+
+
+class PresetCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
+
+    name: str = Field(min_length=1, max_length=80)
+    description: str = Field(default="", max_length=500)
+    target: ExportTarget = ExportTarget.CUSTOM
+    settings: ExportSettings = Field(default_factory=ExportSettings)
+
+
+class PresetUpdate(BaseModel):
+    """Fields left out stay as they are."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    expected_version: int = Field(ge=1, description="The version the change was made on.")
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    description: str | None = Field(default=None, max_length=500)
+    target: ExportTarget | None = None
+    settings: ExportSettings | None = None
+
+
+class PresetDuplicate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=80, description="Default: '<name> copy'.")
 
 
 class DecodeUsed(StrEnum):
