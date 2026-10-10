@@ -996,7 +996,7 @@ threads. The library protects every imported folder in the path guard. Per-photo
   Done: `parse_template()` lives in `models/export.py` (validation) and is reused by core naming (P5.8).
   `subject` is rejected by the export service (P5.9); the UI shows it disabled with "(Phase 6)". Print presets
   use `decode: full`.
-- [ ] **P5.4** Geometry math (`core/export/geometry.py`, pure functions): from the photo's upright size and the
+- [x] **P5.4** Geometry math (`core/export/geometry.py`, pure functions): from the photo's upright size and the
   settings → the crop rectangle (aspect ratio; orientation `auto` follows the photo, `portrait`/`landscape` force
   it; centered) and the output size per resize mode (original, long edge, short edge, width × height **fit** with
   the box turned to match the crop's orientation, megapixels, percentage; `dont_enlarge`). Rounding is defined once
@@ -1004,6 +1004,10 @@ threads. The library protects every imported folder in the path guard. Per-photo
   Tests: exact sizes for every built-in preset on landscape and portrait X-T3 frames (6240×4160 / 4160×6240) and on
   small JPEGs (dont_enlarge on/off), odd ratios (1.91:1, 1.414:1), megapixels/percentage, and the decode choice at
   its boundary.
+  Done: in width × height mode an aspect ratio within 1 % of the box's ratio is taken as the box's ratio (1.91:1
+  → exactly 1080×566, 1.414:1 → 3508×2480). Output sizes come from the exact (unrounded) crop; the pixel crop then
+  takes the output's exact ratio, so resizing never stretches. The plan reports the decode as `half` / `full`
+  (`DecodeUsed`); JPEG/TIFF originals always decode fully. `subject` is rejected here when there is a crop.
 - [ ] **P5.5** Output color (`core/export/colorspace.py`): Rec.2020 linear → sRGB / Display P3 / Adobe RGB (matrices
   from the primaries in `core/color.py`, D65), desaturate into the target gamut, encode with the target's curve
   (sRGB curve for sRGB and P3, gamma 563/256 for Adobe RGB). The existing `output_srgb` becomes the sRGB case of

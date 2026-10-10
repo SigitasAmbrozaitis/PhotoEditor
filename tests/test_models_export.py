@@ -85,7 +85,7 @@ def test_export_plan_round_trip() -> None:
                 output_name="a.jpg",
                 width=1080,
                 height=1350,
-                decode="auto",
+                decode="half",
                 collision="new",
                 warnings=["enlarged 1.4×"],
             )

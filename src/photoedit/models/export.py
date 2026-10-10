@@ -275,6 +275,11 @@ class ExportPreset(_Section):
     settings: ExportSettings = Field(default_factory=ExportSettings)
 
 
+class DecodeUsed(StrEnum):
+    HALF = "half"
+    FULL = "full"
+
+
 class CollisionStatus(StrEnum):
     NEW = "new"
     RENAMED = "renamed"
@@ -290,7 +295,7 @@ class ExportPlanItem(BaseModel):
     output_name: str = Field(description="File name in the destination.")
     width: int = Field(ge=1)
     height: int = Field(ge=1)
-    decode: DecodeSize = Field(description="How the original is decoded for this export.")
+    decode: DecodeUsed = Field(description="How the original is decoded for this export.")
     collision: CollisionStatus
     warnings: list[str] = Field(default_factory=list)
 
