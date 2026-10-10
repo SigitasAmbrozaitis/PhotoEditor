@@ -23,6 +23,7 @@ from photoedit.core.render.anchors import ToneAnchors, measure_anchors
 from photoedit.core.render.profile import IDENTITY, CameraProfile
 from photoedit.core.render.stages import F32
 from photoedit.models.adjustments import AdjustmentParams, Hsl
+from photoedit.models.export import ColorSpace
 
 ENGINE_VERSION = 2
 
@@ -81,8 +82,9 @@ def render(
     original_width: int,
     long_edge: int | None = None,
     anchors: ToneAnchors | None = None,
+    output: ColorSpace = ColorSpace.SRGB,
 ) -> F32:
-    """Render to sRGB-encoded float pixels (0..1).
+    """Render to ``output``-encoded float pixels (0..1); sRGB unless an export asks for another space.
 
     ``profile`` is the camera profile for RAWs; None for JPEG/TIFF originals, which are already rendered
     (their "base curve" is the exact sRGB encoding, so an unedited render reproduces the original).
@@ -132,7 +134,7 @@ def render(
         display = stages.to_display_linear(encoded)
         display = stages.color_adjust(display, profile_hsl, params.hsl, params.color_grading, params.presence)
         display = stages.vignette(display, vignette, None if mask is None else mask[rows])
-        return stages.output_srgb(display)
+        return stages.output_encode(display, output)
 
     strips = _strips(height)
     parts = list(_POOL.map(pointwise, strips)) if len(strips) > 1 else [pointwise(strips[0])]
