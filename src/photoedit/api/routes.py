@@ -30,6 +30,14 @@ from photoedit.models import (
     StyleSummary,
     StyleView,
 )
+from photoedit.models.export import (
+    DestinationCheck,
+    DestinationCheckRequest,
+    ExportPlan,
+    PresetCreate,
+    PresetDuplicate,
+    PresetUpdate,
+)
 from photoedit.models.fs import DirListing
 from photoedit.models.style import (
     PhotoStyleRequest,
@@ -304,12 +312,62 @@ def style_sample(style_id: str, name: str, which: Literal["before", "after"], sv
 
 @router.get("/export-presets", response_model=list[ExportPreset], tags=["export"])
 def list_presets(svc: Svc) -> list[ExportPreset]:
-    return svc.mock.list_presets()
+    return svc.presets.all()
+
+
+@router.post(
+    "/export-presets", response_model=ExportPreset, status_code=status.HTTP_201_CREATED, tags=["export"]
+)
+def create_preset(request: Annotated[PresetCreate, Body()], svc: Svc) -> ExportPreset:
+    return svc.presets.create(request)
 
 
 @router.get("/export-presets/{preset_id}", response_model=ExportPreset, tags=["export"])
 def preset(preset_id: str, svc: Svc) -> ExportPreset:
-    return svc.mock.preset(preset_id)
+    return svc.presets.get(preset_id)
+
+
+@router.put("/export-presets/{preset_id}", response_model=ExportPreset, tags=["export"])
+def update_preset(preset_id: str, request: Annotated[PresetUpdate, Body()], svc: Svc) -> ExportPreset:
+    return svc.presets.update(preset_id, request)
+
+
+@router.delete("/export-presets/{preset_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["export"])
+def delete_preset(preset_id: str, svc: Svc) -> Response:
+    svc.presets.delete(preset_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/export-presets/{preset_id}/duplicate",
+    response_model=ExportPreset,
+    status_code=status.HTTP_201_CREATED,
+    tags=["export"],
+)
+def duplicate_preset(
+    preset_id: str, svc: Svc, request: Annotated[PresetDuplicate | None, Body()] = None
+) -> ExportPreset:
+    return svc.presets.duplicate(preset_id, request)
+
+
+# ----------------------------------------------------------------- export
+
+
+@router.post("/export/plan", response_model=ExportPlan, tags=["export"])
+def export_plan(request: Annotated[ExportRequest, Body()], svc: Svc) -> ExportPlan:
+    """What an export would write: names, sizes, collisions and warnings. Nothing is written."""
+    return svc.exporter.plan(request.photo_ids, request.settings, request.destination, request.preset_id)
+
+
+@router.get("/export/destinations", response_model=list[str], tags=["export"])
+def export_destinations(svc: Svc) -> list[str]:
+    """Recently used export folders, newest first."""
+    return svc.exporter.recent_destinations()
+
+
+@router.post("/export/destination-check", response_model=DestinationCheck, tags=["export"])
+def destination_check(request: Annotated[DestinationCheckRequest, Body()], svc: Svc) -> DestinationCheck:
+    return svc.exporter.check_destination(request.path)
 
 
 # ----------------------------------------------------------------- jobs
@@ -322,15 +380,17 @@ def list_jobs(svc: Svc) -> list[Job]:
 
 @router.post("/jobs", response_model=Job, status_code=status.HTTP_201_CREATED, tags=["jobs"])
 def create_job(request: Annotated[JobRequest, Body()], svc: Svc) -> Job:
-    """Apply a style (real), export (simulated until Phase 5), or apply then export."""
+    """Apply a style, export, or apply then export."""
     if isinstance(request, ExportRequest):
-        return svc.mock.export_job(request.photo_ids, request.preset_id, request.destination)
+        return svc.exporter.export(
+            request.photo_ids, request.settings, request.destination, request.preset_id
+        )
     if isinstance(request, ApplyAndExportRequest):
-        if request.preset_id:
-            svc.mock.preset(request.preset_id)  # an unknown preset fails before anything is applied
+        # Everything the export checks (destination, settings, photos) fails before the style is applied.
+        svc.exporter.plan(request.photo_ids, request.settings, request.destination, request.preset_id)
 
         def export() -> None:
-            svc.mock.export_job(request.photo_ids, request.preset_id, request.destination)
+            svc.exporter.export(request.photo_ids, request.settings, request.destination, request.preset_id)
 
         return svc.styling.apply(request.photo_ids, request.style_id, even_out=request.even_out, then=export)
     return svc.styling.apply(request.photo_ids, request.style_id, even_out=request.even_out)

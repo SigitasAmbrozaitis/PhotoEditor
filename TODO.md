@@ -1091,7 +1091,7 @@ threads. The library protects every imported folder in the path guard. Per-photo
   measurement needs an idle machine.
 
 ### API + CLI
-- [ ] **P5.12** Endpoints (replacing the mock):
+- [x] **P5.12** Endpoints (replacing the mock):
   - `GET/POST /api/export-presets`, `GET/PUT/DELETE /api/export-presets/{id}`, `POST /api/export-presets/{id}/duplicate`
     (409 on a version conflict; editing or deleting a built-in → a clear 400).
   - `POST /api/export/plan` (`photo_ids`, `settings`, `destination` → `ExportPlan`).
@@ -1100,6 +1100,9 @@ threads. The library protects every imported folder in the path guard. Per-photo
     created, refused + reason).
   - `mock/` is removed (nothing mock is left).
   Regenerate `openapi.json` + `schema.d.ts`. Tests for every endpoint.
+  Done: the plan endpoint takes the same body as an export job. `apply_and_export` runs the export's checks
+  (plan) before applying, so a refused destination changes nothing. `DELETE` returns 204. `Services` takes an
+  optional `export_executor`; the API tests run with `export_workers=1` (in-process).
 - [ ] **P5.13** CLI:
   - `photoedit export [PHOTO…|--folder DIR] --preset ID --dest DIR [--set file.jpeg_quality=95 …] [--dry-run]`:
     prints the plan, then one progress line per photo; exit code ≠ 0 if any photo failed.

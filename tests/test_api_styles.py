@@ -30,7 +30,7 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
     settings: Settings = load_settings(
         tmp_path / "missing.toml", project_root=tmp_path, sample_photos_dir=photos
     )
-    services = Services(settings, mock_seconds_per_item=0)
+    services = Services(settings)
     with TestClient(create_app(settings, services=services)) as test_client:
         r = test_client.post("/api/library/import", json={"folder": str(photos)})
         assert r.status_code == 201, r.text

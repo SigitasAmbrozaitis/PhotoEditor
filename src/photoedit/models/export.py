@@ -341,6 +341,12 @@ class ExportPlan(BaseModel):
     warnings: list[str] = Field(default_factory=list, description="Warnings about the whole export.")
 
 
+class DestinationCheckRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(max_length=1000)
+
+
 class DestinationCheck(BaseModel):
     """Whether a folder can take exports (checked as the user types it)."""
 

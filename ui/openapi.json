@@ -1490,6 +1490,45 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "export"
+        ],
+        "summary": "Create Preset",
+        "operationId": "create_preset_api_export_presets_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresetCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportPreset"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/export-presets/{preset_id}": {
@@ -1517,6 +1556,257 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ExportPreset"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "export"
+        ],
+        "summary": "Update Preset",
+        "operationId": "update_preset_api_export_presets__preset_id__put",
+        "parameters": [
+          {
+            "name": "preset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Preset Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresetUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportPreset"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "export"
+        ],
+        "summary": "Delete Preset",
+        "operationId": "delete_preset_api_export_presets__preset_id__delete",
+        "parameters": [
+          {
+            "name": "preset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Preset Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/export-presets/{preset_id}/duplicate": {
+      "post": {
+        "tags": [
+          "export"
+        ],
+        "summary": "Duplicate Preset",
+        "operationId": "duplicate_preset_api_export_presets__preset_id__duplicate_post",
+        "parameters": [
+          {
+            "name": "preset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Preset Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PresetDuplicate"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportPreset"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/export/plan": {
+      "post": {
+        "tags": [
+          "export"
+        ],
+        "summary": "Export Plan",
+        "description": "What an export would write: names, sizes, collisions and warnings. Nothing is written.",
+        "operationId": "export_plan_api_export_plan_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportPlan"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/export/destinations": {
+      "get": {
+        "tags": [
+          "export"
+        ],
+        "summary": "Export Destinations",
+        "description": "Recently used export folders, newest first.",
+        "operationId": "export_destinations_api_export_destinations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "title": "Response Export Destinations Api Export Destinations Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/export/destination-check": {
+      "post": {
+        "tags": [
+          "export"
+        ],
+        "summary": "Destination Check",
+        "operationId": "destination_check_api_export_destination_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DestinationCheckRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DestinationCheck"
                 }
               }
             }
@@ -1563,7 +1853,7 @@
           "jobs"
         ],
         "summary": "Create Job",
-        "description": "Apply a style (real), export (simulated until Phase 5), or apply then export.",
+        "description": "Apply a style, export, or apply then export.",
         "operationId": "create_job_api_jobs_post",
         "requestBody": {
           "content": {
@@ -1997,6 +2287,16 @@
         ],
         "title": "CollisionPolicy"
       },
+      "CollisionStatus": {
+        "type": "string",
+        "enum": [
+          "new",
+          "renamed",
+          "overwrite",
+          "skip"
+        ],
+        "title": "CollisionStatus"
+      },
       "ColorGrading-Input": {
         "properties": {
           "shadows": {
@@ -2252,6 +2552,68 @@
         ],
         "title": "DecodeSize"
       },
+      "DecodeUsed": {
+        "type": "string",
+        "enum": [
+          "half",
+          "full"
+        ],
+        "title": "DecodeUsed"
+      },
+      "DestinationCheck": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "exists": {
+            "type": "boolean",
+            "title": "Exists"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "description": "True when an export may write there (the folder is created if needed)."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Why it can't be used, when ok is false."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "path",
+          "exists",
+          "ok",
+          "reason"
+        ],
+        "title": "DestinationCheck",
+        "description": "Whether a folder can take exports (checked as the user types it)."
+      },
+      "DestinationCheckRequest": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Path"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "DestinationCheckRequest"
+      },
       "Detail-Input": {
         "properties": {
           "sharpening": {
@@ -2418,6 +2780,94 @@
         ],
         "title": "EngineInfo",
         "description": "What the render engine can do in this version."
+      },
+      "ExportPlan": {
+        "properties": {
+          "destination": {
+            "type": "string",
+            "title": "Destination",
+            "description": "The destination folder, absolute."
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExportPlanItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "Warnings about the whole export."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "destination",
+          "items",
+          "warnings"
+        ],
+        "title": "ExportPlan",
+        "description": "What an export would write (a dry run: nothing is written)."
+      },
+      "ExportPlanItem": {
+        "properties": {
+          "photo_id": {
+            "type": "string",
+            "title": "Photo Id"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "description": "The original's file name."
+          },
+          "output_name": {
+            "type": "string",
+            "title": "Output Name",
+            "description": "File name in the destination."
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Width"
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Height"
+          },
+          "decode": {
+            "$ref": "#/components/schemas/DecodeUsed",
+            "description": "How the original is decoded for this export."
+          },
+          "collision": {
+            "$ref": "#/components/schemas/CollisionStatus"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "photo_id",
+          "filename",
+          "output_name",
+          "width",
+          "height",
+          "decode",
+          "collision",
+          "warnings"
+        ],
+        "title": "ExportPlanItem"
       },
       "ExportPreset": {
         "properties": {
@@ -4602,6 +5052,118 @@
           "dehaze"
         ],
         "title": "Presence"
+      },
+      "PresetCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Description",
+            "default": ""
+          },
+          "target": {
+            "$ref": "#/components/schemas/ExportTarget",
+            "default": "custom"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ExportSettings-Input"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "PresetCreate"
+      },
+      "PresetDuplicate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Default: '<name> copy'."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PresetDuplicate"
+      },
+      "PresetUpdate": {
+        "properties": {
+          "expected_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "description": "The version the change was made on."
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExportTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExportSettings-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_version"
+        ],
+        "title": "PresetUpdate",
+        "description": "Fields left out stay as they are."
       },
       "ReportPhoto": {
         "properties": {
