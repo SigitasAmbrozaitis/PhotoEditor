@@ -308,3 +308,14 @@ class ExportPlan(BaseModel):
     destination: str = Field(description="The destination folder, absolute.")
     items: list[ExportPlanItem]
     warnings: list[str] = Field(default_factory=list, description="Warnings about the whole export.")
+
+
+class DestinationCheck(BaseModel):
+    """Whether a folder can take exports (checked as the user types it)."""
+
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
+
+    path: str
+    exists: bool
+    ok: bool = Field(description="True when an export may write there (the folder is created if needed).")
+    reason: str | None = Field(default=None, description="Why it can't be used, when ok is false.")

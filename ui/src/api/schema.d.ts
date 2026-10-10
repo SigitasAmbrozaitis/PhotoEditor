@@ -1490,6 +1490,17 @@ export interface components {
             message: string | null;
             /** Output Path */
             output_path: string | null;
+            /**
+             * Output Bytes
+             * @description Size of the written file (exports).
+             */
+            output_bytes: number | null;
+            /** Output Width */
+            output_width: number | null;
+            /** Output Height */
+            output_height: number | null;
+            /** Warnings */
+            warnings: string[];
         };
         /**
          * JobKind

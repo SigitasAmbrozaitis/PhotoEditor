@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { makeJob } from '../../test/fixtures'
+import { makeJob, noOutput } from '../../test/fixtures'
 import { mockApi, renderApp } from '../../test/render'
 
 describe('Jobs', () => {
@@ -26,7 +26,7 @@ describe('Jobs', () => {
     const failed = makeJob({
       failed: 1,
       items: [
-        { photo_id: 'p001', filename: 'DSCF1001.RAF', status: 'failed', message: 'could not decode', output_path: null },
+        { photo_id: 'p001', filename: 'DSCF1001.RAF', status: 'failed', message: 'could not decode', output_path: null, ...noOutput },
       ],
     })
     mockApi({ 'GET /api/jobs': () => [failed], 'GET /api/jobs/:id': () => failed })

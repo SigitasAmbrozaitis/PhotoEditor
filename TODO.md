@@ -1049,7 +1049,7 @@ threads. The library protects every imported folder in the path guard. Per-photo
   (`_2`…), then apply the collision policy against the destination, case-insensitively (Windows). Over-long names
   are shortened, keeping the extension.
   Tests: every token, batch duplicates, suffix/overwrite/skip against existing files, long names.
-- [ ] **P5.9** Export service (`core/export/service.py`, replaces the mock):
+- [x] **P5.9** Export service (`core/export/service.py`, replaces the mock):
   - `plan(photo_ids, settings, destination) → ExportPlan`: a dry run that writes nothing. It validates the settings
     and the destination and resolves names and sizes.
   - `export(photo_ids, settings, destination, preset_id) → Job`: validates first (unknown photo, invalid settings,
@@ -1065,6 +1065,14 @@ threads. The library protects every imported folder in the path guard. Per-photo
   Tests (JPEG/TIFF originals made in `tmp_path`; 1 and 2 workers): files with the planned names, sizes and ICC;
   output identical to an in-process render; cancellation; one bad photo among good ones; destination refusals;
   originals' hashes unchanged; nothing written outside the destination.
+  Done: `core/export/worker.py` (`render_export`, picklable `ExportTask`) and `core/export/service.py`
+  (`Exporter`). One worker renders in-process; more use a spawned `ProcessPoolExecutor` (a test checks the files
+  are byte-identical). The job manager got named queues (one export job at a time; waiting jobs don't hold a
+  thread) and a `cleanup` hook that always runs (shuts the pool down, revokes the destination). The guard got
+  `revoke()` and `protected_root_of()`. Destinations are also refused inside the tool's data folders
+  (workspace, cache, styles, export-presets). Config: `export_copyright`, `export_creator`, `export_workers`
+  (auto = min(10, cores − 2, free RAM × 0.8 ÷ 2 GiB) until P5.11 measures). Job items now carry the output size,
+  file size and warnings. `apply_and_export` is wired with the endpoints in P5.12.
 - [ ] **P5.10** Custom presets (`core/export/presets.py` over `export-presets/<id>.json`; atomic writes through the
   guard): list (built-ins first, then custom; a broken file is listed as broken with its error), get, create (blank
   or from settings), duplicate (built-in or custom), update (optimistic `expected_version`), delete. Ids are slugs;

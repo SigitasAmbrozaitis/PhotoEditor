@@ -3539,6 +3539,50 @@
               }
             ],
             "title": "Output Path"
+          },
+          "output_bytes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Bytes",
+            "description": "Size of the written file (exports)."
+          },
+          "output_width": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Width"
+          },
+          "output_height": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Height"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
           }
         },
         "additionalProperties": false,
@@ -3548,7 +3592,11 @@
           "filename",
           "status",
           "message",
-          "output_path"
+          "output_path",
+          "output_bytes",
+          "output_width",
+          "output_height",
+          "warnings"
         ],
         "title": "JobItem"
       },

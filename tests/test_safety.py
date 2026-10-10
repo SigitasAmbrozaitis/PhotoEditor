@@ -229,3 +229,16 @@ def test_unresolvable_paths_are_never_writable(
     assert not guard.is_writable(Path(r"\server\share\x.jpg"))
     with pytest.raises(WriteNotAllowedError, match="can't be resolved"):
         guard.assert_writable(Path(r"\server\share\x.jpg"))
+
+
+def test_revoke_and_protected_root_of(tmp_path: Path) -> None:
+    photos = tmp_path / "photos"
+    out = tmp_path / "out"
+    guard = PathGuard(protected_roots=[photos])
+    guard.allow_writes_to(out)
+    assert guard.is_writable(out / "a.jpg")
+    guard.revoke(out)
+    assert not guard.is_writable(out / "a.jpg")
+    guard.revoke(out)  # revoking twice is harmless
+    assert guard.protected_root_of(photos / "sub" / "x.jpg") == photos.resolve()
+    assert guard.protected_root_of(out) is None

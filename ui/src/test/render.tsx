@@ -38,6 +38,7 @@ export function defaultHandlers(): Record<string, Handler> {
         status: 'queued' as const,
         message: null,
         output_path: null,
+        ...fx.noOutput,
       })),
     })
     jobs.unshift(job)

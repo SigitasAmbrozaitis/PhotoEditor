@@ -316,6 +316,9 @@ export const presets: ExportPreset[] = [
   },
 ]
 
+/** Export result fields of a job item that tests don't care about. */
+export const noOutput = { output_bytes: null, output_width: null, output_height: null, warnings: [] }
+
 export function makeJob(overrides: Partial<Job> = {}): Job {
   return {
     id: 'j0001',
@@ -334,8 +337,8 @@ export function makeJob(overrides: Partial<Job> = {}): Job {
     folder: null,
     summary: null,
     items: [
-      { photo_id: 'p001', filename: 'DSCF1001.RAF', status: 'done', message: null, output_path: 'C:/Exports/ig/DSCF1001.jpg' },
-      { photo_id: 'p002', filename: 'DSCF1002.RAF', status: 'done', message: null, output_path: 'C:/Exports/ig/DSCF1002.jpg' },
+      { photo_id: 'p001', filename: 'DSCF1001.RAF', status: 'done', message: null, output_path: 'C:/Exports/ig/DSCF1001.jpg', ...noOutput },
+      { photo_id: 'p002', filename: 'DSCF1002.RAF', status: 'done', message: null, output_path: 'C:/Exports/ig/DSCF1002.jpg', ...noOutput },
     ],
     ...overrides,
   }
@@ -353,7 +356,7 @@ export function makeImportJob(overrides: Partial<Job> = {}): Job {
     total: 67,
     completed: 67,
     summary: '67 photos: 67 new; 1 other file skipped',
-    items: [{ photo_id: 'p001', filename: 'DSCF1001.RAF', status: 'done', message: 'new', output_path: null }],
+    items: [{ photo_id: 'p001', filename: 'DSCF1001.RAF', status: 'done', message: 'new', output_path: null, ...noOutput }],
     ...overrides,
   })
 }
