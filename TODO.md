@@ -1131,10 +1131,14 @@ threads. The library protects every imported folder in the path guard. Per-photo
   Photo view and Library: **Export…** for the current photo / the selection; "Apply & export" exports for real.
   Done: `POST /api/export/reveal` (204; only files exported by this process, else 400/404) opens Explorer with
   the file selected. The Library already had Export…; the Photo view got one for the shown photo.
-- [ ] **P5.17** UI tests: Vitest for the dialog (plan table, refused destination, save as preset), the presets
+- [x] **P5.17** UI tests: Vitest for the dialog (plan table, refused destination, save as preset), the presets
   screen (duplicate/edit/delete) and the jobs page's export details. Playwright: export 2 photos with a custom
   preset into `output/e2e/exports`, check the files exist with the right size; screenshots of the dialog and
   presets.
+  Done: Vitest 93 (dialog plan + refused destination + save as preset, presets screen, jobs export details and
+  reveal, photo view Export…). Playwright 6: the use loop now exports for real (2 worker processes) and checks the
+  files; a new test makes a custom preset, is refused a photo folder, exports 2 photos and checks the files. The
+  e2e server uses `output/e2e/export-presets`, so the real `export-presets/` is never touched.
 
 ### Tests + docs
 - [ ] **P5.18** Golden (`@pytest.mark.golden`, local): export `DSCF5437.RAF` with every built-in preset into
