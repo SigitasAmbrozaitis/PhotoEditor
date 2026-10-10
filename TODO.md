@@ -1089,6 +1089,8 @@ threads. The library protects every imported folder in the path guard. Per-photo
   ⛔ STOP, discuss with the user.** Already done: EXIF read without unpacking the RAW, in-place float conversion,
   low-memory strip rendering for exports (2.9 → 1.6 GiB per worker, same pixels). `WORKER_PEAK_BYTES` = 1.7 GiB.
   The full decode alone is ~25 s single-threaded (3-pass X-Trans demosaic); LibRaw's 1-pass is 13.9 s.
+
+### API + CLI
 - [x] **P5.12** Endpoints (replacing the mock):
   - `GET/POST /api/export-presets`, `GET/PUT/DELETE /api/export-presets/{id}`, `POST /api/export-presets/{id}/duplicate`
     (409 on a version conflict; editing or deleting a built-in → a clear 400).
