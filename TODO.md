@@ -974,7 +974,7 @@ threads. The library protects every imported folder in the path guard. Per-photo
     passthrough), ProPhoto output, uploading anywhere.
 
 ### Dependencies
-- [ ] **P5.2** Add `tifffile` and `imagecodecs` (`uv add`). A smoke test writes and re-reads a 16-bit LZW TIFF with
+- [x] **P5.2** Add `tifffile` and `imagecodecs` (`uv add`). A smoke test writes and re-reads a 16-bit LZW TIFF with
   an ICC tag in `tmp_path`. An `export_identity()` next to `render_identity()` includes the versions that affect
   file bytes (Pillow, tifffile, imagecodecs, OpenCV).
 
