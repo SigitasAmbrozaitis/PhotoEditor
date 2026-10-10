@@ -1103,11 +1103,13 @@ threads. The library protects every imported folder in the path guard. Per-photo
   Done: the plan endpoint takes the same body as an export job. `apply_and_export` runs the export's checks
   (plan) before applying, so a refused destination changes nothing. `DELETE` returns 204. `Services` takes an
   optional `export_executor`; the API tests run with `export_workers=1` (in-process).
-- [ ] **P5.13** CLI:
+- [x] **P5.13** CLI:
   - `photoedit export [PHOTO…|--folder DIR] --preset ID --dest DIR [--set file.jpeg_quality=95 …] [--dry-run]`:
     prints the plan, then one progress line per photo; exit code ≠ 0 if any photo failed.
   - `photoedit preset list | show ID | duplicate ID [--name N] | delete ID | check`.
   Tests with `CliRunner`.
+  Done: `--preset` defaults to `web-full`; `--folder` takes an imported folder (else it says to import it
+  first); relative `--dest` paths are taken from the current directory.
 
 ### UI
 - [ ] **P5.14** Export dialog on real data: **Browse…** opens the folder browser (the one from the import dialog);

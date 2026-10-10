@@ -17,6 +17,7 @@ from photoedit.config import load_settings
 if TYPE_CHECKING:
     from photoedit.core.catalog import CatalogPhoto
     from photoedit.models import Job
+    from photoedit.models.export import ExportSettings
     from photoedit.services import Services
 
 app = typer.Typer(
@@ -36,6 +37,8 @@ style_app = typer.Typer(
     help="Styles: list, apply, samples, contact sheets, reports, history.", no_args_is_help=True
 )
 app.add_typer(style_app, name="style")
+preset_app = typer.Typer(help="Export presets: list, show, duplicate, delete, check.", no_args_is_help=True)
+app.add_typer(preset_app, name="preset")
 
 ConfigOption = Annotated[
     Path | None,
@@ -585,6 +588,216 @@ def style_revert(
         typer.echo(f"{style}: version {reverted.version} = version {version}")
     finally:
         services.close()
+
+
+# ----------------------------------------------------------------- export
+
+
+def _with_overrides(settings: ExportSettings, overrides: list[str]) -> ExportSettings:
+    """Apply ``--set group.field=value`` overrides (values are JSON when they parse, else text)."""
+    from pydantic import ValidationError
+
+    from photoedit.models.export import ExportSettings
+
+    data = settings.model_dump(mode="json")
+    for override in overrides:
+        name, sep, raw = override.partition("=")
+        parts = name.strip().split(".")
+        if not sep or not all(parts):
+            raise typer.BadParameter(f"expected group.field=value, got {override!r}", param_hint="--set")
+        try:
+            value = json.loads(raw)
+        except ValueError:
+            value = raw
+        target = data
+        for part in parts[:-1]:
+            if not isinstance(target.get(part), dict):
+                raise typer.BadParameter(f"unknown setting {name!r}", param_hint="--set")
+            target = target[part]
+        if parts[-1] not in target:
+            raise typer.BadParameter(f"unknown setting {name!r}", param_hint="--set")
+        target[parts[-1]] = value
+    try:
+        return ExportSettings.model_validate(data)
+    except ValidationError as exc:
+        problems = "; ".join(f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors())
+        raise typer.BadParameter(problems, param_hint="--set") from None
+
+
+def _folder_photos(services: Services, folder: Path) -> list[CatalogPhoto]:
+    from photoedit.models import PhotoSort, SortOrder
+
+    record = services.catalog.get_folder(folder)
+    if record is None:
+        hint = f'{folder} isn\'t imported yet; run: photoedit import "{folder}"'
+        raise typer.BadParameter(hint, param_hint="--folder")
+    items, _ = services.catalog.page(
+        record.path,
+        recursive=record.include_subfolders,
+        style_id=None,
+        min_rating=0,
+        sort=PhotoSort.DATE,
+        order=SortOrder.ASC,
+        offset=0,
+        limit=100_000,
+    )
+    return list(items)
+
+
+@app.command("export")
+def export(
+    photos: PhotosArg = None,
+    preset: Annotated[str, typer.Option(help="Export preset id (see: photoedit preset list).")] = "web-full",
+    dest: Annotated[Path | None, typer.Option(help="Destination folder (created if needed).")] = None,
+    folder: Annotated[
+        Path | None, typer.Option(help="Export every photo of this imported folder instead of PHOTO….")
+    ] = None,
+    set_: Annotated[
+        list[str] | None,
+        typer.Option("--set", help="Change a preset setting, e.g. --set file.jpeg_quality=95 (repeatable)."),
+    ] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Only print what would be written.")] = False,
+    config: ConfigOption = None,
+) -> None:
+    """Export photos with a preset into a folder. Originals are only read; nothing is written next to them."""
+    from photoedit.core.errors import InvalidRequestError, NotFoundError
+    from photoedit.models import JobStatus
+
+    if dest is None:
+        raise typer.BadParameter("give the destination folder", param_hint="--dest")
+    services = _open_services(config)
+    try:
+        if folder is not None and photos:
+            raise typer.BadParameter("give PHOTO… or --folder, not both", param_hint="--folder")
+        found = (
+            _folder_photos(services, folder.expanduser().absolute())
+            if folder is not None
+            else _find_photos(services, photos)
+        )
+        if not found:
+            raise typer.BadParameter("no photos to export", param_hint="PHOTO")
+        try:
+            base = services.presets.get(preset)
+        except NotFoundError as exc:
+            raise typer.BadParameter(f"{exc} (see: photoedit preset list)", param_hint="--preset") from None
+        settings = _with_overrides(base.settings, set_ or [])
+        ids = [p.id for p in found]
+        destination = str(dest.expanduser().absolute())
+        try:
+            plan = services.exporter.plan(ids, settings, destination, preset)
+        except InvalidRequestError as exc:
+            raise typer.BadParameter(str(exc), param_hint="--dest") from None
+        typer.echo(f"{len(plan.items)} photo{'s' if len(plan.items) != 1 else ''} → {plan.destination}")
+        for item in plan.items:
+            notes = ", ".join([item.collision.value, f"{item.decode.value} decode", *item.warnings])
+            typer.echo(f"  {item.filename:<20} → {item.output_name}  {item.width}×{item.height}  ({notes})")
+        if dry_run:
+            return
+        job = services.exporter.export(ids, settings, destination, preset)
+        typer.echo(f"{job.title}... ({min(services.exporter.workers, len(ids))} workers)")
+        _follow(services, job.id)
+        done = services.jobs.get(job.id)
+        typer.echo(done.summary or done.status.value)
+        if done.failed or done.status is JobStatus.FAILED:
+            raise typer.Exit(1)
+    finally:
+        services.close()
+
+
+def _follow(services: Services, job_id: str) -> None:
+    """Print one line per photo as it finishes."""
+    from photoedit.models import JobStatus
+
+    shown: set[int] = set()
+    finished = False
+    while not finished:
+        try:
+            services.jobs.wait(job_id, timeout=0.3)
+            finished = True
+        except TimeoutError:
+            pass
+        job = services.jobs.get(job_id)
+        for index, item in enumerate(job.items):
+            if index in shown or item.status not in (JobStatus.DONE, JobStatus.FAILED):
+                continue
+            shown.add(index)
+            count = f"[{len(shown)}/{job.total}]"
+            if item.status is JobStatus.FAILED:
+                typer.echo(f"  {count} failed: {item.filename}: {item.message}", err=True)
+                continue
+            name = Path(item.output_path).name if item.output_path else ""
+            pixels = f" {item.output_width}×{item.output_height}" if item.output_width else ""
+            size = f", {item.output_bytes // 1024} KB" if item.output_bytes else ""
+            extra = "; ".join([*([item.message] if item.message else []), *item.warnings])
+            typer.echo(f"  {count} {item.filename} → {name}{pixels}{size}" + (f" ({extra})" if extra else ""))
+
+
+PresetArg = Annotated[str, typer.Argument(help="Export preset id.")]
+
+
+@preset_app.command("list")
+def preset_list(config: ConfigOption = None) -> None:
+    """List the export presets (built-in ones first)."""
+    services = _open_services(config)
+    try:
+        for p in services.presets.all():
+            kind = "built-in" if p.builtin else f"custom v{p.version}"
+            typer.echo(f"{p.id:<28} {p.name:<36} {f'ERROR: {p.error}' if p.error else kind}")
+    finally:
+        services.close()
+
+
+@preset_app.command("show")
+def preset_show(preset: PresetArg, config: ConfigOption = None) -> None:
+    """Print a preset as JSON."""
+    services = _open_services(config)
+    try:
+        typer.echo(services.presets.get(preset).model_dump_json(indent=2))
+    finally:
+        services.close()
+
+
+@preset_app.command("duplicate")
+def preset_duplicate(
+    preset: PresetArg,
+    name: Annotated[str | None, typer.Option(help="Name of the copy (default: the name + ' copy').")] = None,
+    config: ConfigOption = None,
+) -> None:
+    """Copy a preset into export-presets/ so it can be edited."""
+    from photoedit.models.export import PresetDuplicate
+
+    services = _open_services(config)
+    try:
+        copy = services.presets.duplicate(preset, PresetDuplicate(name=name) if name else None)
+        typer.echo(f"created {copy.id} ({copy.name})")
+    finally:
+        services.close()
+
+
+@preset_app.command("delete")
+def preset_delete(preset: PresetArg, config: ConfigOption = None) -> None:
+    """Delete a custom preset (built-in presets can't be deleted)."""
+    services = _open_services(config)
+    try:
+        services.presets.delete(preset)
+        typer.echo(f"deleted {preset}")
+    finally:
+        services.close()
+
+
+@preset_app.command("check")
+def preset_check(config: ConfigOption = None) -> None:
+    """Validate every custom preset file. Exits with 1 if any is invalid."""
+    services = _open_services(config)
+    try:
+        custom = [p for p in services.presets.all() if not p.builtin]
+    finally:
+        services.close()
+    for p in custom:
+        typer.echo(f"{p.id}: {p.error or 'ok'}")
+    if any(p.error for p in custom):
+        raise typer.Exit(1)
+    typer.echo(f"{len(custom)} custom preset{'s' if len(custom) != 1 else ''} valid")
 
 
 @app.command()
