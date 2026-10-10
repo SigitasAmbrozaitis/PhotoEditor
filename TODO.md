@@ -905,6 +905,8 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
 
 ### ⛔ STOP: user approves Phase 4
 
+**Approved 2026-10-10.** The user inspected and applied styles in the human test; no change requests.
+
 ## Phase 5: Export (outline)
 - [ ] **P5.0** Detail this phase. ⛔ STOP for review.
 - [ ] Resize modes, aspect crop, color space + embedded ICC, output sharpening, metadata policies, naming templates, collision handling.
