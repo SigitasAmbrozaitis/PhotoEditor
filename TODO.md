@@ -1141,9 +1141,13 @@ threads. The library protects every imported folder in the path guard. Per-photo
   e2e server uses `output/e2e/export-presets`, so the real `export-presets/` is never touched.
 
 ### Tests + docs
-- [ ] **P5.18** Golden (`@pytest.mark.golden`, local): export `DSCF5437.RAF` with every built-in preset into
+- [x] **P5.18** Golden (`@pytest.mark.golden`, local): export `DSCF5437.RAF` with every built-in preset into
   `tmp_path` → pixel sizes, ICC description, PPI, metadata per policy; exporting twice gives identical bytes; the
   sample folder's hashes are unchanged. Safety test: exporting into the sample folder or a subfolder is refused.
+  Done: `tests/test_export_golden.py` renders each built-in preset from `DSCF5437.RAF` in memory (12 tests,
+  ~2 min): pixel size (Instagram presets force their orientation, print presets follow the photo), PPI, ICC
+  description, copyright, no GPS, orientation 1, 16-bit TIFF tags; deterministic bytes; the sample folder is
+  refused and unchanged (sizes and times of every file, plus the hash of the RAF that was read).
 - [ ] **P5.19** `docs/export.md` (pipeline order, decode choice, sizes per resize mode, sharpening table, metadata
   per policy, naming tokens, collisions) and README (export section, CLI, config).
 - [ ] **P5.20** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e).
