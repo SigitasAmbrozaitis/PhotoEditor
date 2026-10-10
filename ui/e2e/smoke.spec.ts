@@ -1,11 +1,16 @@
 /**
  * Smoke test of the full use loop against the real backend, on synthetic photos (scripts/e2e_setup.py):
  * open a folder → import → select photos → apply style → export preset → destination → confirm → job finishes,
- * then styles end to end (create from a photo, apply with "even out", edit, revert, delete). Export is still
- * simulated (Phase 5). Styles live in output/e2e/styles (seeded with "E2E Moody"). Screenshots of every screen go
- * to output/screenshots/ for a quick visual review.
+ * then styles end to end (create from a photo, apply with "even out", edit, revert, delete), and real exports
+ * with a custom preset. Styles live in output/e2e/styles (seeded with "E2E Moody"), exports in
+ * output/e2e/exports. Screenshots of every screen go to output/screenshots/ for a quick visual review.
  */
 import { expect, test, type Page } from '@playwright/test'
+import { readdirSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+// Absolute, as the destination field needs; inside the project's own (git-ignored) output folder.
+const EXPORTS = fileURLToPath(new URL('../../output/e2e/exports', import.meta.url))
 
 const SHOTS = '../output/screenshots'
 const PHOTO_COUNT = 10 // 8 scenes + a darker and a brighter shot of the first (a manual series)
@@ -60,8 +65,10 @@ test('full use loop: select → apply style → export → job done', async ({ p
   await shot(page, '05-wizard-style')
   await dialog.getByRole('button', { name: 'Next' }).click()
   await expect(dialog.getByRole('combobox', { name: 'Export preset' })).toHaveValue('instagram-portrait')
-  await dialog.getByRole('textbox', { name: 'Destination folder' }).fill('C:/Users/ambro/Pictures/Exports/test')
-  await expect(dialog.getByText(/1080×1350 · 4:5 crop · JPEG q92 · sRGB → C:\/Users/)).toBeVisible()
+  await dialog.getByRole('textbox', { name: 'Destination folder' }).fill(`${EXPORTS}/wizard`)
+  await expect(dialog.getByText(/1080×1350 · 4:5 crop · JPEG q92 · sRGB → /)).toBeVisible()
+  // The destination is checked and the export planned (5 rows + header) before Next is allowed.
+  await expect(dialog.getByRole('table', { name: 'Export plan' }).getByRole('row')).toHaveCount(6)
   await shot(page, '06-wizard-export')
   await dialog.getByRole('button', { name: 'Next' }).click()
   await shot(page, '07-wizard-review')
@@ -76,6 +83,18 @@ test('full use loop: select → apply style → export → job done', async ({ p
   })
   await expect(page.getByText('5 of 5 (100%)')).toBeVisible()
   await shot(page, '09-job-done')
+
+  // The export job starts after the style is applied, and writes real files.
+  await page.getByRole('link', { name: /Export 5 photos \(instagram-portrait\)/ }).click()
+  await expect(page.getByRole('progressbar', { name: 'Job progress' })).toHaveAttribute('aria-valuenow', '100', {
+    timeout: 60_000,
+  })
+  await expect(page.getByText(/5 exported →/)).toBeVisible()
+  await expect(page.getByText(/^1080×1350 · \d+ KB$/)).toHaveCount(5)
+  await shot(page, '09b-export-job-done')
+  const written = readdirSync(`${EXPORTS}/wizard`)
+  expect(written).toHaveLength(5)
+  expect(written.every((name) => /^E2E_\d{4}_ig\.jpg$/.test(name))).toBe(true)
 })
 
 test('screens render: photo view, styles, presets', async ({ page }) => {
@@ -239,4 +258,46 @@ test('styles: save as style → apply with even out → edit → revert → dele
   await confirm.getByRole('button', { name: 'Delete style' }).click()
   await expect(page.getByRole('heading', { name: 'Styles' })).toBeVisible()
   await expect(page.getByRole('link', { name: /E2E Look/ })).toHaveCount(0)
+})
+
+test('custom preset → export → files written', async ({ page }) => {
+  // Make an editable copy of a built-in preset and change it.
+  await page.goto('/presets/instagram-square')
+  await page.getByRole('button', { name: 'Duplicate to edit' }).click()
+  const name = page.getByRole('textbox', { name: 'Preset name' })
+  await expect(name).toHaveValue('Instagram square (1:1) copy')
+  await name.fill('E2E square')
+  const quality = page.getByLabel('Quality')
+  await quality.fill('95')
+  await page.getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByRole('link', { name: /E2E square/ })).toBeVisible()
+  await shot(page, '18-preset-custom')
+
+  // Export two photos with it.
+  await page.getByRole('link', { name: 'Library' }).click()
+  const tiles = page.getByRole('listbox', { name: 'Photos' }).getByRole('option')
+  await tiles.nth(6).click()
+  await tiles.nth(7).click({ modifiers: ['Shift'] })
+  await page.getByRole('button', { name: /Export…/ }).click()
+  const dialog = page.getByRole('dialog', { name: 'Export 2 photos' })
+  await dialog.getByRole('combobox', { name: 'Export preset' }).selectOption({ label: 'E2E square' })
+  await dialog.getByRole('textbox', { name: 'Destination folder' }).fill(`${EXPORTS}/custom`)
+  const plan = dialog.getByRole('table', { name: 'Export plan' })
+  await expect(plan.getByText('1080×1080')).toHaveCount(2)
+  await shot(page, '19-export-plan')
+
+  // A photo folder is refused.
+  const photos = fileURLToPath(new URL('../../output/e2e/photos/sub', import.meta.url))
+  await dialog.getByRole('textbox', { name: 'Destination folder' }).fill(photos)
+  await expect(dialog.getByRole('alert')).toContainText('inside the photo folder')
+  await expect(dialog.getByRole('button', { name: 'Export', exact: true })).toBeDisabled()
+
+  await dialog.getByRole('textbox', { name: 'Destination folder' }).fill(`${EXPORTS}/custom`)
+  await expect(plan.getByText('1080×1080')).toHaveCount(2)
+  await dialog.getByRole('button', { name: 'Export', exact: true }).click()
+  await expect(page).toHaveURL(/\/jobs\/j\d+$/)
+  await expect(page.getByText(/2 exported →/)).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('button', { name: /^Show E2E_\d{4}_ig\.jpg in folder$/ })).toHaveCount(2)
+  await shot(page, '20-export-job')
+  expect(readdirSync(`${EXPORTS}/custom`)).toHaveLength(2)
 })

@@ -181,11 +181,11 @@ function ExportedFile({ item }: { item: JobItem }) {
   const path = item.output_path ?? ''
   const name = path.split(/[\\/]/).pop()
   return (
-    <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <span className="text-fg" title={path}>
+    <span className="flex flex-wrap items-center gap-x-3 gap-y-1 font-sans">
+      <span className="font-mono text-fg" title={path}>
         {name}
       </span>
-      <span>
+      <span className="font-mono">
         {item.output_width}×{item.output_height} · {formatBytes(item.output_bytes ?? 0)}
       </span>
       {item.message && <Chip>{item.message}</Chip>}
