@@ -45,6 +45,28 @@ function num(value: string): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+/** A number that can't be empty: while the field is cleared, the setting keeps its last value. */
+function RequiredNumberInput({
+  value,
+  onChange,
+  ...props
+}: { value: number; onChange: (value: number) => void; min?: number; max?: number; disabled?: boolean }) {
+  const [text, setText] = useState(String(value))
+  const shown = text.trim() === '' || num(text) === value ? text : String(value)
+  return (
+    <TextInput
+      type="number"
+      {...props}
+      value={shown}
+      onChange={(e) => {
+        setText(e.target.value)
+        const n = num(e.target.value)
+        if (n !== null) onChange(n)
+      }}
+    />
+  )
+}
+
 const parseKeywords = (text: string) =>
   text
     .split(',')
@@ -121,13 +143,12 @@ export function ExportSettingsForm({
         {file.format === 'jpeg' ? (
           <>
             <Field label="Quality" hint="1–100">
-              <TextInput
-                type="number"
+              <RequiredNumberInput
                 min={1}
                 max={100}
                 value={file.jpeg_quality}
                 disabled={disabled}
-                onChange={(e) => set('file', { jpeg_quality: num(e.target.value) ?? 90 })}
+                onChange={(jpeg_quality) => set('file', { jpeg_quality })}
               />
             </Field>
             <Field label="Limit file size (KB)" hint="Empty = no limit">
@@ -268,11 +289,11 @@ export function ExportSettingsForm({
           </Field>
         )}
         <Field label="Resolution (PPI)">
-          <TextInput
-            type="number"
+          <RequiredNumberInput
+            min={1}
             value={size.ppi}
             disabled={disabled}
-            onChange={(e) => set('size', { ppi: num(e.target.value) ?? 300 })}
+            onChange={(ppi) => set('size', { ppi })}
           />
         </Field>
         <div className="flex items-end pb-1.5">

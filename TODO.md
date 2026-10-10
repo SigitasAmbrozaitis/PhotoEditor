@@ -1120,8 +1120,12 @@ threads. The library protects every imported folder in the path guard. Per-photo
   disabled until the folder is accepted and the plan has no error. The same field and plan are in the Apply &
   export wizard. Settings form: RAW decode (automatic / full), creator, keywords; the GPS switch only for "All
   metadata". The "DEMO DATA" tag is gone (nothing is mock any more).
-- [ ] **P5.15** Presets screen: duplicate, edit (the same `ExportSettingsForm`), rename and delete custom presets;
+- [x] **P5.15** Presets screen: duplicate, edit (the same `ExportSettingsForm`), rename and delete custom presets;
   built-ins are read-only with "Duplicate to edit".
+  Done: an editor per preset (name, description, settings; Save sends the version it was made on), Duplicate,
+  Delete with a confirmation, and broken files shown with their error (delete only). Found while testing: clearing
+  the JPEG quality or PPI field snapped it to a default (typing "95" gave "9095"); those fields now keep the last
+  value while empty.
 - [ ] **P5.16** Jobs page for exports: per photo the output file name, pixel size, file size and warnings, and a
   **Show in folder** button (the backend opens Explorer on that file; only for files exported in this session).
   Photo view and Library: **Export…** for the current photo / the selection; "Apply & export" exports for real.
