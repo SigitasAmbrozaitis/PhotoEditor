@@ -42,6 +42,8 @@ class Settings(BaseSettings):
 
     # Folder with sample photos used for development and tests. Always read-only.
     sample_photos_dir: Path | None = None
+    # Folders of varied real photos for developing and testing styles (P4.1). Always read-only.
+    style_sample_dirs: list[Path] = Field(default_factory=list)
 
     # Local web server.
     host: str = "127.0.0.1"
@@ -56,7 +58,14 @@ class Settings(BaseSettings):
             setattr(self, name, _absolute(value, root))
         if self.sample_photos_dir is not None:
             self.sample_photos_dir = _absolute(self.sample_photos_dir, root)
+        self.style_sample_dirs = [_absolute(p, root) for p in self.style_sample_dirs]
         return self
+
+    @property
+    def photo_dirs(self) -> tuple[Path, ...]:
+        """Configured photo folders (never written to)."""
+        sample = (self.sample_photos_dir,) if self.sample_photos_dir is not None else ()
+        return (*sample, *self.style_sample_dirs)
 
     @classmethod
     def settings_customise_sources(

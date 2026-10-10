@@ -100,4 +100,6 @@ scripts/        dev helpers
 
 - Sample photos: `C:\Users\ambro\Pictures\2026\2026-08-11` (Fujifilm X-T3 `.RAF` files plus camera `.JPG`s). **Read-only.**
   The path is configured in `config.local.toml` (git-ignored; copy it from `config.example.toml`).
+- Style sample folders (Phase 4+, all X-T3 RAF + JPG, **read-only**), under `C:\Users\ambro\Pictures\2026\`:
+  `2026-08-17` orange cat + sunsets, `2026-08-11` both cats (orange and black), `2026-07-26` drift (XF18-55), `2026-08-16` rally (XF70-300).
 - Large files (RAWs, exports, caches) are git-ignored and must never be committed.

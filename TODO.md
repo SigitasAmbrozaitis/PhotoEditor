@@ -12,7 +12,7 @@ Derived from [PLAN.md](PLAN.md) v0.3. This checklist is written for an AI to fol
 - ⛔ **STOP** = halt and wait for the user. Never continue past a STOP without the user's explicit go-ahead.
 - 🧑 **Human test** = steps the user runs by hand at the end of a phase, with the expected result for each step.
 - If something is ambiguous or the plan seems wrong, **ask**. Don't guess. Plan changes go into PLAN.md first.
-- **Phases 0–3 and 3b (deferred, at the end) are detailed.** Later phases are an outline and get detailed at the start of each phase. Writing that detail is the first item in each phase.
+- **Phases 0–4 and 3b (deferred, at the end) are detailed.** Later phases are an outline and get detailed at the start of each phase. Writing that detail is the first item in each phase.
 - Golden rules: originals are read-only; never write outside `C:\Work\PhotoEditing` (except export destinations the user
   chose); commit as `SigitasAmbrozaitis`.
 
@@ -523,12 +523,389 @@ curve's shoulder starts at +2. Speed → Phase 3b. Sharpening → needs the 1:1 
 better but still has a delay; acceptable for now, because the user isn't planning to move sliders by hand yet, so
 **Phase 3b is deferred** (moved below Phase 9, PLAN §0) and Phase 4 comes next.
 
-## Phase 4: Styles (outline)
-- [ ] **P4.0** Detail this phase. ⛔ STOP for review.
-- [ ] Style file format (`style.json` + README + samples). Library CRUD, schema versioning.
-- [ ] Apply to one or many photos (writes edit JSON only). Per-photo overrides. Adaptive rules (auto exposure/WB normalization).
-- [ ] The UI style screens go live with real data. A hand-written test style is applied to the sample folder.
-- 🧑 Human test + ⛔ STOP.
+## Phase 4: Styles
+
+Goal: real styles. A style is a reusable look stored as data in `styles/<id>/`. It can be applied to one or many
+photos (that writes edit JSON only), it adapts to each photo through adaptive rules, and per-photo tweaks stay on
+top. The Styles screens, "Apply style…" and the Photo view's style controls work on real data. A hand-written test
+style applied to the `2026-08-11` folder gives a consistent look. Export stays mock (Phase 5): "Apply & export"
+applies for real and simulates the export.
+
+Starting point (Phase 3): `PhotoEditFile` already has `style_id` (always `None` so far) and sparse dotted
+`overrides`, stored as differences from the source defaults. The catalog has a `style_id` column, and the Library's
+style filter uses it. Styles, sample images and apply jobs come from `mock/backend.py`. The `Style` model holds a full
+`AdjustmentParams`, so it can't tell "sets contrast to 0" apart from "leaves contrast alone".
+
+**Design** (decisions 2026-10-09, PLAN §0):
+- **Effective parameters** = source defaults ← style values ← adaptive rule results ← per-photo overrides.
+  Overrides are stored as differences from the styled values (defaults ← style ← rules), so moving a slider back to
+  the style's value makes it follow the style again.
+- **Live link**: a photo stores only `style_id`. The edit revision hashes the style's *look* (its values and rules,
+  not its name or description), the rule results and the overrides. Changing a style re-revisions every photo that
+  uses it and re-renders their thumbnails. Renaming a style doesn't.
+- **Applying over tweaks**: overrides of parameters the style sets are dropped, and others (e.g. a crop) are kept.
+  If the style's exposure or white-balance rule is active, it counts as setting `tone.exposure` or
+  `white_balance.*`.
+- **A style is sparse**: `values` is a dotted dict (`{"tone.contrast": -10, "hsl.green.saturation": -30}`). Setting a
+  value equal to the default still counts as "sets it". Geometry is never part of a style (it's per photo), and
+  later-phase parameters are rejected as in P3.1.
+- **Adaptive rules** run per photo on numbers measured once per photo (like the tone anchors: 512 px, default
+  render, stored in the catalog with the render identity), so renders stay deterministic:
+  - `exposure`: `off` | `auto`. Auto adds `strength × (target − photo middle)` EV, limited to ±`max_change`. The
+    "photo middle" is the median scene luminance in stops relative to mid gray, at exposure 0 with the profile
+    baseline. The style's own `tone.exposure` is added on top.
+  - `white_balance`: `as_shot` + offsets | `auto` (neutral estimate + offsets) | `fixed` (temperature/tint given in
+    the rule). A style without a white_balance rule doesn't touch WB. `values` never holds `white_balance.*`
+    (rejected: WB goes through the rule). Temperature offsets are given in Kelvin at 5500 K and applied as the
+    equivalent mired shift, so "+400 K" looks alike under tungsten and daylight. (Changed in P4.2: `as_shot`
+    takes the offsets, so a separate `as_shot_offset` mode wasn't needed.)
+  - Rule outputs are limited by design (`max_change`, the parameter ranges) and the limits are documented. That isn't
+    silent clamping of input (golden rule 5): invalid rule settings are still rejected.
+
+**Inconsistent photos are the hard part** (the user's shooting, 2026-10-09; PLAN §0). The user exposes manually and
+tweaks settings while shooting, so a series from one place can vary by a stop or more. The subjects vary widely:
+rally/drift (fast, mixed light), a **black cat** (low-key: any "make the middle gray" metering turns it gray) and an
+orange cat, and travel (cities, mountains, night). Phase 4 doesn't solve this fully, but it builds the ground for
+iterating on it, in Phase 8 and with the AI in Phase 7:
+- **Rules are an extensible list**: each rule is a typed, versioned entry (a discriminated union), run in a fixed
+  order. A new rule or metering mode later = one model + one function + tests, with no format redesign.
+- **Exposure metering modes**: `middle` (the median), `highlights` (puts the photo's white point at a target, so a
+  low-key subject such as the black cat or a night street isn't pulled up to gray) and `camera_settings` (see the
+  next point).
+- **Even out a group**: applying a style to a selection can store a **group reference** in each photo's edit (the
+  group's median of the chosen measure). The exposure rule then targets the group instead of a fixed number.
+  With `camera_settings` metering, the measure is the photo's own exposure from EXIF (shutter, aperture, ISO → EV),
+  so a series shot in steady light with changing settings is evened out exactly, and the picture content (a black
+  cat filling the frame) can't fool it. The reference is stored, so renders stay deterministic and don't depend on
+  what else is selected later.
+- **A test set per style**: a style keeps a list of hard test photos (e.g. the black cat, a night street, a backlit
+  rally shot). Samples, contact sheets and reports use it, so every iteration is checked on the same hard cases.
+- **Measured consistency**: a report gives numbers for "consistent". It shows the spread of the output's middle
+  brightness, white point and WB across a set, before vs. after the style, with each photo's measurements and rule
+  results. Phase 7's AI and Phase 8's fitting can optimize against the same numbers.
+- **Version history**: every saved style version is kept (`styles/<id>/history/v<N>.json`). The UI and CLI can diff
+  two versions, compare them on the test set and revert, so trying a change costs nothing.
+
+- [x] **P4.0** Detail this phase into items. ⛔ STOP for the user to review it. Reviewed and approved 2026-10-09.
+
+### Decisions to confirm at phase start (ask the user)
+- [x] **P4.1** Confirmed 2026-10-09 (recorded in PLAN.md §0): live link; applying replaces only the parameters the
+  style sets; adaptive rules = auto exposure + WB relative to as shot + auto-neutral WB; styles managed in the UI.
+  Still open, with defaults to confirm in the P4.0 review:
+  - **Sample images rendered from your real photos stay local** (`styles/*/samples/` git-ignored, the same as the
+    golden-image decision), and only `style.json` + `README.md` are committed. Say if they should be committed (the
+    repo is pushed to GitHub).
+  - **The 4 mock styles are removed.** Phase 4 ships two hand-written test styles (P4.12). Your real styles come in
+    Phase 8.
+  - **Auto exposure's default target** = the median "photo middle" of the 67 samples, so an average photo barely
+    changes. It's measured in P4.4 and written into `docs/styles.md`.
+  - **Even out a group** is a checkbox in "Apply style…", **off by default**. When it's on, the exposure rule targets
+    the group's reference instead of the style's fixed target.
+  - **Style sample folders** (given 2026-10-09, read-only; all X-T3 · Provia · DR100, so the existing profile fits).
+    They're configured as `style_sample_dirs` in `config.local.toml` (a new list setting, also used by the
+    `@pytest.mark.golden` tests) and imported into the catalog in P4.12 (where the test sets are chosen):
+    - `2026-08-17`: orange cat + sunsets (6 photos; ISO 800, 1/60, EV spread 0.7 stops)
+    - `2026-08-11`: both cats, orange and **black** (67; the existing sample folder; EV spread 6.9 stops)
+    - `2026-07-26`: drift (113; old XF18-55 lens; 1/500–1/4000, ISO 1000/4000; EV spread 2.3 stops in one
+      session, a good "even out" test).
+    - `2026-08-16`: rally (183; new XF70-300 lens; f/9–14, **1/60–1/3195**: panning and freeze shots mixed, light
+      changes between stages; EV spread 4.7 stops).
+    - At car events the user can't get close, even with the longer lens, so **cars are often small in the frame**
+      and the framing varies. Whole-frame metering then mostly measures the background, so nothing in Phase 4 may
+      rely on the framing or on the subject filling the frame. Subject-weighted metering and subject-centered
+      crops (Phase 6) matter here. Camera-settings evening-out only holds within a run of shots in the same
+      light, so whole-folder grouping is left to later (see Phase 8).
+
+    The test styles' test sets (P4.12) pick hard cases from all four folders: the black cat, the orange cat, a
+    sunset, a backlit or night shot, drift shots at different settings, and rally panning vs. freeze shots.
+
+### Core
+- [x] **P4.2** Models (`models/style.py`, the API contract):
+  - `rules`: a list of typed rules (discriminated by `type`, each with its own `rule_version`), at most one per
+    type, evaluated in a fixed order:
+    - `exposure`: metering `middle` | `highlights` | `camera_settings`; target −4…+4 stops (for `middle` /
+      `highlights`); `use_group` (target the photo's stored group reference when it has one); strength 0…100;
+      max_change 0…3 EV.
+    - `white_balance`: mode, temperature_offset −3000…+3000 K, tint_offset −50…+50, temperature/tint (`fixed`
+      only).
+  - `RuleResults`: per rule, what it measured, its target and what it changed (e.g. "highlights metering: white
+    point +1.8 → target +2.2, +0.4 EV"), for display and reports.
+  - `Style`: `schema_version`, id (slug = folder name, fixed at creation), name, description, best_for, avoid_on,
+    `values` (sparse dotted dict, validated by applying it to `AdjustmentParams`), `rules`, `test_photo_ids`
+    (the style's hard cases), `samples` (photo id, caption, file names, the style `look_hash` they were rendered
+    with), created_at/updated_at, `version` (+1 on every saved change), `change_note` (optional, one line per
+    version), and `look_hash` (computed: values + rules).
+  - `StyleSummary` adds `photo_count` and `cover_url`. `StyleView` adds `changed_parameters` (= `values`) and
+    `samples_stale`.
+  - `PhotoEdit` adds `style_values` (the dotted names the style sets, so the UI can mark them), `rules` (the photo's
+    `RuleResults`) and `style_version`.
+  - `ApplyStyleRequest.style_id` becomes nullable (`null` removes the style), and it adds `even_out` (bool, default
+    off).
+  - `ConsistencyReport`: per photo, its measurements (middle, white point, WB, camera EV) before and after, plus the
+    rule results; per set, the spread (median absolute deviation and range) of each measurement, before vs. after.
+
+  Tests: validation and ranges, WB values only in `fixed` mode, a duplicate rule type rejected, an unknown rule
+  type or newer rule version → a clear error, geometry and later-phase names rejected, unknown names rejected, JSON
+  round-trip, and `look_hash` ignores name, description, test set and timestamps.
+  Done: `StyleView` is a flat API model (not a subclass of the stored `Style`) with sample URLs and `stale` flags;
+  `PhotoEdit` also has `style_error` and `group` (`GroupReference`); `AdjustmentParams.with_values()` / `dotted()`
+  handle dotted names. Later-phase names are rejected by core when a style is saved or used (P4.3/P4.5), because
+  the list lives in the engine. The mock styles were adapted to the new format until P4.7 removes them.
+- [x] **P4.3** `core/styles.py` `StyleLibrary` over `styles/` (all writes atomic and through the path guard):
+  - list (a broken `style.json` is listed as broken with its error, so it doesn't break the list), get, create (id
+    from the name; slug collision → `-2`, `-3`…), update (optimistic: `expected_version` mismatch → conflict error),
+    duplicate, delete (removes the folder).
+  - `schema_version` with a migration hook. A file from a newer version → clear error.
+  - `README.md` is regenerated from `style.json` on every save (description, best for / avoid on, rules,
+    parameter table). `style.json` is the source of truth.
+  - **History**: every save also writes `history/v<N>.json`. Also `history(id)`, `version(id, n)`, `diff(id, a, b)`
+    (changed values and rules) and `revert(id, n)` (saved as a new version, so nothing is lost).
+  - A clock is injected for timestamps (not in the render path).
+
+  Tests in `tmp_path`: CRUD, slug collisions, version conflict, a broken file, a newer schema, README content,
+  history/diff/revert, and writes outside `styles/` refused.
+  Done: saving samples (`set_samples`) is not a new version (samples are derived from the look). Duplicates copy
+  the look, text and test set but not the samples. `ConflictError` maps to HTTP 409. Request models
+  `StyleCreate`, `StyleUpdate`, `StyleDiff` and `StyleVersionInfo` live in `models/style.py`.
+- [x] **P4.4** Photo measurements for the rules: extend the anchor measurement into `PhotoStats` (black, white,
+  **middle** = median, and the **neutral WB estimate**: the temperature/tint that makes the photo's near-neutral
+  midtone pixels gray, found in camera space and converted with `color.as_shot_temperature_tint`). One pass, the same
+  512 px input. Catalog schema v4 adds `tone_middle`, `neutral_temperature`, `neutral_tint`, filled lazily and
+  measured again when missing or when the render identity changes. Stored anchors keep their values (unedited renders
+  don't change).
+  Also the **camera exposure** of each photo: `EV100 = log2(N² / t) − log2(ISO / 100)` from EXIF aperture, exposure
+  time and ISO (catalog v4 stores the exposure time as a number; existing rows are filled from the stored shutter
+  text). `None` when EXIF is missing; `camera_settings` metering then falls back to `middle` and says so in the rule
+  results.
+  Tests: synthetic images with a known median and a known color cast (estimate within 100 K / 3 tint), EV100 math
+  (known settings → known EV), catalog v4 migration, lazy fill. Golden: on the samples, the daylight shots' neutral
+  estimate is near as-shot. Print the median-of-middles over all four style sample folders (369 photos) for P4.1's
+  default target.
+  Config: a `style_sample_dirs: list[Path]` setting (`config.example.toml` lists the four folders, commented).
+  Golden tests skip a folder that isn't configured or present.
+  Done. Neutral estimate: a gray world over midtones near gray, starting from the median color with a radius
+  shrinking from 1.0 to 0.35 (log2 channel ratio), so a strong cast (tungsten on daylight balance) is found while
+  saturated subjects drop out. It falls back to as shot when fewer than 2 % of midtones qualify or the result is
+  no plausible light (outside 2500–12000 K or tint ±50: a frame filled by one colored subject).
+  Measured on all 369 sample RAFs (half size, 5 min): middle median **−2.7** (p10 −5.2, p90 −2.0), white point
+  median **−0.1** → `DEFAULT_EXPOSURE_TARGETS` (middle −2.7, highlights −0.1). Neutral − as shot: rally (daylight)
+  median −251 K (80 % within −582…+137 K); drift +834 K (asphalt and smoke read bluish); 2026-08-11 down to
+  −1800 K on the 06:00 sunrise shots (auto WB would remove the golden light, as expected: it's opt-in). As-shot
+  fallbacks: 18/67, 28/183, 4/6. Measurements are filled lazily (every stored photo is measured again once, in
+  one pass with the anchors, which keep their values).
+  `Settings.photo_dirs` = sample + style sample folders, all protected by the path guard.
+- [x] **P4.5** Resolving a style for a photo (`core/style_rules.py`, pure functions): `resolve(defaults, style, stats,
+  as_shot) → (AdjustmentParams, RuleResults)`.
+  - Exposure: style exposure + the auto delta, per metering mode: `middle` moves the median to the target;
+    `highlights` moves the white point to the target; `camera_settings` (with a group reference) adds
+    `photo EV100 − group EV100`, the exposure difference the photographer dialed in. With `use_group` and a stored
+    group reference, the target is the reference.
+  - White balance per mode. Offsets go through mireds, and the result is limited to the WB ranges.
+  - Each rule is a function from (rule, stats, group reference) to (parameter changes, result). Adding one later
+    doesn't touch the others.
+  - Exact-math tests per rule and mode: strength 0/50/100, max_change limits, each metering mode (a dark-subject
+    image: `middle` brightens it, `highlights` doesn't), camera EV differences (1/250 vs 1/500 at the same
+    aperture/ISO → exactly 1 EV), the missing-EXIF fallback, offsets at 3200 K vs 5500 K, fixed mode, as_shot
+    leaves WB `None`.
+  - Hypothesis: any valid style + any stats → valid `AdjustmentParams`, deterministic.
+  Done in `core/style_rules.py` (`resolve`, `RuleInputs`, `rule_parameters`): every limit or fallback is named in
+  the rule result's `note`. Changed while implementing: `GroupReference` stores the group's medians of **all**
+  measures (middle, white point, camera EV), so switching a style's metering mode later doesn't invalidate photos
+  already evened out. Values and outputs are rounded (exposure 4 decimals, Kelvin 0.1, tint 0.01) so stored
+  numbers and revisions don't carry float noise.
+- [x] **P4.6** Edits with styles (`core/edits.py`):
+  - `PhotoEditFile` adds an optional `group` (`GroupReference`: id, size, middle, white, camera_ev; written by
+    "even out"), still schema v1
+    (the field is optional and new).
+  - `effective()` = defaults ← resolved style ← overrides. A missing or broken style → the photo renders as if
+    unstyled, and `PhotoDetail` says why (it never crashes the Library).
+  - `save()` stores overrides as differences from the styled values.
+  - `apply_style(photo, style_id | None)` drops overrides of parameters the style sets (plus `tone.exposure` /
+    `white_balance.*` when a rule covers them) and keeps the rest.
+  - The revision hashes `look_hash` + rule results + overrides. Unstyled photos keep their Phase 3 revisions, so no
+    cache churn.
+  - The catalog's `style_id` is kept in sync.
+
+  Tests: precedence, sparse overrides relative to the style, apply/replace/remove, slider back to the style value,
+  revision changes on a look change but not on a rename, a missing style.
+  Done. The revision of a styled edit hashes the resolved style parameters (look + rule results), so unstyled
+  photos keep their Phase 3 revisions and nothing re-renders. Measurements are asked for only when the style has
+  rules (measuring may decode). **Reset (DELETE /edit) now drops only the per-photo tweaks and keeps the style**;
+  removing a style is its own action (P4.7). The catalog keeps `style_id` across re-imports (like the rating).
+  When an applied style is switched, kept tweaks keep the value the photo showed.
+- [x] **P4.7** Library operations (`core/styling.py`, next to `core/library.py`):
+  - `apply_style(photo_ids, style_id | None, even_out=False)` as a real `APPLY_STYLE` job (each item writes one edit
+    JSON), followed by the thumbnail job. With `even_out`, it first measures the selection, then stores the group's
+    medians (middle, white point, camera EV) in each photo's edit. Applying without it clears the group.
+  - `consistency_report(style_id | None, photo_ids)` → `ConsistencyReport`. The default set is the style's test
+    set, otherwise the photos that use it.
+  - `set_photo_style(photo_id, style_id | None)` (instant, for the Photo view).
+  - Style changes (update / delete) re-revision the photos using the style and re-render their thumbnails. Delete
+    sets them to no style and keeps their tweaks as absolute values.
+  - `style_from_photo(photo_id, name, groups, exposure_mode, wb_mode)` creates a style from a photo's effective
+    values (only what differs from the source defaults, never geometry). WB can be saved as an offset from the
+    photo's as-shot. Exposure can be saved as "match this photo's brightness" (auto, target = this photo's resulting
+    middle).
+  - `update_style_from_photo(style_id, photo_id, groups)`, then re-saves that photo so overrides now equal to the
+    style vanish.
+  - `render_samples(style_id, photo_ids)` job: before = default look, after = with the style (no per-photo tweaks),
+    1200 px JPEG q88, into `styles/<id>/samples/`.
+
+  The mock styles leave `mock/backend.py`. Apply & export = a real apply + the simulated export.
+  Tests on synthetic photos: every operation, jobs and their progress, thumbnails re-rendered, originals untouched.
+  Done in a new `core/styling.py` (`Styling`; `library.py` was already 400+ lines). With "even out", items measure
+  the photos and the edits are written together once the group is known. Apply & export returns the apply job;
+  the simulated export job is submitted when it finishes. Samples are 1200 px previews (JPEG q90, the preview
+  quality) rendered as a `render` job; a new rendering removes sample files no longer listed. The report measures
+  "after" in scene terms (measurements moved by exposure and WB, before tone curves), so it shows what the rules
+  did. `mock/images.py` is gone; the mock backend only serves presets and simulated exports. The existing GET
+  style routes and `POST /api/jobs` already use the real code (the rest of the API follows in P4.8).
+
+### API + CLI
+- [x] **P4.8** Real style endpoints (replace the mock ones; `409` on a version conflict, `404`/`422` with clear
+  messages):
+  - `GET /api/styles`, `GET /api/styles/{id}`, `POST /api/styles` (create: blank, or from a photo with groups and
+    modes), `PUT /api/styles/{id}` (text, values, rules; with `expected_version`), `POST /api/styles/{id}/duplicate`,
+    `DELETE /api/styles/{id}`.
+  - `POST /api/styles/{id}/from-photo` (update from a photo), `POST /api/styles/{id}/samples` (`photo_ids` → job),
+    and `GET` sample images.
+  - `GET /api/styles/{id}/history`, `GET /api/styles/{id}/versions/{n}`, `GET /api/styles/{id}/diff?a=&b=`,
+    `POST /api/styles/{id}/revert`.
+  - `POST /api/styles/{id}/report` (`photo_ids` optional → `ConsistencyReport`).
+  - `PUT /api/photos/{id}/style` (`{style_id | null}` → `PhotoDetail`).
+  - `POST /api/jobs` `apply_style` / `apply_and_export` become real.
+
+  Regenerate `openapi.json` + `schema.d.ts`. Tests for every endpoint.
+  Done: creating from a photo is `POST /api/styles/from-photo` (a separate path). Also `GET /versions/{n}` (a
+  version as a `StyleView`), `POST /duplicate` (`{name?}`) and `DELETE` returns `{id, photos}`. Invalid style values
+  are 400 with the reason (checked when the style is built); malformed bodies are 422. `DELETE /photos/{id}/edit`
+  keeps the style (P4.6).
+- [x] **P4.9** CLI:
+  - `photoedit style list | show ID | check` (validates every style file)
+  - `photoedit style apply ID [PHOTO…|--folder] [--even-out]` and `--remove`
+  - `photoedit style samples ID PHOTO…`
+  - `photoedit style contact-sheet ID [--test-set | --count 12] [--version N]`: a before/after grid (the test set,
+    or photos of the current folder) into `output/contact-sheets/`, each tile labeled with its measurements and rule
+    results. `--version` renders an older version, so two versions can be compared side by side.
+  - `photoedit style report ID [PHOTO…]`: the consistency report as a table (and `--json`).
+  - `photoedit style history ID`, `diff ID A B`, `revert ID N`.
+
+  Tests with `CliRunner`.
+  Done: removing is `photoedit style remove [PHOTO…]` (not `apply --remove`); photos default to the Library's
+  current folder. The contact sheet (`core/style_sheet.py`) is one row per photo, labeled with its middle
+  brightness before → after and every rule's result; `--version N` adds a column with version N. Found while
+  testing: a hand-written `style.json` has no history, so the first change now saves the replaced version to
+  `history/` too.
+
+### UI
+- [x] **P4.10** Styles screens on real data (the `DEMO DATA` tag leaves them):
+  - Library cards: cover = the first "after" sample, else a placeholder; photo count.
+  - Detail: inline editing of name, description, best for, avoid on; a rules editor (exposure auto: target,
+    strength, max; WB mode and offsets); the parameter table with "remove from style"; samples with "Render from
+    selection" and a "samples are from an older version" badge; Duplicate; Delete (the confirmation names the number
+    of photos that drop back to no style); Apply to N selected; Show photos (opens the Library filtered to the
+    style).
+  - Rules editor: metering mode (with a one-line hint each, e.g. "highlights: for dark subjects such as a black
+    cat or night streets"), "use group reference".
+  - **Test set**: add/remove photos ("add selection"), shown as a before/after strip with each photo's rule results.
+  - **Consistency** panel: the report for the test set (or the photos using the style), with spread before → after
+    per measurement, and the photos furthest from the group highlighted (they need attention).
+  - **History**: a version list with change notes, a diff of two versions, "compare on test set" (old vs. new
+    renders side by side), and revert.
+  - Saving asks for an optional change note and shows conflicts (another change came first) with a reload.
+  Done: the detail page is split into sections (`features/styles/Style*.tsx`), each with its own edit/save, all
+  through one save path (`useStyleSave`: `expected_version`, 409 → a "changed somewhere else" banner with Reload).
+  Added `GET /api/styles/{id}/versions/{n}/photos/{photo_id}.jpg` (a photo with any version, no tweaks) for the
+  test-set strips and "compare on the test set". "Show photos" opens `/library?style=<id>`. The Create style dialog
+  now explains Save as style… (by hand) next to Phase 8's AI flow. Vite's chunk warning limit is 800 kB (local app,
+  one bundle; 515 kB now).
+- [x] **P4.11** Library + Photo view:
+  - Library: "Apply style…" uses real styles and a real job (the export step is labeled "simulated until Phase 5"),
+    plus the **Even out these photos** checkbox (off by default; its hint explains when it helps, e.g. "a series shot
+    in the same light with changing settings"). A "Remove style" action. Real style badges and filter.
+  - Photo view Adjust panel: a style picker at the top (applies immediately); sliders whose value comes from the
+    style get a marker; a line showing the rule results ("Auto exposure +0.62 EV · WB as shot +400 K");
+    "Save as style…" (name, groups with the number of changed values in each, exposure and WB modes);
+    "Update style from this photo" (choose groups, confirm "changes N photos").
+  Done. Also: double-clicking a slider (or a group reset) on a styled photo goes back to the **style's** value
+  (`PhotoEdit.defaults` is now "what a reset goes back to": the styled values; new `PhotoEdit.unedited` is the
+  Before look, used to count changed values per group). Save as style… can use the new style for the photo right
+  away (on by default). The panel restarts its edit session when the photo's style or style version changes. When
+  an apply job finishes, photos and styles refresh app-wide (`useRefreshAfterJobs` in the layout). "Remove style"
+  is enabled when the selection has a styled photo.
+- [x] **P4.12** Two hand-written test styles, committed in `styles/` (only `style.json` + generated `README.md`):
+  - `test-warm-matte`: auto exposure (`middle` metering, use group); WB as shot +400 K; lower contrast, lifted
+    blacks (tone curve), highlights −30; greens toned down; warm highlight / cool shadow grading; a light vignette.
+  - `test-classic-bw`: auto exposure (`highlights` metering), saturation −100, strong contrast, deep blacks.
+
+  Their test sets are 8–10 photos chosen across the four style sample folders (P4.1): black cat, orange cat,
+  sunset, backlit/night, drift at two settings, rally panning and freeze. Render their samples locally,
+  run the report and the contact sheet over the whole folder, and record the before → after spread in
+  `docs/styles.md`. That file documents the format, precedence, rules and metering modes (when to use which, with
+  the black-cat and manual-series cases), the measured default target, how to write a style by hand, and **how to
+  iterate on a style**: edit → contact sheet / report on the test set → compare versions → keep or revert.
+  Done 2026-10-09. The four folders are imported (369 photos) and measured. Test set: DSCF5580/5601 (black cat lit /
+  dark), 5574/5598/6283 (orange cat close / lamp / night), 6286 (sunset), 5323/5414 (drift 1/2000 ISO 1000 vs.
+  1/4000 ISO 4000), 6033 (rally dust), 6278 (tree against the sun). The rally folder has no panning shots (its
+  1/60–1/125 frames are a parked car), so the into-the-sun shot stands in as the hard rally-day case. Results are in
+  `docs/styles.md`: middle metering takes the middle spread to 0 on the drift, rally and sunset folders; the cats
+  folder's 40 very dark indoor shots hit the 1.5 EV limit (a case to tune). The styles were created through the
+  library (README + history) from hand-chosen values. Slugs now join "&" and apostrophes ("B&W" → `bw`).
+  `styles/*/samples/` is git-ignored.
+- [x] **P4.13** Tests:
+  - Vitest: style detail editing, the rules editor, test set, consistency panel, history/diff/revert, delete
+    confirmation, conflict handling, the Photo view style picker, Save as style, update-from-photo, the apply wizard
+    with a real job and "even out".
+  - Playwright on the e2e photos (the generator adds a deliberately under- and overexposed copy of one scene, to
+    stand in for a manual series): create a style from an edited photo → apply it to the folder with "even out" →
+    the thumbnails change and the report's spread shrinks → edit the style → the thumbnails change again → revert →
+    delete. Screenshots.
+  Done: 85 Vitest tests (Styles screens, Photo view style controls, Library remove/filter, wizard even out) and 5
+  Playwright tests. The e2e server now also uses `output/e2e/styles` (seeded with "E2E Moody"), so it never touches
+  the real `styles/`; e2e photos carry exposure EXIF, plus a 2-stop-darker and a 1-stop-brighter shot of scene 1.
+  Fixed from the screenshots: the Photo view's style picker was squeezed by its buttons (now its own row); a rule
+  summary showed "-0.00 EV".
+- [x] **P4.14** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e) and update README.
+  Done 2026-10-09: pytest 565 passed (+ 13 golden, 8 min), ruff, format, mypy clean; Vitest 85 passed, oxlint
+  clean, build OK; Playwright 5 passed. README: status, Styles section, style CLI, config, layout.
+
+### 🧑 Human test: Phase 4
+0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`.
+1. `uv run photoedit ui` → **Styles** shows the two test styles (no `DEMO DATA` tag), each with sample before/after
+   images and a parameter table. The catalog upgrades on its own, and the first render of each photo measures its
+   middle brightness and neutral WB.
+2. Library (`2026-08-11`) → select all → **Apply style…** → **Test · Warm Matte** → apply without export → a job
+   runs and the thumbnails switch to the style. They look **consistent** across bright, dark and backlit shots
+   (auto exposure evens them out). Night shots get brighter only within the style's max change.
+2b. Open the drift folder (`2026-07-26`) → select a run of shots in the same light with different settings → apply
+   with **Even out these photos** → their brightness matches more closely than without it. In `2026-08-11`, on the
+   black cat, **highlights** metering keeps it black, while **middle** pulls it toward gray (switch the rule in
+   the style and compare). In the rally folder, a panning shot and a freeze shot of the same stage come out alike.
+2c. Style detail → **Consistency** → the spread after the style is smaller than before, and the photos furthest
+   from the group are highlighted. Change a rule, save with a note, then **History** → compare the two versions on
+   the test set → **revert**.
+3. Open a styled photo → the Adjust panel shows the style, marks the style's sliders, and shows "Auto exposure …".
+   Move **Exposure** → it becomes a per-photo tweak. Re-apply the style → that tweak is replaced (the style sets
+   exposure), but any other tweak remains.
+4. Styles → Warm Matte → change contrast or a rule (e.g. WB offset +800 K) → save → every photo using it updates
+   (thumbnails re-render). Renaming the style doesn't re-render anything.
+5. Edit a photo by hand → **Save as style…** (pick groups, "match this photo's brightness") → apply the new style to
+   other photos → they take on its look and brightness. **Update style from this photo** works and says how many
+   photos change.
+6. Style detail → **Render from selection** → new samples appear. Change the style → the "older version" badge shows.
+   **Duplicate** then **Delete** the copy → the confirmation says how many photos it affects, and those photos fall
+   back to no style with their own tweaks kept.
+7. Library filter **Style: Warm Matte** shows exactly the styled photos. Restart `photoedit ui` → everything is
+   still there.
+8. `uv run photoedit style contact-sheet test-warm-matte --test-set` → `output/contact-sheets/` shows labeled
+   before/after pairs. `uv run photoedit style report test-warm-matte` prints the spread table.
+   `uv run photoedit style check` → all styles valid.
+9. The `2026-08-11` folder is unchanged (Explorer, Date modified). `uv run pytest -m golden` passes.
+10. **Give feedback** on the rules (does auto exposure feel right? WB offsets?) and on the style screens.
+
+### ⛔ STOP: user approves Phase 4
+
+**Approved 2026-10-10.** The user inspected and applied styles in the human test; no change requests.
 
 ## Phase 5: Export (outline)
 - [ ] **P5.0** Detail this phase. ⛔ STOP for review.
@@ -540,6 +917,8 @@ better but still has a delay; acceptable for now, because the user isn't plannin
 ## Phase 6: Geometry & centering (outline)
 - [ ] **P6.0** Detail this phase. ⛔ STOP for review.
 - [ ] Crop / rotate / straighten / flip / zoom in the pipeline. Subject detection (faces + saliency). `suggest_crop(aspect)`.
+  Must handle small, off-center subjects (rally/drift cars shot from far away, often with panning blur) and cats
+  (incl. a black cat on dark backgrounds); test on the style sample folders.
 - [ ] Crop overlay in the Photo view.
 - [ ] 1:1 zoom view (full-resolution crops of the visible area) so sharpening can be judged (deferred from Phase 3,
   2026-10-09).
@@ -558,6 +937,10 @@ better but still has a delay; acceptable for now, because the user isn't plannin
 - [ ] Analysis tools; parameter fitting from pairs (developed first on the X-T3 camera JPEG + RAF pairs).
 - [ ] Style creation flow: AI proposal → render → compare → iterate → save with README + samples.
 - [ ] Fallbacks as needed: F1 A/B picker, F2 statistical transfer, F3 learned 3D LUT, F5 ML (only with the user's approval).
+- [ ] Series detection for inconsistent shoots (from Phase 4's preparation): split a folder into runs of shots in
+  the same light (capture-time gaps + scene similarity), so "even out" works per series on a whole folder (e.g. a
+  rally day with panning and freeze shots across stages). Subject-weighted metering once Phase 6 detects subjects
+  (cars are often small in the frame: the user can't get close at rally/drift events).
 - 🧑 Human test + ⛔ STOP.
 
 ## Phase 9: Polish (outline)

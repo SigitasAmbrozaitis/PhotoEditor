@@ -47,8 +47,10 @@ config.local.*
 *.MP4
 # Ad-hoc sample folder (real sample photos stay in their own folder, read-only)
 /samples/
-# Note: JPEG/PNG are NOT ignored globally. Style sample images
-# (styles/<name>/samples/) and small test fixtures are committed on purpose.
+# Style sample images are rendered from your real photos: they stay local (decision 2026-10-09, like the
+# golden images). style.json, README.md and history/ are committed.
+/styles/*/samples/
+# Note: JPEG/PNG are NOT ignored globally: small test fixtures are committed on purpose.
 
 # ----- Python -----
 __pycache__/

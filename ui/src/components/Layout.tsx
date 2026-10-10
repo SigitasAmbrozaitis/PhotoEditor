@@ -1,6 +1,6 @@
 import { Download, FolderOpen, Images, ListChecks, LoaderCircle, Palette } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router'
-import { useJobs, useLibrary } from '../api/queries'
+import { useJobs, useLibrary, useRefreshAfterJobs } from '../api/queries'
 import { useBackendHealth, type BackendState } from '../hooks/useBackendHealth'
 import { Tooltip } from './ui'
 import { cn } from '../lib/cn'
@@ -52,7 +52,6 @@ function JobIndicator() {
 
 /** Screens still backed by mock data, and the phase that makes them real. */
 const MOCK_SCREENS: Record<string, string> = {
-  '/styles': 'Styles are mock data until Phase 4.',
   '/presets': 'Export presets are built in; exporting is simulated until Phase 5.',
 }
 
@@ -105,6 +104,7 @@ function NavRail() {
 }
 
 export function Layout() {
+  useRefreshAfterJobs()
   return (
     <div className="flex h-full flex-col">
       <TopBar />

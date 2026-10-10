@@ -24,10 +24,11 @@ from photoedit.models import (
     Page,
     Photo,
     PhotoDetail,
-    Style,
     StyleSummary,
+    StyleView,
 )
 from photoedit.models.fs import DirListing
+from photoedit.models.style import StyleCreate
 from photoedit.services import Services
 
 TIMEOUT = 20
@@ -198,22 +199,26 @@ def test_fs_dirs_roots_and_errors(client: TestClient, tmp_path: Path) -> None:
 # ----------------------------------------------------------------- styles + presets (mock)
 
 
+def _services(client: TestClient) -> Services:
+    services: Services = client.app.state.services()  # type: ignore[attr-defined]
+    return services
+
+
+def _make_style(client: TestClient, name: str = "Moody", **fields: object) -> str:
+    request = StyleCreate.model_validate({"name": name, "values": {"tone.contrast": 20}, **fields})
+    return _services(client).styles.create(request).id
+
+
 def test_styles(client: TestClient) -> None:
+    assert client.get("/api/styles").json() == []
+    sid = _make_style(client)
     summaries = TypeAdapter(list[StyleSummary]).validate_python(client.get("/api/styles").json())
-    assert len(summaries) == 4
-    data = client.get(f"/api/styles/{summaries[0].id}").json()
-    assert data.pop("changed_parameters")  # derived, read-only field of the API view
-    style = Style.model_validate(data)
-    sample = client.get(style.samples[0].after_url)
-    assert sample.status_code == 200 and sample.headers["content-type"] == "image/jpeg"
-    assert client.get(f"/api/styles/{style.id}/samples/0/sideways.jpg").status_code == 422
+    assert [(s.id, s.photo_count, s.error) for s in summaries] == [(sid, 0, None)]
+    view = StyleView.model_validate(client.get(f"/api/styles/{sid}").json())
+    assert view.changed_parameters == view.values == {"tone.contrast": 20.0} and view.samples == []
+    assert client.get(f"/api/styles/{sid}/samples/01/after.jpg").status_code == 404
+    assert client.get(f"/api/styles/{sid}/samples/01/sideways.jpg").status_code == 422
     assert client.get("/api/styles/nope").status_code == 404
-
-
-def test_color_grading_serialized_with_global_alias(client: TestClient) -> None:
-    data = client.get("/api/styles/warm-film").json()
-    assert "global" in data["adjustments"]["color_grading"]
-    assert "global_" not in data["adjustments"]["color_grading"]
 
 
 def test_presets(client: TestClient) -> None:
@@ -230,27 +235,34 @@ def test_presets(client: TestClient) -> None:
 def test_apply_and_export_job_on_real_photos(client: TestClient, photos: Path) -> None:
     _import(client, photos)
     ids = _photo_ids(client)[:2]
+    sid = _make_style(client)
     preset = client.get("/api/export-presets/instagram-portrait").json()
     r = client.post(
         "/api/jobs",
         json={
             "kind": "apply_and_export",
             "photo_ids": ids,
-            "style_id": "moody-forest",
+            "style_id": sid,
+            "even_out": False,
             "preset_id": "instagram-portrait",
             "settings": preset["settings"],
             "destination": "C:/Users/ambro/Pictures/Exports",
         },
     )
     assert r.status_code == 201, r.text
-    job = _wait(client, Job.model_validate(r.json()).id)
-    assert job.status == "done" and job.progress == 1
-    assert [i.output_path for i in job.items] == [
+    applied = _wait(client, Job.model_validate(r.json()).id)
+    assert applied.kind == "apply_style" and applied.status == "done" and applied.style_id == sid
+    # The style is applied for real (edit files); the export after it is still simulated (Phase 5).
+    for pid in ids:
+        assert PhotoDetail.model_validate(client.get(f"/api/photos/{pid}").json()).edit.style_id == sid
+    listed = TypeAdapter(list[Job]).validate_python(client.get("/api/jobs").json())
+    export = _wait(client, next(j for j in listed if j.kind == "export").id)
+    assert [i.output_path for i in export.items] == [
         "C:/Users/ambro/Pictures/Exports/a.jpg",
         "C:/Users/ambro/Pictures/Exports/b.jpg",
     ]
-    listed = TypeAdapter(list[Job]).validate_python(client.get("/api/jobs").json())
-    assert [j.kind for j in listed] == ["apply_and_export", "render", "import"]  # newest first
+    unknown = {"kind": "apply_style", "photo_ids": ids, "style_id": "nope", "even_out": False}
+    assert client.post("/api/jobs", json=unknown).status_code == 404
 
 
 def test_cancel_job_endpoint(client: TestClient, photos: Path) -> None:

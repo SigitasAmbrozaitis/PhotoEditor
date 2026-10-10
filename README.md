@@ -6,9 +6,10 @@ PhotoEditor is a non-destructive RAW photo editor meant to replace Lightroom for
 cropping, zooming and centering. An **AI agent** (Claude Code, through MCP) drives it. You describe the look you want, the AI
 applies it, and the tool's code enforces the rules. A small web UI lets you browse, compare and approve.
 
-> **Status: early development (Phase 3, edit engine).** Photos render through a deterministic pipeline with live sliders,
-> per-photo edits and a camera profile fitted to the X-T3 camera JPEGs (see docs/default-look.md). Styles and export
-> are still demo data / simulated (Phases 4–5).
+> **Status: early development (Phase 4, styles).** Photos render through a deterministic pipeline with live sliders,
+> per-photo edits and a camera profile fitted to the X-T3 camera JPEGs (see docs/default-look.md). Styles are real:
+> made by hand from an edited photo, applied to many photos, adapted to each one by rules (see docs/styles.md).
+> Export is still simulated (Phase 5).
 > See [PLAN.md](PLAN.md) for the full plan and [TODO.md](TODO.md) for progress.
 
 ---
@@ -85,7 +86,8 @@ npm --prefix ui install
 npm --prefix ui run build
 ```
 
-Optional: copy `config.example.toml` to `config.local.toml` and set `sample_photos_dir` to a folder of your RAW photos.
+Optional: copy `config.example.toml` to `config.local.toml` and set `sample_photos_dir` to a folder of your RAW photos
+(and `style_sample_dirs` to folders of varied photos for developing styles).
 `uv run photoedit config show` prints the effective settings.
 
 ### Run
@@ -111,6 +113,16 @@ files in `workspace/edits/`; the original photos are never changed.
 the tool measures a photo's black and white points once (stored in the catalog), places the four bands between
 them, and pivots Contrast on the middle of that range, so a dark night shot and a bright beach shot both respond.
 See [docs/tone-sliders.md](docs/tone-sliders.md).
+
+**Styles.** A style is a reusable look (`styles/<id>/style.json`): a few parameter values plus **adaptive
+rules** that fit it to each photo. Auto exposure meters the photo's middle brightness, its highlights (so a black
+cat stays dark), or the exposure you dialed in (shutter, aperture, ISO); white balance stays the camera's, shifted
+by an offset. Make one from an edited photo with **Save as style…** in the Adjust panel, apply it with **Apply
+style…** (tick **Even out these photos** for a series shot in the same light with changing settings), and change
+it on its Styles page: every photo using it follows. Each style keeps a **test set** of hard photos, a
+**consistency** report (how far apart the photos come out, before vs. after), its **history** (compare versions
+side by side, bring one back) and before/after samples. Your own tweaks on a photo stay on top of its style. See
+[docs/styles.md](docs/styles.md) for the format, the rules and how to iterate on a style.
 
 An unedited RAW renders through a **camera profile** fitted to that camera's own JPEGs (FUJIFILM X-T3 · Provia
 ships with the tool; other cameras get a neutral generic profile). See [docs/default-look.md](docs/default-look.md).
@@ -139,6 +151,22 @@ high value into `output/contact-sheets/` (one image per group): a quick check th
 `output/profiles/`), and `photoedit golden update` renders local reference images of a few sample photos into
 `output/golden/` for the golden-image tests.
 
+Styles from the command line (photos default to the Library's current folder):
+
+```bash
+uv run photoedit style list
+```
+```bash
+uv run photoedit style apply test-warm-matte --even-out
+```
+```bash
+uv run photoedit style contact-sheet test-warm-matte --test-set
+```
+
+Also `style show | check | remove | samples | report | history | diff | revert` (`--help` on each). The contact
+sheet goes to `output/contact-sheets/`, one row per photo labeled with what the rules did there; `--version N`
+adds a column with an older version.
+
 For UI development with hot reload (backend plus Vite dev server on http://localhost:5173):
 
 ```bash
@@ -154,14 +182,15 @@ uv run pytest
 npm --prefix ui test
 ```
 
-Tests marked `golden` read the real photos in `sample_photos_dir` (read-only) and are skipped without it. Add
+Tests marked `golden` read the real photos in `sample_photos_dir` and `style_sample_dirs` (read-only) and are
+skipped without them. Add
 `-m "not slow"` for a quick run, or `-m golden` to run only the real-photo tests. The real-photo golden-image
 test compares against `output/golden/` (run `photoedit golden update` once); the synthetic golden images in
 `tests/golden/` are committed. After an intended change to the render engine, regenerate both
 (`uv run python scripts/update_golden.py` and `photoedit golden update`).
 
 End-to-end smoke test in a real browser (uses your installed Google Chrome with a temporary profile; build the UI
-first). It runs on synthetic photos written to `output/e2e/` and never touches your real catalog. Screenshots of
+first). It runs on synthetic photos written to `output/e2e/` and never touches your real catalog or styles. Screenshots of
 every screen are saved to `output/screenshots/`:
 
 ```bash
@@ -180,10 +209,10 @@ src/photoedit/     Python package: CLI, config, safety (write guard), API, core,
 ui/                web UI (React + TypeScript + Vite)
 tests/             Python tests
 scripts/           dev helpers (dev.cmd, e2e_setup.py for e2e test photos, update_golden.py)
-docs/              benchmark results, how the default look (camera profile) was fitted
-styles/            saved styles: style.json + README + sample images (from Phase 4)
+docs/              benchmark results, the default look (camera profile), tone sliders, styles
+styles/            saved styles: style.json + README + history (sample images stay local)
 export-presets/    export settings presets (from Phase 5)
-workspace/         local catalog (catalog.sqlite), later edits (git-ignored)
+workspace/         local catalog (catalog.sqlite) and per-photo edits (git-ignored)
 cache/             previews and thumbnails (git-ignored)
 output/            development test exports (git-ignored)
 ```

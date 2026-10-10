@@ -4,6 +4,14 @@
 # Sample RAW photos used for development and tests. Always treated as read-only.
 sample_photos_dir = "C:/Users/ambro/Pictures/2026/2026-08-11"
 
+# Varied real photos for developing and testing styles (P4.1). Always treated as read-only.
+# style_sample_dirs = [
+#     "C:/Users/ambro/Pictures/2026/2026-08-17",  # orange cat + sunsets
+#     "C:/Users/ambro/Pictures/2026/2026-08-11",  # both cats (orange and black)
+#     "C:/Users/ambro/Pictures/2026/2026-07-26",  # drift (XF18-55)
+#     "C:/Users/ambro/Pictures/2026/2026-08-16",  # rally (XF70-300)
+# ]
+
 # Tool-owned folders (defaults shown).
 # workspace_dir = "workspace"
 # styles_dir = "styles"

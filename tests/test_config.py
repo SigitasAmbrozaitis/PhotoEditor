@@ -75,3 +75,18 @@ def test_writable_dirs_excludes_sample_photos(tmp_path: Path) -> None:
     s = load_settings(tmp_path / "missing.toml", project_root=tmp_path, sample_photos_dir=tmp_path / "photos")
     assert s.sample_photos_dir not in s.writable_dirs
     assert s.workspace_dir in s.writable_dirs
+
+
+def test_style_sample_dirs_resolve_and_are_protected(tmp_path: Path) -> None:
+    from photoedit.safety import WriteNotAllowedError, guard_from_settings
+
+    cfg = tmp_path / "config.local.toml"
+    cfg.write_text('style_sample_dirs = ["cats", "C:/rally"]\n', encoding="utf-8")
+    s = load_settings(cfg, project_root=tmp_path, sample_photos_dir=tmp_path / "photos")
+    assert s.style_sample_dirs == [(tmp_path / "cats").resolve(), Path("C:/rally").resolve()]
+    assert s.photo_dirs == ((tmp_path / "photos").resolve(), *s.style_sample_dirs)
+    guard = guard_from_settings(s)
+    for folder in s.photo_dirs:
+        with pytest.raises(WriteNotAllowedError, match="protected"):
+            guard.assert_writable(folder / "x.jpg")
+    assert load_settings(tmp_path / "missing.toml", project_root=tmp_path).style_sample_dirs == []

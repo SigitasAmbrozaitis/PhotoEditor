@@ -55,6 +55,7 @@ export function ProcessWizard({
   const exportState = usePresetSettings()
   const [step, setStep] = useState<Step>('Style')
   const [styleId, setStyleId] = useState<string | undefined>(initialStyleId)
+  const [evenOut, setEvenOut] = useState(false)
   const [doExport, setDoExport] = useState(true)
   const [destination, setDestination] = useState('')
   const [customize, setCustomize] = useState(false)
@@ -73,11 +74,12 @@ export function ProcessWizard({
             kind: 'apply_and_export' as const,
             photo_ids: photoIds,
             style_id: styleId,
+            even_out: evenOut,
             preset_id: preset?.id ?? null,
             settings,
             destination: destination.trim(),
           }
-        : { kind: 'apply_style' as const, photo_ids: photoIds, style_id: styleId }
+        : { kind: 'apply_style' as const, photo_ids: photoIds, style_id: styleId, even_out: evenOut }
     createJob.mutate(request, {
       onSuccess: (job) => {
         onOpenChange(false)
@@ -144,10 +146,20 @@ export function ProcessWizard({
             ))}
           </div>
         ))}
+      {step === 'Style' && (
+        <div className="mt-4 flex flex-col gap-1">
+          <Switch label="Even out these photos" checked={evenOut} onCheckedChange={setEvenOut} disabled={count < 2} />
+          <p className="text-xs text-muted">
+            For a series shot in the same light with changing settings: the style's auto exposure brings the photos to
+            the group's middle instead of a fixed target. Needs a style with auto exposure.
+          </p>
+        </div>
+      )}
 
       {step === 'Export' && (
         <div className="flex flex-col gap-4">
           <Switch label="Export after applying the style" checked={doExport} onCheckedChange={setDoExport} />
+          <p className="text-xs text-warn">Exporting is simulated until Phase 5: no files are written yet.</p>
           {doExport &&
             (exportState.presets.data && settings ? (
               <>
@@ -179,7 +191,10 @@ export function ProcessWizard({
           <dt className="text-muted">Photos</dt>
           <dd>{count}</dd>
           <dt className="text-muted">Style</dt>
-          <dd>{style?.name}</dd>
+          <dd>
+            {style?.name}
+            {evenOut && ', evened out as a group'}
+          </dd>
           <dt className="text-muted">Export</dt>
           <dd>
             {doExport && settings ? (

@@ -8,6 +8,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field
 
 from photoedit.models.adjustments import AdjustmentParams
+from photoedit.models.style import RuleResult
 
 
 class Photo(BaseModel):
@@ -40,6 +41,22 @@ class Photo(BaseModel):
     )
 
 
+class GroupReference(BaseModel):
+    """The group a photo was evened out with: the group's medians of every exposure measure. It's stored with
+    the photo's edit, so the photo's render doesn't depend on what is selected later, and any metering mode of
+    the style can use it."""
+
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
+
+    id: str = Field(description="Shared by the photos applied together.")
+    size: int = Field(ge=1, description="Number of photos in the group.")
+    middle: float | None = Field(default=None, ge=-16, le=16, description="Median of the photos' middles.")
+    white: float | None = Field(default=None, ge=-16, le=16, description="Median of their white points.")
+    camera_ev: float | None = Field(
+        default=None, ge=-10, le=30, description="Median EV100 of those with exposure settings in EXIF."
+    )
+
+
 class PhotoEdit(BaseModel):
     """The edit of one photo: an optional style plus per-photo overrides. Overrides always win."""
 
@@ -57,7 +74,28 @@ class PhotoEdit(BaseModel):
     revision: str = Field(default="", description="Changes whenever the edit changes.")
     defaults: AdjustmentParams = Field(
         default_factory=AdjustmentParams,
-        description="The photo's unedited parameters (what a reset goes back to; JPEGs start unsharpened).",
+        description=(
+            "What a reset goes back to: the style's values when the photo has a style, else the unedited "
+            "parameters (JPEGs start unsharpened)."
+        ),
+    )
+    unedited: AdjustmentParams = Field(
+        default_factory=AdjustmentParams,
+        description="The photo's parameters with no style and no tweaks (the 'Before' look).",
+    )
+    style_values: list[str] = Field(
+        default_factory=list,
+        description="Dotted parameter names whose value comes from the style (incl. its rules).",
+    )
+    rules: list[RuleResult] = Field(
+        default_factory=list, description="What the style's rules did on this photo."
+    )
+    style_version: int | None = Field(default=None, description="Version of the style the edit uses.")
+    style_error: str | None = Field(
+        default=None, description="Why the assigned style isn't applied (missing or invalid), if it isn't."
+    )
+    group: GroupReference | None = Field(
+        default=None, description="Set by 'even out' when the style was applied."
     )
 
 

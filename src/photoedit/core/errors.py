@@ -9,3 +9,7 @@ class NotFoundError(LookupError):
 
 class InvalidRequestError(ValueError):
     """The request can't be done as asked; the message says why, in words a user understands."""
+
+
+class ConflictError(InvalidRequestError):
+    """The object changed since the caller read it (e.g. a style saved from two places)."""

@@ -118,6 +118,5 @@ class PathGuard:
 
 
 def guard_from_settings(settings: Settings) -> PathGuard:
-    """Guard for the tool-owned folders, with the sample photo folder (if configured) protected."""
-    protected = [settings.sample_photos_dir] if settings.sample_photos_dir is not None else []
-    return PathGuard(writable_roots=settings.writable_dirs, protected_roots=protected)
+    """Guard for the tool-owned folders, with the configured photo folders protected."""
+    return PathGuard(writable_roots=settings.writable_dirs, protected_roots=settings.photo_dirs)

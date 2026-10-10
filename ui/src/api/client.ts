@@ -61,6 +61,12 @@ export const imageUrls = {
       size: opts.size,
       v: opts.before ? undefined : opts.version,
     }),
+  /** A photo with one version of a style and none of its own tweaks (to compare versions). */
+  styleVersion: (styleId: string, version: number, photoId: string, size = 800) =>
+    buildUrl(
+      `/api/styles/${encodeURIComponent(styleId)}/versions/${version}/photos/${encodeURIComponent(photoId)}.jpg`,
+      { size },
+    ),
   /** The camera's own JPEG next to a RAW (for comparing with the default look). */
   sidecar: (photoId: string, size = 1600) =>
     buildUrl(`/api/photos/${encodeURIComponent(photoId)}/sidecar`, { size }),

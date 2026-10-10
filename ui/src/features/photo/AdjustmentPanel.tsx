@@ -23,6 +23,7 @@ import {
   type SliderField,
 } from './adjustmentFields'
 import { useEditSession, withValue, type EditSession } from './editSession'
+import { PhotoStyle } from './PhotoStyle'
 import { ToneCurveEditor } from './ToneCurveEditor'
 
 /** The phase that adds a parameter, if it isn't available yet (from the engine's list of prefixes). */
@@ -42,6 +43,7 @@ interface SliderContext {
   session: EditSession
   defaults: AdjustmentParams
   overridden: Set<string>
+  fromStyle: Set<string>
   asShot: PhotoDetail['as_shot']
   later: Record<string, number> | undefined
 }
@@ -93,7 +95,7 @@ function AdjustmentSlider({
   label?: string
   swatch?: string
 }) {
-  const { session, defaults, overridden, asShot, later } = ctx
+  const { session, defaults, overridden, fromStyle, asShot, later } = ctx
   const [typing, setTyping] = useState(false)
   const raw = getPath(session.params, field.path)
   const value = typeof raw === 'number' ? raw : null
@@ -118,10 +120,16 @@ function AdjustmentSlider({
         <span className="flex items-center gap-1.5 capitalize">
           {swatch && <span className="size-2.5 rounded-full" style={{ background: swatch }} aria-hidden />}
           {name}
-          {overridden.has(field.path) && (
+          {overridden.has(field.path) ? (
             <Tooltip content="Changed for this photo">
               <span className="size-1.5 rounded-full bg-accent" aria-label="changed for this photo" />
             </Tooltip>
+          ) : (
+            fromStyle.has(field.path) && (
+              <Tooltip content="From the style (double-click a slider to go back to the style's value)">
+                <span className="size-1.5 rounded-full bg-warn" aria-label="from the style" />
+              </Tooltip>
+            )
           )}
           {phase !== null && (
             <span className="rounded bg-raised px-1 text-[10px] tracking-wide text-muted normal-case">
@@ -212,7 +220,7 @@ function Group({
 }
 
 /** The adjustments of the open photo: every slider edits and saves automatically. */
-export function AdjustmentPanel({ detail, styleName }: { detail: PhotoDetail; styleName?: string }) {
+export function AdjustmentPanel({ detail }: { detail: PhotoDetail }) {
   const session = useEditSession(detail)
   const engine = useEngine()
   const defaults = detail.edit.defaults
@@ -220,6 +228,7 @@ export function AdjustmentPanel({ detail, styleName }: { detail: PhotoDetail; st
     session,
     defaults,
     overridden: new Set(detail.edit.overridden),
+    fromStyle: new Set(detail.edit.style_values),
     asShot: detail.as_shot,
     later: engine.data?.later_phase_parameters,
   }
@@ -250,11 +259,8 @@ export function AdjustmentPanel({ detail, styleName }: { detail: PhotoDetail; st
   return (
     <div className="flex flex-col">
       <div className="flex flex-col gap-2 border-b border-line px-3 py-2 text-xs">
+        <PhotoStyle detail={detail} />
         <div className="flex items-start justify-between gap-2">
-          <div>
-            <p className="text-muted">Style</p>
-            <p className="font-medium text-strong">{styleName ?? 'No style'}</p>
-          </div>
           <div className="flex gap-1">
             <Button size="sm" variant="ghost" aria-label="Undo" title="Undo (Ctrl+Z)" disabled={!session.canUndo} onClick={undo}>
               <Undo2 className="size-3.5" aria-hidden />
@@ -269,7 +275,12 @@ export function AdjustmentPanel({ detail, styleName }: { detail: PhotoDetail; st
             >
               <Redo2 className="size-3.5" aria-hidden />
             </Button>
-            <Button size="sm" disabled={changed === 0 && !session.canUndo} onClick={session.resetAll}>
+            <Button
+              size="sm"
+              disabled={changed === 0 && !session.canUndo}
+              onClick={session.resetAll}
+              title={detail.edit.style_id ? "Drop this photo's own changes (the style stays)" : 'Back to the unedited photo'}
+            >
               Reset all
             </Button>
           </div>
@@ -280,7 +291,9 @@ export function AdjustmentPanel({ detail, styleName }: { detail: PhotoDetail; st
           ) : session.saving ? (
             'Saving…'
           ) : changed > 0 ? (
-            `${changed} change${changed === 1 ? '' : 's'} · saved`
+            `${changed} change${changed === 1 ? '' : 's'} for this photo · saved`
+          ) : detail.edit.style_id ? (
+            'The style only'
           ) : (
             'Unedited'
           )}

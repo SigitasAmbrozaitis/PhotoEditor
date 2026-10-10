@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from photoedit import __version__
 from photoedit.api.routes import router
 from photoedit.config import Settings, load_settings
-from photoedit.core.errors import InvalidRequestError, NotFoundError
+from photoedit.core.errors import ConflictError, InvalidRequestError, NotFoundError
 from photoedit.safety import WriteNotAllowedError
 from photoedit.services import Services
 
@@ -50,6 +50,10 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
     @app.exception_handler(NotFoundError)
     async def not_found(_: Request, exc: NotFoundError) -> JSONResponse:
         return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+    @app.exception_handler(ConflictError)
+    async def conflict(_: Request, exc: ConflictError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     @app.exception_handler(InvalidRequestError)
     async def invalid(_: Request, exc: InvalidRequestError) -> JSONResponse:

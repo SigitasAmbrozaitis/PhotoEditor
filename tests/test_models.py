@@ -17,7 +17,6 @@ from photoedit.models import (
     JobRequest,
     Page,
     Photo,
-    Style,
 )
 from photoedit.models.adjustments import ColorGrading, CropRect, Geometry, Tone, ToneCurve
 from photoedit.models.export import FileSettings, SizeSettings
@@ -136,20 +135,6 @@ def test_photo_rating_range() -> None:
         _photo(rating=6)
 
 
-def test_style_id_must_be_slug() -> None:
-    base = {"name": "Moody", "updated_at": NOW, "created_at": NOW}
-    assert Style.model_validate({**base, "id": "moody-forest"}).id == "moody-forest"
-    for bad in ("Moody Forest", "moody_forest", "-moody", ""):
-        with pytest.raises(ValidationError):
-            Style.model_validate({**base, "id": bad})
-
-
-def test_style_round_trip() -> None:
-    style = Style(id="warm", name="Warm", updated_at=NOW, created_at=NOW, best_for=["portraits"])
-    style.adjustments.white_balance.temperature = 6500
-    assert Style.model_validate_json(style.model_dump_json(by_alias=True)) == style
-
-
 # ----------------------------------------------------------------- export
 
 
@@ -214,17 +199,3 @@ def test_job_request_validation() -> None:
 def test_page_generic() -> None:
     page = Page[Photo](items=[_photo()], total=1, offset=0, limit=50)
     assert page.items[0].id == "p1"
-
-
-def test_style_view_lists_changed_parameters_and_round_trips() -> None:
-    from photoedit.models import StyleView, style_view
-
-    style = Style(id="warm", name="Warm", updated_at=NOW, created_at=NOW)
-    style.adjustments.tone.exposure = 0.3
-    view = style_view(style)
-    assert view.changed_parameters == {"tone.exposure": 0.3}
-    data = view.model_dump(by_alias=True)
-    assert data["changed_parameters"] == {"tone.exposure": 0.3}
-    # The stored Style never contains the derived field, so it round-trips with extra="forbid".
-    assert "changed_parameters" not in style.model_dump()
-    assert isinstance(view, StyleView)

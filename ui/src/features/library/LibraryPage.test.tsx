@@ -95,6 +95,33 @@ describe('Library', () => {
     expect(await within(styled).findByText('Warm Film')).toBeInTheDocument()
   })
 
+  it('removes the style from the selected photos with a job', async () => {
+    const calls = mockApi()
+    const { user } = renderApp('/library', { selection: ['p001'] })
+    const remove = await screen.findByRole('button', { name: /Remove style/ })
+    await grid()
+    expect(remove).toBeDisabled() // p001 has no style
+    await user.click((await grid()).getByRole('option', { name: 'DSCF1002.RAF' }))
+    await waitFor(() => expect(remove).toBeEnabled())
+    await user.click(remove)
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.path === '/api/jobs')).toBe(true))
+    expect(calls.find((c) => c.method === 'POST')!.body).toEqual({
+      kind: 'apply_style',
+      photo_ids: ['p002'],
+      style_id: null,
+      even_out: false,
+    })
+  })
+
+  it('opens filtered to a style from ?style=', async () => {
+    const calls = mockApi()
+    renderApp('/library?style=warm-film')
+    const photos = await grid()
+    expect(photos.getAllByRole('option')).toHaveLength(1)
+    expect(screen.getByLabelText('Filter by style')).toHaveValue('warm-film')
+    expect(calls.some((c) => c.path === '/api/photos' && c.query.get('style_id') === 'warm-film')).toBe(true)
+  })
+
   it('supports click, ctrl+click, shift+click, select all and clear', async () => {
     mockApi()
     const { user } = renderApp('/library')

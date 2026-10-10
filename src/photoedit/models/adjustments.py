@@ -6,9 +6,11 @@ edit. Descriptions are user- and AI-facing documentation, shown in the UI and ex
 
 from __future__ import annotations
 
+import copy
+from collections.abc import Iterable, Mapping
 from enum import StrEnum
 from itertools import pairwise
-from typing import Annotated, Self
+from typing import Annotated, Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -228,6 +230,36 @@ class AdjustmentParams(_Group):
         current = self.model_dump(by_alias=True)
         out: dict[str, object] = {}
         _diff(neutral, current, "", out)
+        return out
+
+    def with_values(self, values: Mapping[str, Any]) -> AdjustmentParams:
+        """A copy with dotted values applied (``{"tone.exposure": 0.5}``), validated.
+
+        Raises ``ValueError`` naming the parameter for an unknown name, and pydantic's ``ValidationError`` (a
+        ``ValueError``) for a value out of range.
+        """
+        data = copy.deepcopy(self.model_dump(by_alias=True, mode="json"))
+        for name, value in values.items():
+            node = data
+            *parents, leaf = name.split(".")
+            for part in parents:
+                if not isinstance(node.get(part), dict):
+                    raise ValueError(f"unknown parameter '{name}'")
+                node = node[part]
+            if leaf not in node or isinstance(node[leaf], dict):
+                raise ValueError(f"unknown parameter '{name}'")
+            node[leaf] = value
+        return AdjustmentParams.model_validate(data)
+
+    def dotted(self, names: Iterable[str]) -> dict[str, Any]:
+        """``{name: value}`` for dotted ``names``, JSON-shaped (curves as lists of ``{x, y}``)."""
+        data = self.model_dump(by_alias=True, mode="json")
+        out: dict[str, Any] = {}
+        for name in names:
+            node: Any = data
+            for part in name.split("."):
+                node = node[part]
+            out[name] = node
         return out
 
 

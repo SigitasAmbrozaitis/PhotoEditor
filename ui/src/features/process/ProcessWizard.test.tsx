@@ -56,7 +56,22 @@ describe('Apply & export wizard (full use loop)', () => {
     await user.click(dialog.getByRole('button', { name: 'Apply style' }))
     await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true))
     const body = calls.find((c) => c.method === 'POST')!.body as ApplyStyleRequest
-    expect(body).toEqual({ kind: 'apply_style', photo_ids: ['p001', 'p002'], style_id: 'warm-film' })
+    expect(body).toEqual({ kind: 'apply_style', photo_ids: ['p001', 'p002'], style_id: 'warm-film', even_out: false })
+  })
+
+  it('can even the photos out as a group, and says export is simulated', async () => {
+    const { user, calls, dialog } = await openWizard(['p001', 'p002', 'p003'])
+    await user.click(await dialog.findByRole('radio', { name: /Warm Film/ }))
+    expect(dialog.getByText(/series shot in the same light with changing settings/)).toBeInTheDocument()
+    await user.click(dialog.getByRole('switch', { name: 'Even out these photos' }))
+    await user.click(dialog.getByRole('button', { name: 'Next' }))
+    expect(dialog.getByText(/Exporting is simulated until Phase 5/)).toBeInTheDocument()
+    await user.click(dialog.getByRole('switch', { name: 'Export after applying the style' }))
+    await user.click(dialog.getByRole('button', { name: 'Next' }))
+    expect(dialog.getByText(/evened out as a group/)).toBeInTheDocument()
+    await user.click(dialog.getByRole('button', { name: 'Apply style' }))
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true))
+    expect(calls.find((c) => c.method === 'POST')!.body).toMatchObject({ kind: 'apply_style', even_out: true })
   })
 
   it('back button returns to the previous step', async () => {

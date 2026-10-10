@@ -2,7 +2,13 @@
 import { CircleAlert, LoaderCircle, Star, X } from 'lucide-react'
 import { Dialog as RadixDialog, Switch as RadixSwitch, Tooltip as RadixTooltip } from 'radix-ui'
 import { cn } from '../lib/cn'
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react'
+import type {
+  ButtonHTMLAttributes,
+  InputHTMLAttributes,
+  ReactNode,
+  SelectHTMLAttributes,
+  TextareaHTMLAttributes,
+} from 'react'
 
 // ----------------------------------------------------------------- buttons
 
@@ -154,6 +160,10 @@ export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectE
 
 export function TextInput({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return <input className={cn(controlClass, className)} {...props} />
+}
+
+export function TextArea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea className={cn(controlClass, 'h-auto min-h-16 py-1.5 leading-relaxed', className)} {...props} />
 }
 
 export function Switch({

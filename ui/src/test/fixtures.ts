@@ -1,6 +1,7 @@
 /** Typed test data. Shapes are checked against the generated API schema by the TypeScript compiler. */
 import type {
   AdjustmentParams,
+  ConsistencyReport,
   DirListing,
   EngineInfo,
   ExportPreset,
@@ -10,7 +11,9 @@ import type {
   Photo,
   PhotoDetail,
   Style,
+  StyleDiff,
   StyleSummary,
+  StyleVersionInfo,
 } from '../api/types'
 
 const band = () => ({ hue: 0, saturation: 0, luminance: 0 })
@@ -160,6 +163,9 @@ export const styleSummaries: StyleSummary[] = [
     description: 'Dark greens and teal shadows.',
     cover_url: '/api/styles/moody-forest/samples/0/after.jpg',
     updated_at: '2026-08-01T10:00:00Z',
+    version: 1,
+    photo_count: 0,
+    error: null,
   },
   {
     id: 'warm-film',
@@ -167,28 +173,56 @@ export const styleSummaries: StyleSummary[] = [
     description: 'Soft warm analog look.',
     cover_url: '/api/styles/warm-film/samples/0/after.jpg',
     updated_at: '2026-08-02T10:00:00Z',
+    version: 2,
+    photo_count: 3,
+    error: null,
   },
 ]
 
+const warmValues = { 'tone.exposure': 0.15, 'tone.highlights': -30 }
+
 export const warmFilm: Style = {
-  ...styleSummaries[1]!,
+  id: 'warm-film',
+  name: 'Warm Film',
+  description: 'Soft warm analog look.',
+  cover_url: '/api/styles/warm-film/samples/0/after.jpg',
+  updated_at: '2026-08-02T10:00:00Z',
+  photo_count: 3,
   best_for: ['portraits', 'golden hour'],
   avoid_on: ['night scenes'],
-  adjustments: warmAdjustments(),
+  values: warmValues,
+  rules: [
+    {
+      type: 'white_balance',
+      rule_version: 1,
+      mode: 'fixed',
+      temperature_offset: 0,
+      tint_offset: 0,
+      temperature: 6200,
+      tint: 0,
+    },
+  ],
+  test_photo_ids: [],
   samples: [
     {
+      photo_id: 'p1',
       caption: 'Sample 1',
       before_url: '/api/styles/warm-film/samples/0/before.jpg',
       after_url: '/api/styles/warm-film/samples/0/after.jpg',
+      stale: false,
     },
   ],
   created_at: '2026-07-01T10:00:00Z',
   version: 2,
-  changed_parameters: { 'white_balance.temperature': 6200, 'tone.exposure': 0.15, 'tone.highlights': -30 },
+  change_note: '',
+  look_hash: 'abc123',
+  samples_stale: false,
+  changed_parameters: warmValues,
 }
 
 export function photoDetail(photo: Photo): PhotoDetail {
-  const adjustments = photo.style_id === 'warm-film' ? warmAdjustments() : neutralAdjustments()
+  const styled = photo.style_id === 'warm-film'
+  const adjustments = styled ? warmAdjustments() : neutralAdjustments()
   const overridden = photo.has_overrides ? ['tone.exposure'] : []
   if (photo.has_overrides) {
     adjustments.tone.exposure = 0.3
@@ -202,7 +236,24 @@ export function photoDetail(photo: Photo): PhotoDetail {
       adjustments,
       overridden,
       revision: `r${photo.id}`,
-      defaults: neutralAdjustments(),
+      defaults: styled ? warmAdjustments() : neutralAdjustments(), // a reset goes back to the style's values
+      unedited: neutralAdjustments(),
+      style_values: styled ? ['tone.exposure', 'tone.highlights', 'white_balance.temperature', 'white_balance.tint'] : [],
+      rules: styled
+        ? [
+            {
+              type: 'white_balance',
+              summary: 'fixed: 6200 K, tint +0.0',
+              measured: null,
+              target: null,
+              values: { 'white_balance.temperature': 6200, 'white_balance.tint': 0 },
+              note: null,
+            },
+          ]
+        : [],
+      style_version: styled ? 2 : null,
+      style_error: null,
+      group: null,
     },
     as_shot: { temperature: 5200, tint: 8 },
   }
@@ -305,4 +356,54 @@ export function makeImportJob(overrides: Partial<Job> = {}): Job {
     items: [{ photo_id: 'p001', filename: 'DSCF1001.RAF', status: 'done', message: 'new', output_path: null }],
     ...overrides,
   })
+}
+
+export const styleHistory: StyleVersionInfo[] = [
+  { version: 2, updated_at: '2026-08-02T10:00:00Z', change_note: 'warmer highlights', look_hash: 'abc123' },
+  { version: 1, updated_at: '2026-07-01T10:00:00Z', change_note: 'created', look_hash: 'old111' },
+]
+
+export const styleDiff: StyleDiff = {
+  style_id: 'warm-film',
+  a: 1,
+  b: 2,
+  values: [{ name: 'tone.highlights', before: -10, after: -30 }],
+  rules: [],
+  fields: ['description'],
+  same_look: false,
+}
+
+function measurements(middle: number) {
+  return { middle, white: middle + 3, temperature: 5000, tint: 2 }
+}
+
+export const styleReport: ConsistencyReport = {
+  style_id: 'warm-film',
+  look_hash: 'abc123',
+  photos: [
+    {
+      photo_id: 'p001',
+      filename: 'DSCF5401.RAF',
+      camera_ev: 11,
+      before: measurements(-3.5),
+      after: measurements(-2.7),
+      rules: [{ type: 'exposure', summary: 'middle -3.50 -> target -2.70 stops: +0.80 EV', measured: -3.5, target: -2.7, values: { 'tone.exposure': 0.8 }, note: null }],
+      deviation: 0,
+    },
+    {
+      photo_id: 'p002',
+      filename: 'DSCF5402.RAF',
+      camera_ev: 9,
+      before: measurements(-6.2),
+      after: measurements(-4.7),
+      rules: [{ type: 'exposure', summary: 'middle -6.20 -> target -2.70 stops: +1.50 EV', measured: -6.2, target: -2.7, values: { 'tone.exposure': 1.5 }, note: 'limited to 1.5 EV (wanted +3.50)' }],
+      deviation: -2,
+    },
+  ],
+  spread: [
+    { measure: 'middle', before_mad: 1.35, after_mad: 1.0, before_range: 2.7, after_range: 2.0 },
+    { measure: 'white', before_mad: 1.35, after_mad: 1.0, before_range: 2.7, after_range: 2.0 },
+    { measure: 'temperature', before_mad: 0, after_mad: 0, before_range: 0, after_range: 0 },
+    { measure: 'tint', before_mad: 0, after_mad: 0, before_range: 0, after_range: 0 },
+  ],
 }

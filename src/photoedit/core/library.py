@@ -19,8 +19,10 @@ from photoedit.core.edits import EditStore, EffectiveEdit
 from photoedit.core.errors import NotFoundError
 from photoedit.core.jobs import ItemResult, ItemSpec, JobManager
 from photoedit.core.metadata import MetadataError, PhotoMetadata, read_metadata, read_metadata_from_bytes
-from photoedit.core.renderer import Renderer
+from photoedit.core.renderer import Renderer, stored_stats
 from photoedit.core.scan import ScannedPhoto, SourceKind, scan_folder
+from photoedit.core.style_rules import RuleInputs
+from photoedit.core.styles import StyleLibrary
 from photoedit.models import (
     AdjustmentParams,
     AsShot,
@@ -63,11 +65,15 @@ class Library:
         clock: Clock | None = None,
         edits: EditStore | None = None,
         renderer: Renderer | None = None,
+        styles: StyleLibrary | None = None,
     ) -> None:
         self.catalog = catalog
+        self.styles = styles
         # Edits live next to the catalog in the workspace unless told otherwise.
-        self.edits = edits or EditStore(catalog.path.parent / "edits", guard)
-        self.renderer = renderer or Renderer(cache.root, guard, remember_anchors=catalog.set_tone_anchors)
+        self.edits = edits or EditStore(
+            catalog.path.parent / "edits", guard, styles=styles, inputs=self.rule_inputs
+        )
+        self.renderer = renderer or Renderer(cache.root, guard, remember_stats=catalog.set_photo_stats)
         self.cache = cache
         self.jobs = jobs
         self._guard = guard
@@ -159,6 +165,7 @@ class Library:
             lens=meta.lens,
             iso=meta.iso,
             shutter=meta.shutter,
+            exposure_time=meta.exposure_time,
             aperture=meta.aperture,
             focal_length=meta.focal_length,
             orientation=meta.orientation,
@@ -253,6 +260,7 @@ class Library:
     def photo_detail(self, photo_id: str) -> PhotoDetail:
         photo = self.photo(photo_id)
         edit = self.edits.effective(photo)
+        unedited = self.edits.default(photo).adjustments
         as_shot = self.as_shot(photo)
         return PhotoDetail(
             photo=photo.to_photo(self.image_version(photo)),
@@ -262,10 +270,24 @@ class Library:
                 adjustments=edit.adjustments,
                 overridden=edit.overridden,
                 revision=edit.revision,
-                defaults=self.edits.default(photo).adjustments,
+                defaults=edit.base or unedited,
+                unedited=unedited,
+                style_values=edit.style_values,
+                rules=edit.rules,
+                style_version=edit.style_version,
+                style_error=edit.style_error,
+                group=edit.group,
             ),
             as_shot=AsShot(temperature=as_shot[0], tint=as_shot[1]) if as_shot else None,
         )
+
+    def rule_inputs(self, photo: CatalogPhoto) -> RuleInputs:
+        """What a style's rules know about ``photo`` (measured once and stored; may decode the photo the first
+        time)."""
+        stats = None
+        if stored_stats(photo, self.renderer.identity) is not None or photo.path.is_file():
+            stats = self.renderer.stats(photo)
+        return RuleInputs(stats=stats, as_shot=self.as_shot(photo), camera_ev=photo.camera_ev)
 
     def as_shot(self, photo: CatalogPhoto) -> tuple[float, float] | None:
         """The recorded white balance; read from the RAW (and remembered) for photos imported before
@@ -289,19 +311,22 @@ class Library:
     def save_edit(self, photo_id: str, adjustments: AdjustmentParams) -> EffectiveEdit:
         photo = self.photo(photo_id)
         result = self.edits.save(photo, adjustments)
-        self._record_edit(photo, result)
+        self.record_edit(photo, result)
         return result
 
     def reset_edit(self, photo_id: str) -> EffectiveEdit:
+        """Drop the photo's own tweaks; its style stays (``set_photo_style(id, None)`` removes the style)."""
         photo = self.photo(photo_id)
-        self.edits.reset(photo.id)
-        result = self.edits.effective(photo)
-        self._record_edit(photo, result)
+        result = self.edits.reset_overrides(photo)
+        self.record_edit(photo, result)
         return result
 
-    def _record_edit(self, photo: CatalogPhoto, edit: EffectiveEdit) -> None:
+    def record_edit(self, photo: CatalogPhoto, edit: EffectiveEdit) -> None:
+        """Bring the catalog (edit revision, style) and the render cache in line with a changed edit."""
         default = self.edits.default(photo).revision
         self.catalog.set_edit(photo.id, edit.revision if edit.revision != default else None)
+        if photo.style_id != edit.style_id:
+            self.catalog.set_style(photo.id, edit.style_id)
         # Renders of older edits are dead weight now; keep the current edit and the unedited "before".
         self.renderer.prune(photo.id, keep={edit.revision, default})
 

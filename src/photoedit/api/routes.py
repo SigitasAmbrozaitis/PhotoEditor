@@ -11,8 +11,11 @@ from photoedit.core.fs import list_dirs
 from photoedit.core.render.pipeline import LATER_PHASE_PARAMETERS
 from photoedit.models import (
     AdjustmentParams,
+    ApplyAndExportRequest,
+    ConsistencyReport,
     EngineInfo,
     ExportPreset,
+    ExportRequest,
     ImportRequest,
     Job,
     JobRequest,
@@ -26,9 +29,23 @@ from photoedit.models import (
     SortOrder,
     StyleSummary,
     StyleView,
-    style_view,
 )
 from photoedit.models.fs import DirListing
+from photoedit.models.style import (
+    PhotoStyleRequest,
+    StyleCreate,
+    StyleDeleted,
+    StyleDiff,
+    StyleDuplicate,
+    StyleFromPhoto,
+    StyleReportRequest,
+    StyleRevert,
+    StyleSamplesRequest,
+    StyleUpdate,
+    StyleUpdateFromPhoto,
+    StyleVersionInfo,
+    style_view,
+)
 from photoedit.services import Services
 
 JPEG = "image/jpeg"
@@ -117,9 +134,16 @@ def save_edit(photo_id: str, adjustments: Annotated[AdjustmentParams, Body()], s
     return svc.library.photo_detail(photo_id)
 
 
+@router.put("/photos/{photo_id}/style", response_model=PhotoDetail, tags=["edit"])
+def set_photo_style(photo_id: str, request: Annotated[PhotoStyleRequest, Body()], svc: Svc) -> PhotoDetail:
+    """Give the photo a style right away (null removes it). Tweaks of what the style sets are replaced."""
+    svc.styling.set_photo_style(photo_id, request.style_id)
+    return svc.library.photo_detail(photo_id)
+
+
 @router.delete("/photos/{photo_id}/edit", response_model=PhotoDetail, tags=["edit"])
 def reset_edit(photo_id: str, svc: Svc) -> PhotoDetail:
-    """Back to the unedited photo."""
+    """Drop the photo's own tweaks (its style stays; PUT /style with null removes the style)."""
     svc.library.reset_edit(photo_id)
     return svc.library.photo_detail(photo_id)
 
@@ -151,28 +175,128 @@ def photo_preview(
     return Response(content=data, media_type=JPEG, headers=IMAGE_CACHE)
 
 
-# ----------------------------------------------------------------- styles (mock until Phase 4)
+# ----------------------------------------------------------------- styles
 
 
 @router.get("/styles", response_model=list[StyleSummary], tags=["styles"])
 def list_styles(svc: Svc) -> list[StyleSummary]:
-    return svc.mock.list_styles()
+    return svc.styling.summaries()
 
 
 @router.get("/styles/{style_id}", response_model=StyleView, tags=["styles"])
 def style(style_id: str, svc: Svc) -> StyleView:
-    return style_view(svc.mock.style(style_id))
+    return svc.styling.view(style_id)
+
+
+@router.post("/styles", response_model=StyleView, status_code=status.HTTP_201_CREATED, tags=["styles"])
+def create_style(request: Annotated[StyleCreate, Body()], svc: Svc) -> StyleView:
+    return svc.styling.create(request)
+
+
+@router.post(
+    "/styles/from-photo", response_model=StyleView, status_code=status.HTTP_201_CREATED, tags=["styles"]
+)
+def create_style_from_photo(request: Annotated[StyleFromPhoto, Body()], svc: Svc) -> StyleView:
+    """A new style from a photo's current look (chosen groups; exposure and white balance as rules)."""
+    return svc.styling.create_from_photo(request)
+
+
+@router.put("/styles/{style_id}", response_model=StyleView, tags=["styles"])
+def update_style(style_id: str, update: Annotated[StyleUpdate, Body()], svc: Svc) -> StyleView:
+    """Change a style (409 if it changed since ``expected_version``). Every photo using it follows."""
+    return svc.styling.update(style_id, update)
+
+
+@router.post("/styles/{style_id}/from-photo", response_model=StyleView, tags=["styles"])
+def update_style_from_photo(
+    style_id: str, request: Annotated[StyleUpdateFromPhoto, Body()], svc: Svc
+) -> StyleView:
+    return svc.styling.update_from_photo(style_id, request)
+
+
+@router.post(
+    "/styles/{style_id}/duplicate",
+    response_model=StyleView,
+    status_code=status.HTTP_201_CREATED,
+    tags=["styles"],
+)
+def duplicate_style(style_id: str, request: Annotated[StyleDuplicate, Body()], svc: Svc) -> StyleView:
+    return svc.styling.duplicate(style_id, request.name)
+
+
+@router.delete("/styles/{style_id}", response_model=StyleDeleted, tags=["styles"])
+def delete_style(style_id: str, svc: Svc) -> StyleDeleted:
+    """Delete a style; the photos using it drop back to no style and keep their own tweaks."""
+    return StyleDeleted(id=style_id, photos=svc.styling.delete(style_id))
+
+
+@router.get("/styles/{style_id}/history", response_model=list[StyleVersionInfo], tags=["styles"])
+def style_history(style_id: str, svc: Svc) -> list[StyleVersionInfo]:
+    """Saved versions, newest first."""
+    return svc.styles.history(style_id)
+
+
+@router.get("/styles/{style_id}/versions/{version}", response_model=StyleView, tags=["styles"])
+def style_version(style_id: str, version: int, svc: Svc) -> StyleView:
+    return style_view(svc.styles.version(style_id, version))
 
 
 @router.get(
-    "/styles/{style_id}/samples/{n}/{which}.jpg",
+    "/styles/{style_id}/versions/{version}/photos/{photo_id}.jpg",
     response_class=Response,
     responses=IMAGE_RESPONSE,
     tags=["styles"],
 )
-def style_sample(style_id: str, n: int, which: Literal["before", "after"], svc: Svc) -> Response:
-    data = svc.mock.style_sample_image(style_id, n, before=which == "before")
-    return Response(content=data, media_type=JPEG, headers={"Cache-Control": "public, max-age=3600"})
+def style_version_render(
+    style_id: str,
+    version: int,
+    photo_id: str,
+    svc: Svc,
+    size: Annotated[int, Query(ge=256, le=2048, description="Long edge in pixels.")] = 800,
+) -> Response:
+    """A photo with one version of the style (none of its own tweaks), to compare versions side by side."""
+    data = svc.styling.render_version(style_id, version, photo_id, size)
+    return Response(content=data, media_type=JPEG, headers=IMAGE_CACHE)
+
+
+@router.get("/styles/{style_id}/diff", response_model=StyleDiff, tags=["styles"])
+def style_diff(
+    style_id: str, svc: Svc, a: Annotated[int, Query(ge=1)], b: Annotated[int, Query(ge=1)]
+) -> StyleDiff:
+    return svc.styles.diff(style_id, a, b)
+
+
+@router.post("/styles/{style_id}/revert", response_model=StyleView, tags=["styles"])
+def revert_style(style_id: str, request: Annotated[StyleRevert, Body()], svc: Svc) -> StyleView:
+    return svc.styling.revert(style_id, request.version, expected_version=request.expected_version)
+
+
+@router.post(
+    "/styles/{style_id}/samples", response_model=Job, status_code=status.HTTP_201_CREATED, tags=["styles"]
+)
+def render_style_samples(style_id: str, request: Annotated[StyleSamplesRequest, Body()], svc: Svc) -> Job:
+    """Render before/after sample pairs from library photos (a job)."""
+    return svc.styling.render_samples(style_id, request.photo_ids)
+
+
+@router.post("/styles/{style_id}/report", response_model=ConsistencyReport, tags=["styles"])
+def style_report(
+    style_id: str, request: Annotated[StyleReportRequest, Body()], svc: Svc
+) -> ConsistencyReport:
+    """How consistent the style makes the photos (default: its test set, else the photos using it)."""
+    return svc.styling.report(style_id, request.photo_ids)
+
+
+@router.get(
+    "/styles/{style_id}/samples/{name}/{which}.jpg",
+    response_class=Response,
+    responses=IMAGE_RESPONSE,
+    tags=["styles"],
+)
+def style_sample(style_id: str, name: str, which: Literal["before", "after"], svc: Svc) -> Response:
+    data = svc.styling.sample_image(style_id, name, which)
+    # Sample URLs carry the look they were rendered with (?v=), so a new rendering gets a new URL.
+    return Response(content=data, media_type=JPEG, headers=IMAGE_CACHE)
 
 
 # ----------------------------------------------------------------- export presets
@@ -198,7 +322,18 @@ def list_jobs(svc: Svc) -> list[Job]:
 
 @router.post("/jobs", response_model=Job, status_code=status.HTTP_201_CREATED, tags=["jobs"])
 def create_job(request: Annotated[JobRequest, Body()], svc: Svc) -> Job:
-    return svc.mock.create_job(request)
+    """Apply a style (real), export (simulated until Phase 5), or apply then export."""
+    if isinstance(request, ExportRequest):
+        return svc.mock.export_job(request.photo_ids, request.preset_id, request.destination)
+    if isinstance(request, ApplyAndExportRequest):
+        if request.preset_id:
+            svc.mock.preset(request.preset_id)  # an unknown preset fails before anything is applied
+
+        def export() -> None:
+            svc.mock.export_job(request.photo_ids, request.preset_id, request.destination)
+
+        return svc.styling.apply(request.photo_ids, request.style_id, even_out=request.even_out, then=export)
+    return svc.styling.apply(request.photo_ids, request.style_id, even_out=request.even_out)
 
 
 @router.get("/jobs/{job_id}", response_model=Job, tags=["jobs"])

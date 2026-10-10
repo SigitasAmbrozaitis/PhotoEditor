@@ -197,7 +197,11 @@ export function PhotoPage() {
               ))}
             </Tabs.List>
             <Tabs.Content value="adjust" className="min-h-0 flex-1 overflow-y-auto">
-              <AdjustmentPanel key={photo.id} detail={detail.data} styleName={styleName} />
+              <AdjustmentPanel
+                // A new style (or a new version of it) changes every value: start a fresh edit session.
+                key={`${photo.id}-${edit.style_id ?? ''}-${edit.style_version ?? ''}`}
+                detail={detail.data}
+              />
             </Tabs.Content>
             <Tabs.Content value="info" className="min-h-0 flex-1 overflow-y-auto">
               <InfoPanel photo={photo} styleName={styleName} />

@@ -66,7 +66,12 @@ class _JobRequest(BaseModel):
 
 class ApplyStyleRequest(_JobRequest):
     kind: Literal[JobKind.APPLY_STYLE] = JobKind.APPLY_STYLE
-    style_id: str
+    style_id: str | None = Field(description="None removes the style from the photos.")
+    even_out: bool = Field(
+        default=False,
+        description="Store the selection's median as each photo's group reference, so the style's exposure "
+        "rule evens the photos out against each other.",
+    )
 
 
 class ExportRequest(_JobRequest):
@@ -79,6 +84,7 @@ class ExportRequest(_JobRequest):
 class ApplyAndExportRequest(_JobRequest):
     kind: Literal[JobKind.APPLY_AND_EXPORT] = JobKind.APPLY_AND_EXPORT
     style_id: str
+    even_out: bool = False
     preset_id: str | None = None
     settings: ExportSettings
     destination: str = Field(min_length=1)
