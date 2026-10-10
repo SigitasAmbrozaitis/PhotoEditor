@@ -27,7 +27,7 @@
 | Thumbnails (Phase 3) | **Rendered by the pipeline** (background job after import; re-render on edit), embedded JPEG only until then | 2026-10-08 |
 | Golden images | **Real-photo references stay local** (git-ignored); only synthetic references are committed | 2026-10-08 |
 | Later-phase parameters | **Rejected with a clear error** when set to non-default values before their phase | 2026-10-08 |
-| ExifTool / OpenCV timing | **ExifTool joins in Phase 5** (writing export metadata); Phase 2 reads EXIF with Pillow. **OpenCV joins in Phase 3** | 2026-10-07 |
+| ExifTool / OpenCV timing | ~~ExifTool joins in Phase 5~~ (replaced 2026-10-10, see "Export metadata"); Phase 2 reads EXIF with Pillow. **OpenCV joins in Phase 3** | 2026-10-07 |
 | Tone sliders (Phase 3 feedback) | **Highlights/shadows/whites/blacks are relative to each photo's own white and black points** (Lightroom-like), not fixed scene stops. Measured once per photo, stored in the catalog, so previews and exports agree. Reason: with fixed stops, Whites ±100 changed nothing on DSCF5437 (its brightest pixel is +2.4 stops; the band started at +2) | 2026-10-09 |
 | Contrast pivot (P3.24) | **Contrast and the four tone bands pivot on the middle of the photo's own range** (between its black and white points), not on scene mid gray, which lies above the median pixel of every sample (Contrast +100 turned a night shot almost black) | 2026-10-09 |
 | Phase 3b timing | **Deferred** after the Phase 3 human test (preview speed is better but still has a delay; fine for now, since the AI drives edits and the user won't move sliders by hand yet). **Phase 4 (Styles) comes next**; 3b moves after Phase 9 or folds into its performance work | 2026-10-09 |
@@ -38,6 +38,8 @@
 | Adaptive rules (Phase 4) | **Auto exposure** (bring the photo's middle brightness to a target, with strength and a max ±EV), **white balance relative to as shot** (style offsets instead of fixed Kelvin) and an optional **auto-neutral white balance** + offset. Inputs are measured once per photo, like the tone anchors | 2026-10-09 |
 | Inconsistent photos (user input) | The user shoots **rally/drift, two cats (one black, one orange) and varied travel**, with **manual exposure tweaked while shooting**, so series are often inconsistent, which is expected to be the hardest problem. Phase 4 prepares for it without solving it fully: extensible typed rules, exposure metering modes (`middle`, `highlights` for low-key subjects such as the black cat, `camera_settings` from EXIF EV), an optional "even out this selection" group reference, a test set per style, a measured consistency report, and style version history with compare/revert | 2026-10-09 |
 | Style editing UI (Phase 4) | **Managed in the UI**: save a photo's edit as a style (choose groups), edit text and rules, update a style from a photo, duplicate, delete (photos drop back to no style and keep their tweaks), render sample images from library photos | 2026-10-09 |
+| Export metadata (Phase 5) | **Pillow, no ExifTool**: the tool should not depend on other programs. EXIF copied from the original and filtered by policy, XMP for copyright/creator/keywords, ICC in every file. Fujifilm maker notes and IPTC-IIM are not written | 2026-10-10 |
+| Export (Phase 5) | **Automatic decode size** (half-size when it covers the output, else full; `decode: full` forces it); aspect crops **centered** until Phase 6 (`subject` rejected); **ICC profiles generated in code**; `tifffile` + `imagecodecs` for 16-bit TIFF; **custom presets committed** in `export-presets/`; default copyright from `export_copyright` in `config.local.toml`; `export_workers=auto`, one export job at a time; collisions default to `suffix`. Watermark, WebP/AVIF, original passthrough and ProPhoto ⏭ Phase 9 | 2026-10-10 |
 
 **Target machine**: i7-12700H (14 cores / 20 threads), 16 GB RAM, RTX 3060 Laptop (6 GB), Windows 11.
 .NET 9 SDK is installed. Python and uv are not installed yet.
@@ -84,7 +86,7 @@ Out of scope: local or spot edits (healing, cloning, masks, brushes), generative
 | RAW decoding | **rawpy** (LibRaw) | Supports nearly every camera RAW (CR2/CR3, NEF, ARW, RAF, ORF, RW2, DNG…). |
 | Image math | **NumPy** (+ **OpenCV** for resize, sharpen, geometry, face detection) | Fast vectorised pipeline in float32 linear light. |
 | Color management | **Pillow ImageCms** (LittleCMS) + **colour-science** | ICC profiles for sRGB, Display P3 and AdobeRGB output, plus white balance math. |
-| Metadata | **ExifTool** (bundled exe) via **PyExifTool** | Read and copy EXIF/IPTC/XMP the same way Lightroom does. Strips GPS on request. |
+| Metadata | **Pillow** (EXIF + XMP; decided 2026-10-10, no ExifTool) | Copy EXIF, write copyright/keywords as XMP, strip GPS on request. |
 | Lens corrections (later) | **lensfunpy** | Distortion and vignetting profiles. |
 | Data models / validation | **Pydantic v2** | Schema, ranges and JSON (de)serialization for styles, edits and presets. |
 | CLI | **Typer** | `photoedit style apply ...` and similar commands. Also used for manual testing. |

@@ -936,10 +936,13 @@ threads. The library protects every imported folder in the path guard. Per-photo
   that job. A destination inside a protected photo folder (or any subfolder of one) is refused (golden rule 1:
   nothing is written next to an original).
 
-- [ ] **P5.0** Detail this phase into items. ⛔ STOP for the user to review it.
+- [x] **P5.0** Detail this phase into items. ⛔ STOP for the user to review it. Reviewed and approved 2026-10-10.
 
 ### Decisions to confirm at phase start (ask the user)
-- [ ] **P5.1** Confirm (defaults proposed; each goes into PLAN.md §0 once confirmed):
+- [x] **P5.1** Confirmed 2026-10-10 (all defaults; recorded in PLAN.md §0). The user wants the tool independent of
+  other programs, so no ExifTool. The copyright text is still open: `export_copyright` stays empty until the user
+  sets it (config.example.toml shows an example).
+  The proposals as reviewed:
   - **Metadata writer: Pillow, no ExifTool (changes the 2026-10-07 decision).** Pillow writes EXIF (copied from the
     original, filtered by policy), XMP (copyright, creator, keywords) and the ICC profile into JPEG, TIFF and PNG.
     No external program, deterministic, easy to test. Lost compared with ExifTool: the Fujifilm maker notes (film
