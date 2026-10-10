@@ -49,9 +49,9 @@ EXPORT_QUEUE = "export"
 RECENT_FILE = "recent-destinations.json"
 RECENT_LIMIT = 10
 MAX_AUTO_WORKERS = 10
-# Peak memory of one worker rendering a full-size X-T3 export (P5.11 measures it). Workers that would not fit
-# in the free memory aren't started.
-WORKER_PEAK_BYTES = 2 * 1024**3
+# Peak memory of one worker rendering a full-size X-T3 export (measured 1.6 GiB, P5.11). Workers that
+# would not fit in the free memory aren't started.
+WORKER_PEAK_BYTES = 1.7 * 1024**3
 
 type ExecutorFactory = Callable[[int], Executor]
 

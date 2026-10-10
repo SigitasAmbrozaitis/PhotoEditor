@@ -67,6 +67,7 @@ def render_export(task: ExportTask) -> RenderedExport:
         original_width=crop.width,
         anchors=task.anchors,
         output=settings.color_space,
+        low_memory=True,  # exports run several at a time; previews keep the faster default
     )
     encoded = output_sharpen(encoded, settings.sharpening, settings.size.ppi)
     meta = build_metadata(

@@ -30,6 +30,10 @@ ENGINE_VERSION = 2
 # numpy releases the GIL in its array loops, so a few threads render strips of one image in parallel.
 _STRIP_THREADS = 8
 _MIN_STRIP_ROWS = 64
+# Low-memory renders (full-size exports, several per machine): strips of at most this many rows, this many
+# at a time, so the per-pixel stages' intermediates stay small. Same pixels, as strips always give.
+_LOW_MEMORY_ROWS = 256
+_LOW_MEMORY_THREADS = 2
 _POOL = ThreadPoolExecutor(max_workers=_STRIP_THREADS, thread_name_prefix="render")
 
 # Parameters that exist in the model but whose rendering arrives in a later phase (decided 2026-10-08: setting
@@ -83,6 +87,7 @@ def render(
     long_edge: int | None = None,
     anchors: ToneAnchors | None = None,
     output: ColorSpace = ColorSpace.SRGB,
+    low_memory: bool = False,
 ) -> F32:
     """Render to ``output``-encoded float pixels (0..1); sRGB unless an export asks for another space.
 
@@ -90,7 +95,8 @@ def render(
     (their "base curve" is the exact sRGB encoding, so an unedited render reproduces the original).
     ``original_width`` is the photo's full width, so sharpening means the same at every output size.
     ``anchors`` are the photo's tone anchors; the library passes the stored ones so every size of a photo gets
-    the same tone curve. Without them they are measured on ``base``.
+    the same tone curve. Without them they are measured on ``base``. ``low_memory`` renders in more, smaller
+    strips, fewer at a time (for full-size exports in parallel worker processes); the pixels are the same.
     """
     check_supported(params)
     tone_params = params.tone
@@ -136,13 +142,24 @@ def render(
         display = stages.vignette(display, vignette, None if mask is None else mask[rows])
         return stages.output_encode(display, output)
 
-    strips = _strips(height)
-    parts = list(_POOL.map(pointwise, strips)) if len(strips) > 1 else [pointwise(strips[0])]
-    out = np.concatenate(parts, axis=0) if len(parts) > 1 else parts[0]
+    strips = _strips(height, max_rows=_LOW_MEMORY_ROWS if low_memory else None)
+    out = np.empty((height, width, 3), dtype=np.float32)
+
+    def into_out(rows: slice) -> None:
+        out[rows] = pointwise(rows)
+
+    if len(strips) == 1:
+        into_out(strips[0])
+    else:
+        at_once = _LOW_MEMORY_THREADS if low_memory else _STRIP_THREADS
+        for first in range(0, len(strips), at_once):
+            list(_POOL.map(into_out, strips[first : first + at_once]))
     return stages.sharpen(out, params.detail.sharpening, out.shape[1] / original_width)
 
 
-def _strips(height: int) -> list[slice]:
+def _strips(height: int, *, max_rows: int | None = None) -> list[slice]:
     count = max(1, min(_STRIP_THREADS, height // _MIN_STRIP_ROWS))
+    if max_rows is not None:
+        count = max(count, -(-height // max_rows))
     edges = [round(i * height / count) for i in range(count + 1)]
     return [slice(a, b) for a, b in itertools.pairwise(edges)]

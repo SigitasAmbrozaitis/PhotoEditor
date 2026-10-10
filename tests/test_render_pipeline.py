@@ -122,6 +122,9 @@ def test_strip_rendering_equals_one_strip(monkeypatch: pytest.MonkeyPatch) -> No
     )
     strips = render(base, edit, GENERIC, original_width=200)
     assert len(pipeline._strips(300)) > 1
+    monkeypatch.setattr(pipeline, "_LOW_MEMORY_ROWS", 40)
+    assert len(pipeline._strips(300, max_rows=40)) == 8
+    np.testing.assert_array_equal(strips, render(base, edit, GENERIC, original_width=200, low_memory=True))
     monkeypatch.setattr(pipeline, "_STRIP_THREADS", 1)
     assert len(pipeline._strips(300)) == 1
     np.testing.assert_array_equal(strips, render(base, edit, GENERIC, original_width=200))
