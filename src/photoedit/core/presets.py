@@ -37,10 +37,11 @@ def _orientation(width: int, height: int) -> str:
 
 
 def _print(long_px: int, short_px: int, ratio: str, *, fine_art: bool = False) -> dict[str, Any]:
+    # Prints need every pixel the camera recorded, so they never use the half-size decode.
     file = (
-        {"format": "tiff", "bit_depth": 16, "tiff_compression": "lzw"}
+        {"format": "tiff", "bit_depth": 16, "tiff_compression": "lzw", "decode": "full"}
         if fine_art
-        else {"format": "jpeg", "jpeg_quality": 100}
+        else {"format": "jpeg", "jpeg_quality": 100, "decode": "full"}
     )
     return {
         "file": file,

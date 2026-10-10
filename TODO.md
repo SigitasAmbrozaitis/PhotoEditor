@@ -979,7 +979,7 @@ threads. The library protects every imported folder in the path guard. Per-photo
   file bytes (Pillow, tifffile, imagecodecs, OpenCV).
 
 ### Core
-- [ ] **P5.3** Model updates (`models/export.py`):
+- [x] **P5.3** Model updates (`models/export.py`):
   - `FileSettings.decode`: `auto` | `full` (see design).
   - `AspectSettings.anchor`: default `center`; `subject` is rejected by core until Phase 6 (like
     `check_supported`). Built-in presets updated.
@@ -993,6 +993,9 @@ threads. The library protects every imported folder in the path guard. Per-photo
   - New `ExportPlan` (the dry run's answer): per photo the output name, pixel size, decode size, collision status
     and warnings (e.g. "enlarged 1.4×").
   Tests: validation messages, template parsing, JSON round-trip, every built-in preset valid.
+  Done: `parse_template()` lives in `models/export.py` (validation) and is reused by core naming (P5.8).
+  `subject` is rejected by the export service (P5.9); the UI shows it disabled with "(Phase 6)". Print presets
+  use `decode: full`.
 - [ ] **P5.4** Geometry math (`core/export/geometry.py`, pure functions): from the photo's upright size and the
   settings → the crop rectangle (aspect ratio; orientation `auto` follows the photo, `portrait`/`landscape` force
   it; centered) and the output size per resize mode (original, long edge, short edge, width × height **fit** with

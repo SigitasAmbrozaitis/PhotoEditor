@@ -267,7 +267,7 @@ export const presets: ExportPreset[] = [
     target: 'instagram',
     builtin: true,
     settings: {
-      file: { format: 'jpeg', jpeg_quality: 92, max_file_size_kb: null, bit_depth: 8, tiff_compression: 'lzw' },
+      file: { format: 'jpeg', jpeg_quality: 92, max_file_size_kb: null, bit_depth: 8, tiff_compression: 'lzw', decode: 'auto' },
       color_space: 'srgb',
       size: {
         mode: 'width_height',
@@ -280,9 +280,9 @@ export const presets: ExportPreset[] = [
         dont_enlarge: false,
         ppi: 72,
       },
-      aspect: { ratio: '4:5', orientation: 'portrait', anchor: 'subject' },
+      aspect: { ratio: '4:5', orientation: 'portrait', anchor: 'center' },
       sharpening: { target: 'screen', amount: 'standard' },
-      metadata: { policy: 'copyright_only', strip_gps: true, copyright: null, keywords: [] },
+      metadata: { policy: 'copyright_only', strip_gps: true, copyright: null, creator: null, keywords: [] },
       naming: { template: '{original}_ig', on_collision: 'suffix' },
       destination: null,
     },
@@ -294,7 +294,7 @@ export const presets: ExportPreset[] = [
     target: 'web',
     builtin: true,
     settings: {
-      file: { format: 'jpeg', jpeg_quality: 85, max_file_size_kb: null, bit_depth: 8, tiff_compression: 'lzw' },
+      file: { format: 'jpeg', jpeg_quality: 85, max_file_size_kb: null, bit_depth: 8, tiff_compression: 'lzw', decode: 'auto' },
       color_space: 'srgb',
       size: {
         mode: 'long_edge',
@@ -307,9 +307,9 @@ export const presets: ExportPreset[] = [
         dont_enlarge: true,
         ppi: 72,
       },
-      aspect: { ratio: null, orientation: 'auto', anchor: 'subject' },
+      aspect: { ratio: null, orientation: 'auto', anchor: 'center' },
       sharpening: { target: 'screen', amount: 'standard' },
-      metadata: { policy: 'copyright_only', strip_gps: true, copyright: null, keywords: [] },
+      metadata: { policy: 'copyright_only', strip_gps: true, copyright: null, creator: null, keywords: [] },
       naming: { template: '{original}_web', on_collision: 'suffix' },
       destination: null,
     },

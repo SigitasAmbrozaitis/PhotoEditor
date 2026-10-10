@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class _Section(BaseModel):
@@ -24,12 +25,22 @@ class TiffCompression(StrEnum):
     ZIP = "zip"
 
 
+class DecodeSize(StrEnum):
+    AUTO = "auto"
+    FULL = "full"
+
+
 class FileSettings(_Section):
     format: FileFormat = FileFormat.JPEG
     jpeg_quality: int = Field(default=90, ge=1, le=100)
     max_file_size_kb: int | None = Field(default=None, ge=50, description="JPEG only: shrink quality to fit.")
     bit_depth: int = Field(default=8, description="8 or 16 (16 only for TIFF/PNG).")
     tiff_compression: TiffCompression = TiffCompression.LZW
+    decode: DecodeSize = Field(
+        default=DecodeSize.AUTO,
+        description="auto = decode a RAW at half size when that still covers the output size; "
+        "full = always full size.",
+    )
 
     @model_validator(mode="after")
     def _check(self) -> Self:
@@ -104,7 +115,10 @@ class AspectSettings(_Section):
         default=Orientation.AUTO,
         description="auto = follow the photo; otherwise force the ratio's orientation.",
     )
-    anchor: CropAnchor = Field(default=CropAnchor.SUBJECT, description="What the aspect crop is centered on.")
+    anchor: CropAnchor = Field(
+        default=CropAnchor.CENTER,
+        description="What the aspect crop is centered on. 'subject' needs subject detection (Phase 6).",
+    )
 
 
 class SharpenFor(StrEnum):
@@ -134,9 +148,34 @@ class MetadataPolicy(StrEnum):
 
 class MetadataSettings(_Section):
     policy: MetadataPolicy = MetadataPolicy.ALL_EXCEPT_CAMERA_AND_GPS
-    strip_gps: bool = True
-    copyright: str | None = Field(default=None, max_length=200)
-    keywords: list[str] = Field(default_factory=list)
+    strip_gps: bool = Field(
+        default=True, description="Only matters for policy 'all'; the others never write GPS."
+    )
+    copyright: str | None = Field(
+        default=None,
+        max_length=200,
+        description="Copyright notice; {year} = the photo's capture year. None = the configured default.",
+    )
+    creator: str | None = Field(default=None, max_length=200, description="None = the configured default.")
+    keywords: list[str] = Field(default_factory=list, max_length=50)
+
+    @field_validator("keywords")
+    @classmethod
+    def _keywords(cls, keywords: list[str]) -> list[str]:
+        for keyword in keywords:
+            if not keyword.strip():
+                raise ValueError("keywords must not be empty")
+            if len(keyword) > 64:
+                raise ValueError(f"keyword longer than 64 characters: '{keyword[:20]}…'")
+        return keywords
+
+    @model_validator(mode="after")
+    def _gps(self) -> Self:
+        if not self.strip_gps and self.policy != MetadataPolicy.ALL:
+            raise ValueError(
+                f"metadata policy '{self.policy}' never writes GPS; keep strip_gps on or use 'all'"
+            )
+        return self
 
 
 class CollisionPolicy(StrEnum):
@@ -145,14 +184,66 @@ class CollisionPolicy(StrEnum):
     SKIP = "skip"
 
 
+NAMING_TOKENS = ("original", "date", "time", "seq", "style", "preset", "camera")
+_TOKEN = re.compile(r"\{([^{}]*)\}")
+_SEQ_FORMAT = re.compile(r"seq:0([1-9])")
+# Characters Windows doesn't allow in file names, and names it reserves for devices.
+_FORBIDDEN = set('<>:"/\\|?*') | {chr(c) for c in range(32)}
+WINDOWS_RESERVED = frozenset(
+    {"con", "prn", "aux", "nul"} | {f"com{i}" for i in range(1, 10)} | {f"lpt{i}" for i in range(1, 10)}
+)
+
+type TemplatePart = str | tuple[str, int]
+
+
+def parse_template(template: str) -> list[TemplatePart]:
+    """Split a naming template into literal text and (token, zero-pad width) pairs.
+
+    Raises ``ValueError`` for unknown tokens, stray braces and characters that can't be in a file name.
+    """
+    parts: list[TemplatePart] = []
+    pos = 0
+    for match in _TOKEN.finditer(template):
+        parts.append(template[pos : match.start()])
+        name = match.group(1)
+        if seq := _SEQ_FORMAT.fullmatch(name):
+            parts.append(("seq", int(seq.group(1))))
+        elif name in NAMING_TOKENS:
+            parts.append((name, 0))
+        else:
+            known = " ".join(f"{{{t}}}" for t in NAMING_TOKENS)
+            raise ValueError(f"unknown token {{{name}}} in the name template; known: {known} {{seq:03}}")
+        pos = match.end()
+    parts.append(template[pos:])
+    literals = [p for p in parts if isinstance(p, str)]
+    if any("{" in text or "}" in text for text in literals):
+        raise ValueError("unmatched brace in the name template")
+    bad = sorted({c for text in literals for c in text if c in _FORBIDDEN})
+    if bad:
+        shown = " ".join(repr(c) for c in bad)
+        raise ValueError(f"the name template contains characters not allowed in file names: {shown}")
+    if template.endswith((".", " ")):
+        raise ValueError("the name template must not end with a dot or a space")
+    if len(parts) == 1 and template.strip().lower() in WINDOWS_RESERVED:
+        raise ValueError(f"'{template}' is a reserved file name on Windows")
+    return [p for p in parts if p != ""]
+
+
 class NamingSettings(_Section):
     template: str = Field(
         default="{original}",
         min_length=1,
         max_length=200,
-        description="Tokens: {original} {date} {time} {seq} {seq:03} {style} {preset}.",
+        description="Tokens: {original} {date} {time} {seq} {seq:03} {style} {preset} {camera}. "
+        "The extension comes from the file format.",
     )
     on_collision: CollisionPolicy = CollisionPolicy.SUFFIX
+
+    @field_validator("template")
+    @classmethod
+    def _template(cls, template: str) -> str:
+        parse_template(template)
+        return template
 
 
 class ExportTarget(StrEnum):
@@ -182,3 +273,33 @@ class ExportPreset(_Section):
     target: ExportTarget = ExportTarget.CUSTOM
     builtin: bool = Field(default=False, description="Built-in presets can't be edited, only duplicated.")
     settings: ExportSettings = Field(default_factory=ExportSettings)
+
+
+class CollisionStatus(StrEnum):
+    NEW = "new"
+    RENAMED = "renamed"
+    OVERWRITE = "overwrite"
+    SKIP = "skip"
+
+
+class ExportPlanItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
+
+    photo_id: str
+    filename: str = Field(description="The original's file name.")
+    output_name: str = Field(description="File name in the destination.")
+    width: int = Field(ge=1)
+    height: int = Field(ge=1)
+    decode: DecodeSize = Field(description="How the original is decoded for this export.")
+    collision: CollisionStatus
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ExportPlan(BaseModel):
+    """What an export would write (a dry run: nothing is written)."""
+
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
+
+    destination: str = Field(description="The destination folder, absolute.")
+    items: list[ExportPlanItem]
+    warnings: list[str] = Field(default_factory=list, description="Warnings about the whole export.")

@@ -272,8 +272,10 @@ export function ExportSettingsForm({
             disabled={disabled || !aspect.ratio}
             onChange={(e) => set('aspect', { anchor: e.target.value as CropAnchor })}
           >
-            <option value="subject">Detected subject</option>
             <option value="center">Image center</option>
+            <option value="subject" disabled>
+              Detected subject (Phase 6)
+            </option>
           </Select>
         </Field>
       </Section>

@@ -1945,8 +1945,8 @@
           },
           "anchor": {
             "$ref": "#/components/schemas/CropAnchor",
-            "description": "What the aspect crop is centered on.",
-            "default": "subject"
+            "description": "What the aspect crop is centered on. 'subject' needs subject detection (Phase 6).",
+            "default": "center"
           }
         },
         "additionalProperties": false,
@@ -1975,8 +1975,8 @@
           },
           "anchor": {
             "$ref": "#/components/schemas/CropAnchor",
-            "description": "What the aspect crop is centered on.",
-            "default": "subject"
+            "description": "What the aspect crop is centered on. 'subject' needs subject detection (Phase 6).",
+            "default": "center"
           }
         },
         "additionalProperties": false,
@@ -2243,6 +2243,14 @@
           "y"
         ],
         "title": "CurvePoint"
+      },
+      "DecodeSize": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "full"
+        ],
+        "title": "DecodeSize"
       },
       "Detail-Input": {
         "properties": {
@@ -2799,6 +2807,11 @@
           "tiff_compression": {
             "$ref": "#/components/schemas/TiffCompression",
             "default": "lzw"
+          },
+          "decode": {
+            "$ref": "#/components/schemas/DecodeSize",
+            "description": "auto = decode a RAW at half size when that still covers the output size; full = always full size.",
+            "default": "auto"
           }
         },
         "additionalProperties": false,
@@ -2840,6 +2853,11 @@
           "tiff_compression": {
             "$ref": "#/components/schemas/TiffCompression",
             "default": "lzw"
+          },
+          "decode": {
+            "$ref": "#/components/schemas/DecodeSize",
+            "description": "auto = decode a RAW at half size when that still covers the output size; full = always full size.",
+            "default": "auto"
           }
         },
         "additionalProperties": false,
@@ -2849,7 +2867,8 @@
           "jpeg_quality",
           "max_file_size_kb",
           "bit_depth",
-          "tiff_compression"
+          "tiff_compression",
+          "decode"
         ],
         "title": "FileSettings"
       },
@@ -3701,6 +3720,7 @@
           "strip_gps": {
             "type": "boolean",
             "title": "Strip Gps",
+            "description": "Only matters for policy 'all'; the others never write GPS.",
             "default": true
           },
           "copyright": {
@@ -3713,13 +3733,28 @@
                 "type": "null"
               }
             ],
-            "title": "Copyright"
+            "title": "Copyright",
+            "description": "Copyright notice; {year} = the photo's capture year. None = the configured default."
+          },
+          "creator": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creator",
+            "description": "None = the configured default."
           },
           "keywords": {
             "items": {
               "type": "string"
             },
             "type": "array",
+            "maxItems": 50,
             "title": "Keywords"
           }
         },
@@ -3736,6 +3771,7 @@
           "strip_gps": {
             "type": "boolean",
             "title": "Strip Gps",
+            "description": "Only matters for policy 'all'; the others never write GPS.",
             "default": true
           },
           "copyright": {
@@ -3748,13 +3784,28 @@
                 "type": "null"
               }
             ],
-            "title": "Copyright"
+            "title": "Copyright",
+            "description": "Copyright notice; {year} = the photo's capture year. None = the configured default."
+          },
+          "creator": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creator",
+            "description": "None = the configured default."
           },
           "keywords": {
             "items": {
               "type": "string"
             },
             "type": "array",
+            "maxItems": 50,
             "title": "Keywords"
           }
         },
@@ -3764,6 +3815,7 @@
           "policy",
           "strip_gps",
           "copyright",
+          "creator",
           "keywords"
         ],
         "title": "MetadataSettings"
@@ -3775,7 +3827,7 @@
             "maxLength": 200,
             "minLength": 1,
             "title": "Template",
-            "description": "Tokens: {original} {date} {time} {seq} {seq:03} {style} {preset}.",
+            "description": "Tokens: {original} {date} {time} {seq} {seq:03} {style} {preset} {camera}. The extension comes from the file format.",
             "default": "{original}"
           },
           "on_collision": {
@@ -3794,7 +3846,7 @@
             "maxLength": 200,
             "minLength": 1,
             "title": "Template",
-            "description": "Tokens: {original} {date} {time} {seq} {seq:03} {style} {preset}.",
+            "description": "Tokens: {original} {date} {time} {seq} {seq:03} {style} {preset} {camera}. The extension comes from the file format.",
             "default": "{original}"
           },
           "on_collision": {

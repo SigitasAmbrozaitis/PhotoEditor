@@ -704,8 +704,8 @@ export interface components {
              */
             orientation: components["schemas"]["Orientation"];
             /**
-             * @description What the aspect crop is centered on.
-             * @default subject
+             * @description What the aspect crop is centered on. 'subject' needs subject detection (Phase 6).
+             * @default center
              */
             anchor: components["schemas"]["CropAnchor"];
         };
@@ -722,8 +722,8 @@ export interface components {
              */
             orientation: components["schemas"]["Orientation"];
             /**
-             * @description What the aspect crop is centered on.
-             * @default subject
+             * @description What the aspect crop is centered on. 'subject' needs subject detection (Phase 6).
+             * @default center
              */
             anchor: components["schemas"]["CropAnchor"];
         };
@@ -856,6 +856,11 @@ export interface components {
              */
             y: number;
         };
+        /**
+         * DecodeSize
+         * @enum {string}
+         */
+        DecodeSize: "auto" | "full";
         /** Detail */
         "Detail-Input": {
             sharpening?: components["schemas"]["Sharpening-Input"];
@@ -1133,6 +1138,11 @@ export interface components {
             bit_depth: number;
             /** @default lzw */
             tiff_compression: components["schemas"]["TiffCompression"];
+            /**
+             * @description auto = decode a RAW at half size when that still covers the output size; full = always full size.
+             * @default auto
+             */
+            decode: components["schemas"]["DecodeSize"];
         };
         /** FileSettings */
         "FileSettings-Output": {
@@ -1156,6 +1166,11 @@ export interface components {
             bit_depth: number;
             /** @default lzw */
             tiff_compression: components["schemas"]["TiffCompression"];
+            /**
+             * @description auto = decode a RAW at half size when that still covers the output size; full = always full size.
+             * @default auto
+             */
+            decode: components["schemas"]["DecodeSize"];
         };
         /** Geometry */
         "Geometry-Input": {
@@ -1560,11 +1575,20 @@ export interface components {
             policy: components["schemas"]["MetadataPolicy"];
             /**
              * Strip Gps
+             * @description Only matters for policy 'all'; the others never write GPS.
              * @default true
              */
             strip_gps: boolean;
-            /** Copyright */
+            /**
+             * Copyright
+             * @description Copyright notice; {year} = the photo's capture year. None = the configured default.
+             */
             copyright?: string | null;
+            /**
+             * Creator
+             * @description None = the configured default.
+             */
+            creator?: string | null;
             /** Keywords */
             keywords?: string[];
         };
@@ -1574,11 +1598,20 @@ export interface components {
             policy: components["schemas"]["MetadataPolicy"];
             /**
              * Strip Gps
+             * @description Only matters for policy 'all'; the others never write GPS.
              * @default true
              */
             strip_gps: boolean;
-            /** Copyright */
+            /**
+             * Copyright
+             * @description Copyright notice; {year} = the photo's capture year. None = the configured default.
+             */
             copyright: string | null;
+            /**
+             * Creator
+             * @description None = the configured default.
+             */
+            creator: string | null;
             /** Keywords */
             keywords: string[];
         };
@@ -1586,7 +1619,7 @@ export interface components {
         "NamingSettings-Input": {
             /**
              * Template
-             * @description Tokens: {original} {date} {time} {seq} {seq:03} {style} {preset}.
+             * @description Tokens: {original} {date} {time} {seq} {seq:03} {style} {preset} {camera}. The extension comes from the file format.
              * @default {original}
              */
             template: string;
@@ -1597,7 +1630,7 @@ export interface components {
         "NamingSettings-Output": {
             /**
              * Template
-             * @description Tokens: {original} {date} {time} {seq} {seq:03} {style} {preset}.
+             * @description Tokens: {original} {date} {time} {seq} {seq:03} {style} {preset} {camera}. The extension comes from the file format.
              * @default {original}
              */
             template: string;
