@@ -1084,13 +1084,11 @@ threads. The library protects every imported folder in the path guard. Per-photo
   `export_workers=auto` is set from it. `photoedit benchmark --export` prints the table; the results go into
   `docs/benchmark.md`. ⛔ **If a full-size export takes more than 5 min per 100 photos at the best setting, STOP and
   discuss** (the Phase 2 benchmark gave 4.2 min at 10 workers with a simpler render).
-  In progress: `photoedit benchmark --export full|instagram` exists. First single-photo numbers (2026-10-10,
-  machine busy with a game, so not final): Instagram ≈ 7 s/photo, full size ≈ 39 s/photo with 2.9 GiB peak
-  (LibRaw full decode alone ≈ 25 s single-threaded). Found and fixed: reading the original's EXIF unpacked the
-  whole RAW (~2 s) → `decode.embedded_jpeg()`; the float conversion of a decode is now in place. The real
-  measurement needs an idle machine.
-
-### API + CLI
+  Measured 2026-10-10 (docs/benchmark.md): **Instagram 1.15 min / 100 photos** at 10 workers (half-size decode,
+  0.2 GiB per worker): GO. **Full size 23 min / 100** at the best setting (4 workers; ~5 GiB RAM free): **NO-GO →
+  ⛔ STOP, discuss with the user.** Already done: EXIF read without unpacking the RAW, in-place float conversion,
+  low-memory strip rendering for exports (2.9 → 1.6 GiB per worker, same pixels). `WORKER_PEAK_BYTES` = 1.7 GiB.
+  The full decode alone is ~25 s single-threaded (3-pass X-Trans demosaic); LibRaw's 1-pass is 13.9 s.
 - [x] **P5.12** Endpoints (replacing the mock):
   - `GET/POST /api/export-presets`, `GET/PUT/DELETE /api/export-presets/{id}`, `POST /api/export-presets/{id}/duplicate`
     (409 on a version conflict; editing or deleting a built-in → a clear 400).

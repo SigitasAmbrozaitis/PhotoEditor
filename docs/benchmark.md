@@ -47,3 +47,31 @@ later stage; uniform-grid lookups replace `np.interp`'s binary search; HSL gathe
 from 8-entry tables instead of eight full-image passes; matrices use `einsum` and the white-balance and profile
 matrices are fused; and the per-pixel stages run on 8 horizontal strips in parallel threads (bit-identical to a
 single strip, which a test checks).
+
+# Export speed (Phase 5, 2026-10-10)
+
+Real exports through `render_export` (decode → crop → resize → pipeline → output sharpening → JPEG with ICC and
+metadata), encoded in memory, on the X-T3 RAFs of `2026-08-11`. `photoedit benchmark --export instagram|full`.
+About 5 GiB of the 15.6 GiB RAM was free (browser and other apps open), which limits full-size workers.
+
+**Instagram portrait (1080×1350)**: the half-size decode covers it. 67 photos:
+
+| Workers | s / photo | min / 100 photos | Peak RAM |
+|---:|---:|---:|---:|
+| 4 | 1.10 | 1.83 | 0.9 GiB |
+| 8 | 0.71 | 1.18 | 1.7 GiB |
+| 10 | 0.69 | 1.15 | 2.0 GiB |
+
+**Full size (6240×4160, JPEG q90)**: full LibRaw decode. 16 photos:
+
+| Workers | s / photo | min / 100 photos | Peak RAM |
+|---:|---:|---:|---:|
+| 2 | 16.7 | 27.9 | 3.0 GiB |
+| 3 | 17.5 | 29.2 | 4.1 GiB |
+| 4 | 13.9 | 23.1 | 5.5 GiB |
+
+**NO-GO for full size** (limit 5 min / 100). One photo alone takes ~31 s: the single-threaded 3-pass X-Trans
+demosaic is ~25 s of it (the Phase 2 benchmark measured ~13 s for the whole decode on an idle machine), the render
+~6 s. A render's peak memory went from 2.9 GiB to 1.6 GiB per worker (low-memory strips, same pixels), but with
+~5 GiB free only 3–4 workers fit. LibRaw's 1-pass X-Trans demosaic takes 13.9 s instead of 24.7 s (mean
+difference 0.03 %, 99.9th percentile 1.75 % of full scale).
