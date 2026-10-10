@@ -77,7 +77,7 @@ _DECODE = {
 
 @pytest.mark.parametrize("space", SPACES)
 def test_profile_matches_our_math(space: ColorSpace) -> None:
-    """LittleCMS, converting through our profile to sRGB, agrees with our own math on the same 8-bit pixels."""
+    """LittleCMS, converting through our profile to sRGB, agrees with our math on the same 8-bit pixels."""
     rng = np.random.default_rng(7)
     srgb_linear = rng.uniform(0, 1, size=(32, 32, 3))  # inside sRGB, so nothing is gamut-mapped
     rec2020 = color.apply_matrix(srgb_linear, color.REC2020_FROM_SRGB).astype(np.float32)
