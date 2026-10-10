@@ -12,7 +12,7 @@ Derived from [PLAN.md](PLAN.md) v0.3. This checklist is written for an AI to fol
 - ⛔ **STOP** = halt and wait for the user. Never continue past a STOP without the user's explicit go-ahead.
 - 🧑 **Human test** = steps the user runs by hand at the end of a phase, with the expected result for each step.
 - If something is ambiguous or the plan seems wrong, **ask**. Don't guess. Plan changes go into PLAN.md first.
-- **Phases 0–4 and 3b (deferred, at the end) are detailed.** Later phases are an outline and get detailed at the start of each phase. Writing that detail is the first item in each phase.
+- **Phases 0–5 and 3b (deferred, at the end) are detailed.** Later phases are an outline and get detailed at the start of each phase. Writing that detail is the first item in each phase.
 - Golden rules: originals are read-only; never write outside `C:\Work\PhotoEditing` (except export destinations the user
   chose); commit as `SigitasAmbrozaitis`.
 
@@ -907,12 +907,219 @@ iterating on it, in Phase 8 and with the AI in Phase 7:
 
 **Approved 2026-10-10.** The user inspected and applied styles in the human test; no change requests.
 
-## Phase 5: Export (outline)
-- [ ] **P5.0** Detail this phase. ⛔ STOP for review.
-- [ ] Resize modes, aspect crop, color space + embedded ICC, output sharpening, metadata policies, naming templates, collision handling.
-- [ ] Parallel batch export job with progress, cancellation, and the path guard for destinations.
-- [ ] Export tests: dimensions, ICC, EXIF, names. The UI Export dialog goes live.
-- 🧑 Human test + ⛔ STOP.
+## Phase 5: Export
+
+Goal: real export. "Export…", "Apply & export", the Presets screen and the CLI write real files: rendered at full
+quality, resized and cropped to the preset, in the chosen color space with an embedded ICC profile, output-sharpened
+for screen or paper, with metadata per policy and names from a template. Batch exports run in parallel worker
+processes with progress and cancellation. Every write goes through the path guard, and originals stay untouched. An
+Instagram preset gives 1080×1350 sRGB files; a print preset gives the right pixel size and PPI.
+
+Starting point (Phase 4): `models/export.py` has the full `ExportSettings` / `ExportPreset` model (Phase 1 contract),
+`core/presets.py` has 10 built-in presets, and `mock/backend.py` serves them and **simulates** export jobs (each
+item sleeps). The render pipeline (`core/render/pipeline.py`) outputs sRGB-encoded floats from Rec.2020 linear and
+takes a `long_edge` for resizing the linear base; previews use the half-size decode. The job manager runs items on
+threads. The library protects every imported folder in the path guard. Per-photo geometry (crop) is Phase 6.
+
+**Design** (to confirm in P5.1):
+- **Export render** = the same pipeline as previews, from a decode chosen per photo: **half-size** when its pixels
+  (after the aspect crop) still cover the output size without enlarging, otherwise **full-size**. Instagram and web
+  presets then decode in ~0.6 s instead of 5–13 s. The choice depends only on the photo and the settings, so it's
+  deterministic. A preset can force full size (`decode: full`).
+- **Order**: aspect crop on the linear base → resize (in linear light) → pipeline (so the post-crop vignette is
+  relative to the crop, and the photo's stored tone anchors keep the tone the same as the preview) → output
+  sharpening → output color space (gamut-mapped by the same desaturate-into-gamut method as sRGB) → quantize
+  (8/16-bit) → encode with ICC + metadata.
+- **Deterministic files**: the same photo, edit, settings and engine version give byte-identical files. No export
+  time or random ids are written (EXIF dates come from the original).
+- **Destinations** are chosen by the user per export (UI field, CLI `--dest`) and registered with the path guard for
+  that job. A destination inside a protected photo folder (or any subfolder of one) is refused (golden rule 1:
+  nothing is written next to an original).
+
+- [ ] **P5.0** Detail this phase into items. ⛔ STOP for the user to review it.
+
+### Decisions to confirm at phase start (ask the user)
+- [ ] **P5.1** Confirm (defaults proposed; each goes into PLAN.md §0 once confirmed):
+  - **Metadata writer: Pillow, no ExifTool (changes the 2026-10-07 decision).** Pillow writes EXIF (copied from the
+    original, filtered by policy), XMP (copyright, creator, keywords) and the ICC profile into JPEG, TIFF and PNG.
+    No external program, deterministic, easy to test. Lost compared with ExifTool: the Fujifilm maker notes (film
+    simulation etc.) and old-style IPTC-IIM (XMP carries the same fields; Lightroom, Windows and Instagram read
+    XMP). ExifTool would be a ~10 MB Windows exe downloaded from exiftool.org (needs your OK to download) and run
+    as a subprocess. Say if you want ExifTool instead.
+  - **Decode size: automatic** (half-size when it covers the output, otherwise full-size), overridable per preset
+    with `decode: full`. The built-in print presets use `full`.
+  - **Aspect crop anchor**: `subject` needs subject detection (Phase 6), so until then it is **rejected** with a
+    clear "Phase 6" error, like other later-phase parameters, and the built-in presets use `center`. Phase 6
+    switches them back to `subject`. Per-photo crops also arrive in Phase 6; the export's aspect crop then works
+    inside the photo's own crop.
+  - **ICC profiles** for sRGB, Display P3 and Adobe RGB (1998) are **generated in code** (small matrix + curve ICC v2
+    profiles, checked against LittleCMS in tests), so no profile files are downloaded or bundled. The Adobe RGB one
+    is named "Adobe RGB (1998) compatible" (the name belongs to Adobe).
+  - **16-bit TIFF/PNG**: Pillow can't write 16-bit RGB, so **`tifffile` + `imagecodecs`** (BSD) join for TIFF (LZW,
+    ZIP), and 16-bit PNG is written with OpenCV, with the ICC and metadata chunks added by our code.
+  - **Custom presets** live in `export-presets/<id>.json` and are **committed** (like `style.json`). Built-ins stay
+    read-only in code; "Duplicate" makes an editable copy.
+  - **Default copyright** comes from a new setting `export_copyright` in `config.local.toml`, e.g.
+    `© {year} Sigitas Ambrozaitis` (`{year}` = the photo's capture year, so files stay deterministic). A preset's
+    own copyright wins. **What text should it be?** (Also an optional `export_creator`.)
+  - **Parallel export**: an `export_workers` setting, default **auto** = min(10, cores − 2, what fits in RAM at the
+    peak per worker measured in P5.11). One export job runs at a time; others wait as queued, so previews stay
+    responsive.
+  - **Collisions**: default `suffix` (`name_2.jpg`, `_3`…). `overwrite` replaces only files in the chosen
+    destination; `skip` leaves them and reports "exists".
+  - **Not in Phase 5** (⏭ Phase 9 unless you want them now): watermark, WebP/AVIF, "copy original" (RAF
+    passthrough), ProPhoto output, uploading anywhere.
+
+### Dependencies
+- [ ] **P5.2** Add `tifffile` and `imagecodecs` (`uv add`). A smoke test writes and re-reads a 16-bit LZW TIFF with
+  an ICC tag in `tmp_path`. An `export_identity()` next to `render_identity()` includes the versions that affect
+  file bytes (Pillow, tifffile, imagecodecs, OpenCV).
+
+### Core
+- [ ] **P5.3** Model updates (`models/export.py`):
+  - `FileSettings.decode`: `auto` | `full` (see design).
+  - `AspectSettings.anchor`: default `center`; `subject` is rejected by core until Phase 6 (like
+    `check_supported`). Built-in presets updated.
+  - `MetadataSettings`: `creator` (optional); `keywords` validated (non-empty, ≤ 64 chars each, ≤ 50); `{year}`
+    token in copyright. `strip_gps` only matters for policy `all` (the other policies never write GPS); turning it
+    off with another policy is rejected with a clear message rather than silently ignored.
+  - `NamingSettings.template` validated in the model: known tokens only, no path separators, no characters Windows
+    forbids, no reserved names (`CON`, `NUL`…). Tokens: `{original}` (file stem), `{date}` (capture
+    `YYYY-MM-DD`), `{time}` (`HHMMSS`), `{seq}` / `{seq:0N}` (1-based, in export order), `{style}` (style id or
+    `nostyle`), `{preset}` (preset id or `custom`), `{camera}`. The extension comes from the format.
+  - New `ExportPlan` (the dry run's answer): per photo the output name, pixel size, decode size, collision status
+    and warnings (e.g. "enlarged 1.4×").
+  Tests: validation messages, template parsing, JSON round-trip, every built-in preset valid.
+- [ ] **P5.4** Geometry math (`core/export/geometry.py`, pure functions): from the photo's upright size and the
+  settings → the crop rectangle (aspect ratio; orientation `auto` follows the photo, `portrait`/`landscape` force
+  it; centered) and the output size per resize mode (original, long edge, short edge, width × height **fit** with
+  the box turned to match the crop's orientation, megapixels, percentage; `dont_enlarge`). Rounding is defined once
+  (nearest, ties up), so a 4:5 crop sized to 1080×1350 is exactly 1080×1350. Also the half/full decode choice.
+  Tests: exact sizes for every built-in preset on landscape and portrait X-T3 frames (6240×4160 / 4160×6240) and on
+  small JPEGs (dont_enlarge on/off), odd ratios (1.91:1, 1.414:1), megapixels/percentage, and the decode choice at
+  its boundary.
+- [ ] **P5.5** Output color (`core/export/colorspace.py`): Rec.2020 linear → sRGB / Display P3 / Adobe RGB (matrices
+  from the primaries in `core/color.py`, D65), desaturate into the target gamut, encode with the target's curve
+  (sRGB curve for sRGB and P3, gamma 563/256 for Adobe RGB). The existing `output_srgb` becomes the sRGB case of
+  this with identical results, so previews and golden images don't change. An ICC v2 profile builder (header,
+  `desc`, `cprt`, `wtpt`, `rXYZ/gXYZ/bXYZ` Bradford-adapted to D50, `rTRC/gTRC/bTRC`), cached per space.
+  Tests: a saturated Rec.2020 color lands on the expected values in each space; out-of-gamut colors keep their hue;
+  LittleCMS (`ImageCms`) opens each profile, and converting through it to sRGB matches our math within 1/255; the
+  sRGB path is bit-identical to the old `output_srgb`.
+- [ ] **P5.6** Output sharpening (`core/export/sharpen.py`): unsharp mask on luminance after resizing, from a fixed
+  table of screen / matte / glossy × low / standard / high. For paper the radius scales with PPI (as Lightroom's
+  output sharpening does; matte gets more, since ink spreads on it). `none` leaves pixels untouched. The table goes
+  into `docs/export.md`.
+  Tests: `none` is identity; a flat image is unchanged; an edge gets steeper with the amount; higher PPI → larger
+  radius for paper; deterministic.
+- [ ] **P5.7** Encoders + metadata (`core/export/encode.py`, `core/export/metadata.py`), all in memory:
+  - JPEG (Pillow): quality; chroma subsampling 4:4:4 at quality ≥ 90, else 4:2:0; baseline; DPI = PPI.
+    `max_file_size_kb`: a deterministic binary search over quality, with a warning when even quality 1 doesn't
+    fit. TIFF 8/16 (tifffile; none/LZW/ZIP; resolution tags). PNG 8/16 (`pHYs` for PPI).
+  - ICC embedded in every format. Orientation is always 1 (the pixels are already upright).
+  - Metadata policies: `all` (EXIF from the original: camera, lens, exposure, dates; GPS unless `strip_gps`),
+    `all_except_camera_and_gps` (dates, exposure settings, description; no make/model/serial/lens/GPS),
+    `copyright_and_contact` (copyright + creator), `copyright_only`. Copyright → EXIF `Copyright` + XMP
+    `dc:rights`; creator → EXIF `Artist` + XMP `dc:creator`; keywords → XMP `dc:subject`; `Software` =
+    `PhotoEditor <version>`. Pixel-size tags match the output. Maker notes and embedded thumbnails are never
+    copied.
+  Tests (read back with Pillow and a small XMP parse): every format/bit depth opens with the right size, mode and
+  ICC; each policy writes exactly its tags (GPS and serial gone when they should be, copyright present); `{year}`;
+  max file size met or warned; two encodes are byte-identical.
+- [ ] **P5.8** Naming + collisions (`core/export/naming.py`): expand the template per photo (sequence in export
+  order; the UI and CLI order photos by capture time, then file name), make names unique **within the batch**
+  (`_2`…), then apply the collision policy against the destination, case-insensitively (Windows). Over-long names
+  are shortened, keeping the extension.
+  Tests: every token, batch duplicates, suffix/overwrite/skip against existing files, long names.
+- [ ] **P5.9** Export service (`core/export/service.py`, replaces the mock):
+  - `plan(photo_ids, settings, destination) → ExportPlan`: a dry run that writes nothing. It validates the settings
+    and the destination and resolves names and sizes.
+  - `export(photo_ids, settings, destination, preset_id) → Job`: validates first (unknown photo, invalid settings,
+    destination inside a photo folder, destination can't be created → a clear error and nothing written), then
+    registers the destination with the guard. Each photo renders in a **worker process** (`ProcessPoolExecutor`,
+    single-threaded LibRaw as everywhere): the worker gets the photo path, its effective edit, stored stats and
+    settings, and returns the encoded bytes. The parent writes each file atomically through
+    `PathGuard.write_atomic`. Item result = output path, file size, pixel size, warnings. Cancel stops photos not
+    yet started; running ones finish and are written, so no half-written file remains. A failed photo doesn't stop
+    the batch (a broken style or invalid edit fails that photo with its message).
+  - `apply_and_export` chains the real apply job into the real export.
+  - Recent destinations are kept in `workspace/recent-destinations.json` (last 10), so they survive a restart.
+  Tests (JPEG/TIFF originals made in `tmp_path`; 1 and 2 workers): files with the planned names, sizes and ICC;
+  output identical to an in-process render; cancellation; one bad photo among good ones; destination refusals;
+  originals' hashes unchanged; nothing written outside the destination.
+- [ ] **P5.10** Custom presets (`core/export/presets.py` over `export-presets/<id>.json`; atomic writes through the
+  guard): list (built-ins first, then custom; a broken file is listed as broken with its error), get, create (blank
+  or from settings), duplicate (built-in or custom), update (optimistic `expected_version`), delete. Ids are slugs;
+  a custom preset can't take a built-in's id. Tests in `tmp_path`, like the style library.
+- [ ] **P5.11** Speed + memory: on the 67 samples, a full-size export (JPEG q90, original size) and an Instagram
+  portrait export (half-size decode) at 1, 4, 8 and 10 workers: s/photo, min/100 photos, peak RAM per worker.
+  `export_workers=auto` is set from it. `photoedit benchmark --export` prints the table; the results go into
+  `docs/benchmark.md`. ⛔ **If a full-size export takes more than 5 min per 100 photos at the best setting, STOP and
+  discuss** (the Phase 2 benchmark gave 4.2 min at 10 workers with a simpler render).
+
+### API + CLI
+- [ ] **P5.12** Endpoints (replacing the mock):
+  - `GET/POST /api/export-presets`, `GET/PUT/DELETE /api/export-presets/{id}`, `POST /api/export-presets/{id}/duplicate`
+    (409 on a version conflict; editing or deleting a built-in → a clear 400).
+  - `POST /api/export/plan` (`photo_ids`, `settings`, `destination` → `ExportPlan`).
+  - `POST /api/jobs` `export` and `apply_and_export` become real; job items carry output paths and warnings.
+  - `GET /api/export/destinations` (recent) and `POST /api/export/destination-check` (`{path}` → exists, can be
+    created, refused + reason).
+  - `mock/` is removed (nothing mock is left).
+  Regenerate `openapi.json` + `schema.d.ts`. Tests for every endpoint.
+- [ ] **P5.13** CLI:
+  - `photoedit export [PHOTO…|--folder DIR] --preset ID --dest DIR [--set file.jpeg_quality=95 …] [--dry-run]`:
+    prints the plan, then one progress line per photo; exit code ≠ 0 if any photo failed.
+  - `photoedit preset list | show ID | duplicate ID [--name N] | delete ID | check`.
+  Tests with `CliRunner`.
+
+### UI
+- [ ] **P5.14** Export dialog on real data: **Browse…** opens the folder browser (the one from the import dialog);
+  the destination is checked as you type (a refused photo folder shows in red with the reason); a **plan table**
+  (name, pixel size, decode size, collision, warnings) before exporting; "Export" starts the job and opens it;
+  **Save as preset…** from modified settings. The "simulated" labels and Phase 5 tooltips go away.
+- [ ] **P5.15** Presets screen: duplicate, edit (the same `ExportSettingsForm`), rename and delete custom presets;
+  built-ins are read-only with "Duplicate to edit".
+- [ ] **P5.16** Jobs page for exports: per photo the output file name, pixel size, file size and warnings, and a
+  **Show in folder** button (the backend opens Explorer on that file; only for files exported in this session).
+  Photo view and Library: **Export…** for the current photo / the selection; "Apply & export" exports for real.
+- [ ] **P5.17** UI tests: Vitest for the dialog (plan table, refused destination, save as preset), the presets
+  screen (duplicate/edit/delete) and the jobs page's export details. Playwright: export 2 photos with a custom
+  preset into `output/e2e/exports`, check the files exist with the right size; screenshots of the dialog and
+  presets.
+
+### Tests + docs
+- [ ] **P5.18** Golden (`@pytest.mark.golden`, local): export `DSCF5437.RAF` with every built-in preset into
+  `tmp_path` → pixel sizes, ICC description, PPI, metadata per policy; exporting twice gives identical bytes; the
+  sample folder's hashes are unchanged. Safety test: exporting into the sample folder or a subfolder is refused.
+- [ ] **P5.19** `docs/export.md` (pipeline order, decode choice, sizes per resize mode, sharpening table, metadata
+  per policy, naming tokens, collisions) and README (export section, CLI, config).
+- [ ] **P5.20** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e).
+
+### 🧑 Human test: Phase 5
+0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`.
+1. `uv run photoedit ui` → **Presets** lists the built-ins (read-only) → **Duplicate** "Instagram portrait" →
+   rename it, set quality 95 and your copyright → save. Restart: it's still there.
+2. Library (`2026-08-11`) → select ~10 photos (portrait and landscape, styled and unstyled) → **Export…** → choose
+   your preset → **Browse…** to a folder outside the photo folders (e.g. `C:\Work\PhotoEditing\output\exports`) →
+   the plan table shows 1080×1350 for every photo → Export → the job shows progress and per-photo results.
+3. Open the files: exactly 1080×1350, they look like the Photo view, landscape photos are center-cropped to 4:5.
+   Explorer → Properties → Details: copyright present, no GPS or camera serial.
+4. Export the same photos again with collision `suffix` → `_2` files appear; with `skip` → nothing new, and the job
+   says "exists".
+5. Try to export into `C:\Users\ambro\Pictures\2026\2026-08-11` (or a subfolder) → refused with a clear message;
+   nothing is written there.
+6. Export 2 photos with **Print A3 fine art** → 16-bit Adobe RGB TIFFs, 4961×3508 (or turned), 300 PPI. A
+   color-managed viewer (e.g. Photoshop, GIMP) shows the Adobe RGB profile, and the colors match the sRGB export.
+7. Select the whole folder (67) → **Web full size** → note the time. Start a second big export and cancel it
+   halfway → the remaining photos are cancelled, and every written file opens.
+8. **Apply & export** a style with the Instagram preset to a selection → styled files appear.
+9. CLI: `uv run photoedit export --folder C:\Users\ambro\Pictures\2026\2026-08-17 --preset web-full --dest
+   output\exports\cli --dry-run` prints the plan; without `--dry-run` it writes the files.
+10. The photo folders are unchanged (Explorer, Date modified). `uv run pytest -m golden` passes.
+11. **Give feedback** on sharpening strength, JPEG quality/size, naming and the dialog.
+
+### ⛔ STOP: user approves Phase 5
 
 ## Phase 6: Geometry & centering (outline)
 - [ ] **P6.0** Detail this phase. ⛔ STOP for review.
