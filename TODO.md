@@ -1016,12 +1016,14 @@ threads. The library protects every imported folder in the path guard. Per-photo
   Tests: a saturated Rec.2020 color lands on the expected values in each space; out-of-gamut colors keep their hue;
   LittleCMS (`ImageCms`) opens each profile, and converting through it to sRGB matches our math within 1/255; the
   sRGB path is bit-identical to the old `output_srgb`.
-- [ ] **P5.6** Output sharpening (`core/export/sharpen.py`): unsharp mask on luminance after resizing, from a fixed
+- [x] **P5.6** Output sharpening (`core/export/sharpen.py`): unsharp mask on luminance after resizing, from a fixed
   table of screen / matte / glossy × low / standard / high. For paper the radius scales with PPI (as Lightroom's
   output sharpening does; matte gets more, since ink spreads on it). `none` leaves pixels untouched. The table goes
   into `docs/export.md`.
   Tests: `none` is identity; a flat image is unchanged; an edge gets steeper with the amount; higher PPI → larger
   radius for paper; deterministic.
+  Done: reuses the pipeline's `stages.sharpen` with a table (screen 0.6 px; glossy 0.8 px and matte 1.1 px at
+  300 PPI, scaled by PPI; amounts 25/45/70, 35/60/90, 45/75/110). Documented in `docs/export.md` (P5.19).
 - [ ] **P5.7** Encoders + metadata (`core/export/encode.py`, `core/export/metadata.py`), all in memory:
   - JPEG (Pillow): quality; chroma subsampling 4:4:4 at quality ≥ 90, else 4:2:0; baseline; DPI = PPI.
     `max_file_size_kb`: a deterministic binary search over quality, with a warning when even quality 1 doesn't
