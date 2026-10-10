@@ -1,4 +1,5 @@
-"""Go/no-go speed benchmark: full-resolution decode + a basic render + JPEG encode, per worker count.
+"""Speed benchmarks per worker count: the Phase 2 go/no-go (full-resolution decode + a basic render + JPEG
+encode) and the Phase 5 export benchmark (the real export of each photo: full size, or Instagram portrait).
 
 Everything happens in memory. Nothing is written near the photos; only the report goes to
 ``output/benchmark/``.
@@ -22,6 +23,7 @@ from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from photoedit.core.decode import FULL, decode, render_identity
+from photoedit.models.export import ExportSettings
 
 GO_LIMIT_MINUTES_PER_100 = 5.0
 _LUMA = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
@@ -52,6 +54,7 @@ class BenchmarkRun(BaseModel):
 class BenchmarkReport(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    task: str = "full-res decode + basic render + JPEG encode"
     folder: Path
     started_at: datetime
     machine: str
@@ -101,6 +104,51 @@ def process_photo(path: Path) -> int:
     return buf.tell()
 
 
+def _export(path: Path, settings: ExportSettings) -> int:
+    from photoedit.core.decode import read_raw_info
+    from photoedit.core.export.geometry import export_geometry
+    from photoedit.core.export.worker import ExportTask, render_export
+    from photoedit.core.metadata import read_metadata_from_bytes
+    from photoedit.core.render.anchors import ToneAnchors
+    from photoedit.core.render.profile import profile_for
+    from photoedit.models.adjustments import AdjustmentParams
+
+    info = read_raw_info(path)
+    camera = read_metadata_from_bytes(info.embedded_jpeg).camera if info.embedded_jpeg else None
+    task = ExportTask(
+        path=path,
+        width=info.width,
+        height=info.height,
+        adjustments=AdjustmentParams(),  # RAW defaults: the cost of a styled photo is the same
+        profile=profile_for(camera),
+        anchors=ToneAnchors(black=-8, white=0),  # stored per photo in real exports
+        settings=settings,
+        geometry=export_geometry(info.width, info.height, settings, is_raw=True),
+        copyright="(c) benchmark",
+        creator=None,
+    )
+    return len(render_export(task).data)
+
+
+def export_full_size(path: Path) -> int:
+    """One export at the original size: full decode, JPEG quality 90, screen sharpening."""
+    return _export(path, ExportSettings.model_validate({"file": {"jpeg_quality": 90}}))
+
+
+def export_instagram(path: Path) -> int:
+    """One Instagram portrait export (1080×1350): the half-size decode is enough."""
+    from photoedit.core.presets import BUILTIN_PRESETS
+
+    preset = next(p for p in BUILTIN_PRESETS if p.id == "instagram-portrait")
+    return _export(path, preset.settings)
+
+
+EXPORT_TASKS: dict[str, tuple[str, PhotoTask]] = {
+    "full": ("export at full size (JPEG q90)", export_full_size),
+    "instagram": ("export as Instagram portrait 1080×1350", export_instagram),
+}
+
+
 def process_pool(workers: int) -> Executor:
     return ProcessPoolExecutor(max_workers=workers)
 
@@ -111,6 +159,7 @@ def run_benchmark(
     worker_counts: Sequence[int],
     *,
     task: PhotoTask = process_photo,
+    task_name: str | None = None,
     executor_factory: ExecutorFactory = process_pool,
     progress: Callable[[str], None] | None = None,
 ) -> BenchmarkReport:
@@ -128,6 +177,7 @@ def run_benchmark(
             ram = _gib(run.peak_ram_bytes)
             progress(f"  {run.seconds:.1f} s, {run.minutes_per_100:.2f} min/100, {ram} peak")
     return BenchmarkReport(
+        **({"task": task_name} if task_name else {}),
         folder=folder,
         started_at=started_at,
         machine=machine_description(),
@@ -147,19 +197,19 @@ def format_report(report: BenchmarkReport) -> str:
     best = report.best
     verdict = "GO" if report.go else "NO-GO"
     lines = [
-        "# Benchmark: full-res decode + basic render + JPEG encode",
+        f"# Benchmark: {report.task}",
         "",
         f"- Started: {report.started_at:%Y-%m-%d %H:%M}",
         f"- Folder: `{report.folder}`",
         f"- Machine: {report.machine}",
         f"- Decoder: `{report.render_identity}` (LibRaw single-threaded per worker)",
         "",
-        "| Workers | Photos | Total (s) | s / photo | min / 100 photos | Peak RAM |",
-        "|---:|---:|---:|---:|---:|---:|",
+        "| Workers | Photos | Total (s) | s / photo | min / 100 photos | Peak RAM | Peak / worker |",
+        "|---:|---:|---:|---:|---:|---:|---:|",
     ]
     lines += [
         f"| {r.workers} | {r.photos} | {r.seconds:.1f} | {r.seconds_per_photo:.2f} | {r.minutes_per_100:.2f} "
-        f"| {_gib(r.peak_ram_bytes)} |"
+        f"| {_gib(r.peak_ram_bytes)} | {_gib(r.peak_ram_bytes // r.workers)} |"
         for r in report.runs
     ]
     lines += [

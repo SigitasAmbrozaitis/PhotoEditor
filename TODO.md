@@ -1084,6 +1084,11 @@ threads. The library protects every imported folder in the path guard. Per-photo
   `export_workers=auto` is set from it. `photoedit benchmark --export` prints the table; the results go into
   `docs/benchmark.md`. ⛔ **If a full-size export takes more than 5 min per 100 photos at the best setting, STOP and
   discuss** (the Phase 2 benchmark gave 4.2 min at 10 workers with a simpler render).
+  In progress: `photoedit benchmark --export full|instagram` exists. First single-photo numbers (2026-10-10,
+  machine busy with a game, so not final): Instagram ≈ 7 s/photo, full size ≈ 39 s/photo with 2.9 GiB peak
+  (LibRaw full decode alone ≈ 25 s single-threaded). Found and fixed: reading the original's EXIF unpacked the
+  whole RAW (~2 s) → `decode.embedded_jpeg()`; the float conversion of a decode is now in place. The real
+  measurement needs an idle machine.
 
 ### API + CLI
 - [ ] **P5.12** Endpoints (replacing the mock):

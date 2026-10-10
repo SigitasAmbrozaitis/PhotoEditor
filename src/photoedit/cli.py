@@ -111,13 +111,18 @@ def benchmark(
     ] = None,
     count: Annotated[int, typer.Option(min=1, help="Photos per run (the same ones for every run).")] = 12,
     workers: Annotated[str, typer.Option(help="Comma-separated worker counts to try.")] = "1,2,4,6,8",
+    export: Annotated[
+        str | None,
+        typer.Option(help="Time real exports instead: 'full' (original size) or 'instagram' (1080×1350)."),
+    ] = None,
     config: ConfigOption = None,
 ) -> None:
-    """Time full-resolution decode + render per worker count (the Phase 2 go/no-go).
+    """Time full-resolution decode + render per worker count (the Phase 2 go/no-go), or real exports.
 
-    Only the report is written (to output/benchmark/); nothing is written near the photos.
+    Only the report is written (to output/benchmark/); nothing is written near the photos, and exports are
+    encoded in memory only.
     """
-    from photoedit.core.benchmark import format_report, run_benchmark
+    from photoedit.core.benchmark import EXPORT_TASKS, format_report, process_photo, run_benchmark
     from photoedit.core.scan import ScanError, SourceKind, scan_folder
     from photoedit.safety import guard_from_settings
 
@@ -141,9 +146,13 @@ def benchmark(
 
     guard = guard_from_settings(settings)
     guard.protect(source)
-    report = run_benchmark(source, raws, worker_counts, progress=typer.echo)
+    if export is not None and export not in EXPORT_TASKS:
+        raise typer.BadParameter(f"choose one of: {', '.join(EXPORT_TASKS)}", param_hint="--export")
+    task_name, task = EXPORT_TASKS[export] if export is not None else (None, process_photo)
+    report = run_benchmark(source, raws, worker_counts, task=task, task_name=task_name, progress=typer.echo)
     text = format_report(report)
-    path = settings.output_dir / "benchmark" / f"report-{report.started_at:%Y%m%d-%H%M%S}.md"
+    kind = f"export-{export}-" if export else ""
+    path = settings.output_dir / "benchmark" / f"report-{kind}{report.started_at:%Y%m%d-%H%M%S}.md"
     guard.write_atomic(path, text.encode("utf-8"))
     typer.echo("")
     typer.echo(text)

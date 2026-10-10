@@ -19,7 +19,7 @@ from PIL import Image, UnidentifiedImageError
 from PIL.TiffImagePlugin import IFDRational
 
 from photoedit import __version__
-from photoedit.core.decode import is_raw, read_raw_info
+from photoedit.core.decode import DecodeError, embedded_jpeg, is_raw
 from photoedit.models.export import ColorSpace, MetadataPolicy, MetadataSettings
 
 SOFTWARE = f"PhotoEditor {__version__}"
@@ -91,14 +91,14 @@ def read_source_exif(path: Path) -> SourceExif:
     """The EXIF of an original (read-only). A file without readable EXIF gives an empty one."""
     try:
         if is_raw(path):
-            jpeg = read_raw_info(path).embedded_jpeg
+            jpeg = embedded_jpeg(path)
             if jpeg is None:
                 return SourceExif()
             with Image.open(io.BytesIO(jpeg)) as image:
                 return _split(image.getexif())
         with Image.open(path) as image:
             return _split(image.getexif())
-    except (UnidentifiedImageError, OSError, ValueError):
+    except (UnidentifiedImageError, OSError, ValueError, DecodeError):
         return SourceExif()
 
 

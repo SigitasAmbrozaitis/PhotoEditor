@@ -109,6 +109,12 @@ def read_raw_info(path: Path) -> RawInfo:
         )
 
 
+def embedded_jpeg(path: Path) -> bytes | None:
+    """Just the camera's embedded JPEG of a RAW (cheap: the raw data itself isn't unpacked)."""
+    with _open_raw(path) as raw:
+        return _embedded_jpeg(raw)
+
+
 def oriented_image(jpeg: bytes, fallback_flip: int = 0) -> Image.Image:
     """Decode JPEG bytes to an upright RGB image.
 
@@ -184,8 +190,11 @@ def decode_linear(path: Path, *, half_size: bool) -> LinearImage:
             )
         except LibRawError as exc:
             raise DecodeError(f"cannot decode {path.name}: {exc}") from exc
+    linear = pixels.astype(np.float32)
+    del pixels
+    np.divide(linear, np.float32(65535), out=linear)  # in place: a full-size X-T3 frame is 300 MB as float32
     return LinearImage(
-        pixels=(pixels.astype(np.float32) / np.float32(65535)),
+        pixels=linear,
         to_rec2020=color.camera_to_rec2020(cam_from_xyz),
         is_raw=True,
         cam_from_xyz=cam_from_xyz,
