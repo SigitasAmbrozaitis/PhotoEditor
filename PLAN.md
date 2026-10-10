@@ -40,6 +40,7 @@
 | Style editing UI (Phase 4) | **Managed in the UI**: save a photo's edit as a style (choose groups), edit text and rules, update a style from a photo, duplicate, delete (photos drop back to no style and keep their tweaks), render sample images from library photos | 2026-10-09 |
 | Export metadata (Phase 5) | **Pillow, no ExifTool**: the tool should not depend on other programs. EXIF copied from the original and filtered by policy, XMP for copyright/creator/keywords, ICC in every file. Fujifilm maker notes and IPTC-IIM are not written | 2026-10-10 |
 | Export (Phase 5) | **Automatic decode size** (half-size when it covers the output, else full; `decode: full` forces it); aspect crops **centered** until Phase 6 (`subject` rejected); **ICC profiles generated in code**; `tifffile` + `imagecodecs` for 16-bit TIFF; **custom presets committed** in `export-presets/`; default copyright from `export_copyright` in `config.local.toml`; `export_workers=auto`, one export job at a time; collisions default to `suffix`. Watermark, WebP/AVIF, original passthrough and ProPhoto ⏭ Phase 9 | 2026-10-10 |
+| Full-size export speed (Phase 5) | **Accepted for now, decide later** (open concern, see §7.1). Full-size exports take ~31 s per photo (~1 min for 4 photos, ~23 min per 100); screen exports (Instagram, web) take ~1.2 min per 100. Fine for prints of a few photos. Solutions are listed in §7.1 and get decided at the start of Phase 9 | 2026-10-10 |
 
 **Target machine**: i7-12700H (14 cores / 20 threads), 16 GB RAM, RTX 3060 Laptop (6 GB), Windows 11.
 .NET 9 SDK is installed. Python and uv are not installed yet.
@@ -333,6 +334,30 @@ Try these in order. Each is a self-contained addition, so we can switch to one w
 - **One style on very different photos.** Adaptive rules (auto-exposure and WB normalization before the style) are key here. These need iteration with your real photos.
 - **Speed.** Python/NumPy on 24–60 MP files takes about 2–5 s per photo at full size. Running in parallel across CPU cores is planned. A GPU path is possible later if needed.
 - **Style-from-finished-JPEGs** (no RAW pairs) can only approximate a look. RAW + edited pairs give much better results.
+
+### 7.1 Open concern: full-size export speed (to decide in Phase 9)
+
+**The problem** (measured 2026-10-10, docs/benchmark.md). A full-size X-T3 export takes ~31 s of one core per
+photo: decode ~25 s (LibRaw's 3-pass X-Trans demosaic), render ~6 s, sharpening ~2.5 s, encode ~1 s. The decode
+runs single-threaded on purpose: LibRaw's multithreaded decode isn't deterministic (golden rule 3). Parallel
+exports help, but each needs ~1.6 GiB, so only 3–4 fit when ~5 GiB RAM is free. Result: ~1 min for 4 photos, ~23
+min per 100 (target was 5). Even with unlimited RAM, the cores (6 performance + 8 efficiency) would give ~9 min
+per 100. Screen exports use the half-size decode and are fine (~1.2 min per 100).
+
+**Possible solutions** (estimates for 100 full-size photos; they combine):
+
+| # | Solution | Estimate | Trade-off |
+|---|---|---:|---|
+| S1 | **Accept** (current choice): full size is mainly for prints, a few photos at a time | 23 min | None |
+| S2 | **Less memory per export**: sharpening (pipeline + output) in tiles with overlap instead of full-frame planes, ~1.6 → ~0.8 GiB, so 6–8 exports fit | ~10–12 min | ~1 day of work; output stays bit-identical |
+| S3 | **1-pass X-Trans demosaic** for full-size exports: decode 25 → 14 s | ~15 min (4 exports) | Slightly softer fine detail / more color artifacts (mean difference 0.03 %, worst pixels 1.75 %); full-size references regenerated once |
+| S4 | **S2 + S3** | ~6–7 min | Both trade-offs |
+| S5 | **GPU render** (RTX 3060, CuPy/PyTorch): render + sharpening 8 s → <1 s | decode-bound | Large job; the decode stays the limit; GPU results must be checked for determinism |
+| S6 | **Re-measure on an idle, plugged-in machine** first: Phase 2 measured ~13 s for the same full decode that took ~25 s now | ? | None; may change every estimate above |
+| S7 | **Faster deterministic demosaic** of our own (e.g. a vectorized/Numba X-Trans demosaic in tiles, multi-core but deterministic) | could reach the 5-min target | Biggest job; must match LibRaw's quality |
+| S8 | **Pre-decode in the background** (full-size linear cache on disk while the user edits) | export time drops, work moves earlier | ~150 MB per photo on disk (float16); only helps if it ran before the export |
+
+Not an option: LibRaw's multithreaded decode (breaks deterministic rendering).
 
 ---
 

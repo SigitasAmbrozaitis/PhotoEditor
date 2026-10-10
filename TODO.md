@@ -940,8 +940,8 @@ threads. The library protects every imported folder in the path guard. Per-photo
 
 ### Decisions to confirm at phase start (ask the user)
 - [x] **P5.1** Confirmed 2026-10-10 (all defaults; recorded in PLAN.md §0). The user wants the tool independent of
-  other programs, so no ExifTool. The copyright text is still open: `export_copyright` stays empty until the user
-  sets it (config.example.toml shows an example).
+  other programs, so no ExifTool. Copyright text confirmed later the same day: `© {year} Sigitas Ambrozaitis`
+  (in the git-ignored `config.local.toml`).
   The proposals as reviewed:
   - **Metadata writer: Pillow, no ExifTool (changes the 2026-10-07 decision).** Pillow writes EXIF (copied from the
     original, filtered by policy), XMP (copyright, creator, keywords) and the ICC profile into JPEG, TIFF and PNG.
@@ -1079,7 +1079,7 @@ threads. The library protects every imported folder in the path guard. Per-photo
   a custom preset can't take a built-in's id. Tests in `tmp_path`, like the style library.
   Done: `ExportPreset` gained `version` and `error` (a broken file is listed with its error and can only be
   deleted); request models `PresetCreate`, `PresetUpdate`, `PresetDuplicate`. Only slug-named `.json` files count.
-- [ ] **P5.11** Speed + memory: on the 67 samples, a full-size export (JPEG q90, original size) and an Instagram
+- [x] **P5.11** Speed + memory: on the 67 samples, a full-size export (JPEG q90, original size) and an Instagram
   portrait export (half-size decode) at 1, 4, 8 and 10 workers: s/photo, min/100 photos, peak RAM per worker.
   `export_workers=auto` is set from it. `photoedit benchmark --export` prints the table; the results go into
   `docs/benchmark.md`. ⛔ **If a full-size export takes more than 5 min per 100 photos at the best setting, STOP and
@@ -1089,6 +1089,8 @@ threads. The library protects every imported folder in the path guard. Per-photo
   ⛔ STOP, discuss with the user.** Already done: EXIF read without unpacking the RAW, in-place float conversion,
   low-memory strip rendering for exports (2.9 → 1.6 GiB per worker, same pixels). `WORKER_PEAK_BYTES` = 1.7 GiB.
   The full decode alone is ~25 s single-threaded (3-pass X-Trans demosaic); LibRaw's 1-pass is 13.9 s.
+  **Decided 2026-10-10: accepted for now** (full size is mainly for prints of a few photos; ~1 min for 4). Kept
+  as an open concern with solution options in PLAN §7.1, to decide at the start of Phase 9.
 
 ### API + CLI
 - [x] **P5.12** Endpoints (replacing the mock):
@@ -1209,6 +1211,9 @@ threads. The library protects every imported folder in the path guard. Per-photo
 ## Phase 9: Polish (outline)
 - [ ] **P9.0** Detail this phase together with the user's feedback list. ⛔ STOP for review.
 - [ ] Performance tuning, clarity/texture/dehaze, noise reduction, lens corrections, more formats, UI refinements.
+- [ ] ⛔ **Decide with the user: full-size export speed** (open concern from Phase 5, PLAN §7.1). Start with S6
+  (re-measure on an idle machine), then choose among S2 (tiled sharpening, less memory), S3 (1-pass demosaic),
+  S5 (GPU), S7 (own deterministic demosaic), S8 (background pre-decode).
 - 🧑 Human test + ⛔ STOP.
 
 ---
