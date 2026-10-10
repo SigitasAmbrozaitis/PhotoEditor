@@ -1150,9 +1150,11 @@ threads. The library protects every imported folder in the path guard. Per-photo
   ~2 min): pixel size (Instagram presets force their orientation, print presets follow the photo), PPI, ICC
   description, copyright, no GPS, orientation 1, 16-bit TIFF tags; deterministic bytes; the sample folder is
   refused and unchanged (sizes and times of every file, plus the hash of the RAF that was read).
-- [ ] **P5.19** `docs/export.md` (pipeline order, decode choice, sizes per resize mode, sharpening table, metadata
+- [x] **P5.19** `docs/export.md` (pipeline order, decode choice, sizes per resize mode, sharpening table, metadata
   per policy, naming tokens, collisions) and README (export section, CLI, config).
-- [ ] **P5.20** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e).
+- [x] **P5.20** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e).
+  Done 2026-10-10: pytest 714 passed (incl. golden, 13 min), ruff, format, mypy clean; Vitest 93 passed, oxlint
+  clean, build OK; Playwright 6 passed. Docs: `docs/export.md`, export section in `docs/benchmark.md`, README.
 
 ### 🧑 Human test: Phase 5
 0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`.
@@ -1167,7 +1169,8 @@ threads. The library protects every imported folder in the path guard. Per-photo
    says "exists".
 5. Try to export into `C:\Users\ambro\Pictures\2026\2026-08-11` (or a subfolder) → refused with a clear message;
    nothing is written there.
-6. Export 2 photos with **Print A3 fine art** → 16-bit Adobe RGB TIFFs, 4961×3508 (or turned), 300 PPI. A
+6. Export 2 photos with **Print A3 fine art** (full-size decode: about a minute for both; see PLAN §7.1) →
+   16-bit Adobe RGB TIFFs, 4961×3508 (or turned), 300 PPI. A
    color-managed viewer (e.g. Photoshop, GIMP) shows the Adobe RGB profile, and the colors match the sRGB export.
 7. Select the whole folder (67) → **Web full size** → note the time. Start a second big export and cancel it
    halfway → the remaining photos are cancelled, and every written file opens.
