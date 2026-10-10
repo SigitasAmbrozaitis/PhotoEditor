@@ -1024,7 +1024,7 @@ threads. The library protects every imported folder in the path guard. Per-photo
   radius for paper; deterministic.
   Done: reuses the pipeline's `stages.sharpen` with a table (screen 0.6 px; glossy 0.8 px and matte 1.1 px at
   300 PPI, scaled by PPI; amounts 25/45/70, 35/60/90, 45/75/110). Documented in `docs/export.md` (P5.19).
-- [ ] **P5.7** Encoders + metadata (`core/export/encode.py`, `core/export/metadata.py`), all in memory:
+- [x] **P5.7** Encoders + metadata (`core/export/encode.py`, `core/export/metadata.py`), all in memory:
   - JPEG (Pillow): quality; chroma subsampling 4:4:4 at quality ≥ 90, else 4:2:0; baseline; DPI = PPI.
     `max_file_size_kb`: a deterministic binary search over quality, with a warning when even quality 1 doesn't
     fit. TIFF 8/16 (tifffile; none/LZW/ZIP; resolution tags). PNG 8/16 (`pHYs` for PPI).
@@ -1038,6 +1038,12 @@ threads. The library protects every imported folder in the path guard. Per-photo
   Tests (read back with Pillow and a small XMP parse): every format/bit depth opens with the right size, mode and
   ICC; each policy writes exactly its tags (GPS and serial gone when they should be, copyright present); `{year}`;
   max file size met or warned; two encodes are byte-identical.
+  Done: each policy is a whitelist of standard tags (unknown tags are never copied). Without a configured
+  copyright/creator, the original's own Copyright/Artist are kept. EXIF and TIFF text is ASCII by spec, so it is
+  transliterated ("©" → "(c)", accents dropped); XMP keeps the exact Unicode text. tifffile can't write an Exif
+  sub-IFD, so TIFFs carry Make/Model/DateTime/Artist/Copyright/Software as TIFF tags and the dates, exposure and
+  lens in XMP; GPS goes only into JPEG/PNG (a warning says so for TIFF). PNG is written by OpenCV, and our code
+  adds `pHYs`, `iCCP`, `eXIf` and an XMP `iTXt` chunk.
 - [ ] **P5.8** Naming + collisions (`core/export/naming.py`): expand the template per photo (sequence in export
   order; the UI and CLI order photos by capture time, then file name), make names unique **within the batch**
   (`_2`…), then apply the collision policy against the destination, case-insensitively (Windows). Over-long names
