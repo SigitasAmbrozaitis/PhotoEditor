@@ -4,7 +4,9 @@ import type {
   ConsistencyReport,
   DirListing,
   EngineInfo,
+  ExportPlan,
   ExportPreset,
+  ExportRequest,
   Job,
   LibraryFolder,
   LibraryInfo,
@@ -319,6 +321,27 @@ export const presets: ExportPreset[] = [
     },
   },
 ]
+
+/** A plausible dry-run plan for an export request (the fake backend's answer). */
+export function exportPlan(request: ExportRequest): ExportPlan {
+  const size = request.settings.size
+  const width = size?.width ?? size?.long_edge ?? 6240
+  const height = size?.height ?? Math.round((width * 2) / 3)
+  return {
+    destination: request.destination,
+    warnings: [],
+    items: request.photo_ids.map((id) => ({
+      photo_id: id,
+      filename: `${photos.find((p) => p.id === id)?.filename ?? id}`,
+      output_name: `${(photos.find((p) => p.id === id)?.filename ?? id).replace(/\.[^.]+$/, '')}.jpg`,
+      width,
+      height,
+      decode: width <= 3000 ? 'half' : 'full',
+      collision: 'new',
+      warnings: [],
+    })),
+  }
+}
 
 /** Export result fields of a job item that tests don't care about. */
 export const noOutput = { output_bytes: null, output_width: null, output_height: null, warnings: [] }

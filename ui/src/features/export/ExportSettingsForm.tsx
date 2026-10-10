@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import type {
   CollisionPolicy,
   ColorSpace,
   CropAnchor,
+  DecodeSize,
   ExportSettings,
   FileFormat,
   MetadataPolicy,
@@ -42,6 +43,39 @@ function num(value: string): number | null {
   if (value.trim() === '') return null
   const n = Number(value)
   return Number.isFinite(n) ? n : null
+}
+
+const parseKeywords = (text: string) =>
+  text
+    .split(',')
+    .map((k) => k.trim())
+    .filter(Boolean)
+
+/** Keeps what's typed (e.g. a trailing comma) while the settings hold the parsed list. */
+function KeywordsInput({
+  keywords,
+  disabled,
+  onChange,
+}: {
+  keywords: string[]
+  disabled: boolean
+  onChange: (keywords: string[]) => void
+}) {
+  const [text, setText] = useState(keywords.join(', '))
+  // Another preset was chosen: show its keywords.
+  const shown = JSON.stringify(parseKeywords(text)) === JSON.stringify(keywords) ? text : keywords.join(', ')
+  return (
+    <TextInput
+      value={shown}
+      placeholder="rally, Lithuania"
+      disabled={disabled}
+      aria-label="Keywords"
+      onChange={(e) => {
+        setText(e.target.value)
+        onChange(parseKeywords(e.target.value))
+      }}
+    />
+  )
 }
 
 /** Controlled editor for every export setting (PLAN.md 4.6). */
@@ -144,6 +178,16 @@ export function ExportSettingsForm({
                 {label}
               </option>
             ))}
+          </Select>
+        </Field>
+        <Field label="RAW decode" hint="Half size is ~10× faster and enough for screen sizes">
+          <Select
+            value={file.decode}
+            disabled={disabled}
+            onChange={(e) => set('file', { decode: e.target.value as DecodeSize })}
+          >
+            <option value="auto">Automatic</option>
+            <option value="full">Always full size</option>
           </Select>
         </Field>
       </Section>
@@ -312,7 +356,11 @@ export function ExportSettingsForm({
           <Select
             value={metadata.policy}
             disabled={disabled}
-            onChange={(e) => set('metadata', { policy: e.target.value as MetadataPolicy })}
+            onChange={(e) => {
+              const policy = e.target.value as MetadataPolicy
+              // Only "All metadata" can carry GPS at all.
+              set('metadata', { policy, strip_gps: policy === 'all' ? metadata.strip_gps : true })
+            }}
           >
             {Object.entries(METADATA).map(([k, label]) => (
               <option key={k} value={k}>
@@ -321,26 +369,43 @@ export function ExportSettingsForm({
             ))}
           </Select>
         </Field>
-        <Field label="Copyright">
+        <Field label="Copyright" hint="{year} = capture year. Empty = your default">
           <TextInput
             value={metadata.copyright ?? ''}
-            placeholder="© 2026 Your Name"
+            placeholder="© {year} Your Name"
             disabled={disabled}
             onChange={(e) => set('metadata', { copyright: e.target.value || null })}
+          />
+        </Field>
+        {metadata.policy !== 'copyright_only' && (
+          <Field label="Creator" hint="Empty = your default">
+            <TextInput
+              value={metadata.creator ?? ''}
+              placeholder="Your Name"
+              disabled={disabled}
+              onChange={(e) => set('metadata', { creator: e.target.value || null })}
+            />
+          </Field>
+        )}
+        <Field label="Keywords" hint="Comma-separated" className="col-span-2">
+          <KeywordsInput
+            keywords={metadata.keywords}
+            disabled={disabled}
+            onChange={(keywords) => set('metadata', { keywords })}
           />
         </Field>
         <div className="flex items-end pb-1.5">
           <Switch
             label="Remove location (GPS)"
             checked={metadata.strip_gps}
-            disabled={disabled}
+            disabled={disabled || metadata.policy !== 'all'}
             onCheckedChange={(v) => set('metadata', { strip_gps: v })}
           />
         </div>
       </Section>
 
       <Section title="File naming">
-        <Field label="Name template" hint="{original} {date} {time} {seq} {seq:03} {style} {preset}" className="col-span-2">
+        <Field label="Name template" hint="{original} {date} {time} {seq} {seq:03} {style} {preset} {camera}" className="col-span-2">
           <TextInput
             value={naming.template}
             disabled={disabled}

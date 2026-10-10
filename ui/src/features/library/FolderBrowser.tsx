@@ -9,11 +9,15 @@ export function FolderBrowser({
   onOpenChange,
   initialPath,
   onChoose,
+  title = 'Choose a photo folder',
+  description = 'Photos are only read, never changed.',
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   initialPath: string | null
   onChoose: (path: string) => void
+  title?: string
+  description?: string
 }) {
   const [path, setPath] = useState<string | null>(initialPath || null)
   const listing = useDirListing(path, open)
@@ -30,8 +34,8 @@ export function FolderBrowser({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Choose a photo folder"
-      description="Photos are only read, never changed."
+      title={title}
+      description={description}
       width="max-w-xl"
       footer={
         <>

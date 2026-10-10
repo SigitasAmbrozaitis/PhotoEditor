@@ -108,6 +108,7 @@ export function Stars({ rating, className }: { rating: number; className?: strin
 const CHIP_TONES = {
   neutral: 'bg-raised text-fg',
   ok: 'bg-ok/15 text-ok',
+  warn: 'bg-warn/15 text-warn',
   err: 'bg-err/15 text-err',
   overlay: 'bg-black/70 text-white backdrop-blur-sm',
 } as const

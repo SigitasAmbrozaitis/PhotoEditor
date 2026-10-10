@@ -5,6 +5,8 @@ import { useCreateJob, useStyles } from '../../api/queries'
 import { Button, Dialog, ErrorState, Loading, Switch } from '../../components/ui'
 import { cn } from '../../lib/cn'
 import { DestinationField } from '../export/DestinationField'
+import { ExportPlanTable } from '../export/ExportPlanTable'
+import { useDestinationStatus, useExportRequest } from '../export/useExportPlan'
 import { PresetPicker } from '../export/PresetPicker'
 import { usePresetSettings } from '../export/usePresetSettings'
 import { ExportSettingsForm } from '../export/ExportSettingsForm'
@@ -63,22 +65,16 @@ export function ProcessWizard({
   const count = photoIds.length
   const style = styles.data?.find((s) => s.id === styleId)
   const { settings, preset } = exportState
-  const exportReady = !doExport || (settings !== null && destination.trim() !== '')
+  const status = useDestinationStatus(destination)
+  const { request: exportRequest, plan } = useExportRequest(photoIds, preset?.id, doExport ? settings : null, status)
+  const exportReady = !doExport || (exportRequest !== null && !plan.isError)
   const canNext = step === 'Style' ? Boolean(styleId) : step === 'Export' ? exportReady : true
 
   const confirm = () => {
     if (!styleId) return
     const request =
-      doExport && settings
-        ? {
-            kind: 'apply_and_export' as const,
-            photo_ids: photoIds,
-            style_id: styleId,
-            even_out: evenOut,
-            preset_id: preset?.id ?? null,
-            settings,
-            destination: destination.trim(),
-          }
+      doExport && exportRequest
+        ? { ...exportRequest, kind: 'apply_and_export' as const, style_id: styleId, even_out: evenOut }
         : { kind: 'apply_style' as const, photo_ids: photoIds, style_id: styleId, even_out: evenOut }
     createJob.mutate(request, {
       onSuccess: (job) => {
@@ -159,7 +155,6 @@ export function ProcessWizard({
       {step === 'Export' && (
         <div className="flex flex-col gap-4">
           <Switch label="Export after applying the style" checked={doExport} onCheckedChange={setDoExport} />
-          <p className="text-xs text-warn">Exporting is simulated until Phase 5: no files are written yet.</p>
           {doExport &&
             (exportState.presets.data && settings ? (
               <>
@@ -169,7 +164,8 @@ export function ProcessWizard({
                   modified={exportState.modified}
                   onChange={exportState.choosePreset}
                 />
-                <DestinationField value={destination} onChange={setDestination} />
+                <DestinationField value={destination} onChange={setDestination} status={status} />
+                {exportRequest && <ExportPlanTable plan={plan} />}
                 <button
                   type="button"
                   className="self-start text-xs text-accent hover:underline"

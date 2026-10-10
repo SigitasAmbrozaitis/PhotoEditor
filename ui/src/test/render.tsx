@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { vi } from 'vitest'
 import { AppRoutes, Providers } from '../App'
-import type { Job, JobRequest, Style, StyleUpdate } from '../api/types'
+import type { ExportPreset, ExportRequest, Job, JobRequest, PresetUpdate, Style, StyleUpdate } from '../api/types'
 import * as fx from './fixtures'
 
 export interface ApiCall {
@@ -22,6 +22,9 @@ export function defaultHandlers(): Record<string, Handler> {
   const jobs: Job[] = [fx.makeJob()]
   // One editable style, so saving, versions and conflicts behave like the real backend.
   let style: Style = structuredClone(fx.warmFilm)
+  let presets: ExportPreset[] = structuredClone(fx.presets)
+  const destinations: string[] = []
+  const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
   const newJob = (kind: Job['kind'], photoIds: string[]) => {
     const job = fx.makeJob({
       id: `j${String(jobs.length + 1).padStart(4, '0')}`,
@@ -115,11 +118,51 @@ export function defaultHandlers(): Record<string, Handler> {
     },
     'POST /api/styles/:id/report': () => fx.styleReport,
     'POST /api/styles/:id/samples': ({ body }) => newJob('render', (body as { photo_ids: string[] }).photo_ids),
-    'GET /api/export-presets': () => fx.presets,
+    'GET /api/export-presets': () => presets,
+    'POST /api/export-presets': ({ body }) => {
+      const request = body as Pick<ExportPreset, 'name' | 'description' | 'target' | 'settings'>
+      const preset: ExportPreset = { ...request, id: slug(request.name), builtin: false, version: 1, error: null }
+      presets = [...presets, preset]
+      return Response.json(preset, { status: 201 })
+    },
+    'POST /api/export-presets/:id/duplicate': ({ path, body }) => {
+      const source = presets.find((p) => path.includes(`/${p.id}/`))!
+      const name = (body as { name?: string }).name ?? `${source.name} copy`
+      const copy: ExportPreset = { ...source, id: slug(name), name, builtin: false, version: 1 }
+      presets = [...presets, copy]
+      return Response.json(copy, { status: 201 })
+    },
+    'PUT /api/export-presets/:id': ({ path, body }) => {
+      const { expected_version, ...changes } = body as PresetUpdate
+      const current = presets.find((p) => path.endsWith(`/${p.id}`))!
+      if (current.builtin) return Response.json({ detail: 'built-in' }, { status: 400 })
+      if (expected_version !== current.version) return Response.json({ detail: 'conflict' }, { status: 409 })
+      const updated = { ...current, ...changes, version: current.version + 1 } as ExportPreset
+      presets = presets.map((p) => (p.id === updated.id ? updated : p))
+      return updated
+    },
+    'DELETE /api/export-presets/:id': ({ path }) => {
+      presets = presets.filter((p) => !path.endsWith(`/${p.id}`))
+      return new Response(null, { status: 204 })
+    },
+    'GET /api/export/destinations': () => destinations,
+    'POST /api/export/destination-check': ({ body }) => {
+      const path = (body as { path: string }).path
+      if (!/^([A-Za-z]:[\\/]|\/)/.test(path)) {
+        return { path, exists: false, ok: false, reason: 'the destination must be a full folder path' }
+      }
+      if (fx.library.folder && path.startsWith(fx.library.folder)) {
+        return { path, exists: true, ok: false, reason: `${path} is inside the photo folder ${fx.library.folder}` }
+      }
+      return { path, exists: false, ok: true, reason: null }
+    },
+    'POST /api/export/plan': ({ body }) => fx.exportPlan(body as ExportRequest),
+    'POST /api/export/reveal': () => new Response(null, { status: 204 }),
     'GET /api/jobs': () => jobs,
     'GET /api/jobs/:id': ({ path }) => jobs.find((j) => path.endsWith(`/${j.id}`)) ?? jobs[0],
     'POST /api/jobs': ({ body }) => {
       const request = body as JobRequest
+      if ('destination' in request && !destinations.includes(request.destination)) destinations.unshift(request.destination)
       return newJob(request.kind, request.photo_ids)
     },
     'POST /api/jobs/:id/cancel': ({ path }) => {

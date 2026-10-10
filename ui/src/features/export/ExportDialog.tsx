@@ -3,9 +3,12 @@ import { useNavigate } from 'react-router'
 import { useCreateJob } from '../../api/queries'
 import { Button, Dialog, ErrorState, Loading } from '../../components/ui'
 import { DestinationField } from './DestinationField'
+import { ExportPlanTable } from './ExportPlanTable'
 import { ExportSettingsForm } from './ExportSettingsForm'
 import { exportSummary } from './exportSummary'
 import { PresetPicker } from './PresetPicker'
+import { SaveAsPreset } from './SaveAsPreset'
+import { useDestinationStatus, useExportRequest } from './useExportPlan'
 import { usePresetSettings } from './usePresetSettings'
 
 export function ExportDialog({
@@ -21,19 +24,18 @@ export function ExportDialog({
   const createJob = useCreateJob()
   const { presets, preset, settings, modified, choosePreset, editSettings } = usePresetSettings()
   const [destination, setDestination] = useState('')
+  const status = useDestinationStatus(destination)
+  const { request, plan } = useExportRequest(photoIds, preset?.id, settings, status)
   const count = photoIds.length
 
   const submit = () => {
-    if (!settings) return
-    createJob.mutate(
-      { kind: 'export', photo_ids: photoIds, preset_id: preset?.id ?? null, settings, destination: destination.trim() },
-      {
-        onSuccess: (job) => {
-          onOpenChange(false)
-          void navigate(`/jobs/${job.id}`)
-        },
+    if (!request) return
+    createJob.mutate(request, {
+      onSuccess: (job) => {
+        onOpenChange(false)
+        void navigate(`/jobs/${job.id}`)
       },
-    )
+    })
   }
 
   return (
@@ -53,11 +55,7 @@ export function ExportDialog({
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            variant="primary"
-            disabled={!settings || count === 0 || !destination.trim() || createJob.isPending}
-            onClick={submit}
-          >
+          <Button variant="primary" disabled={!request || plan.isError || createJob.isPending} onClick={submit}>
             Export
           </Button>
         </>
@@ -77,7 +75,9 @@ export function ExportDialog({
             <PresetPicker presets={presets.data} value={preset?.id} modified={modified} onChange={choosePreset} />
             <p className="self-end pb-1.5 text-xs text-muted">{preset?.description}</p>
           </div>
-          <DestinationField value={destination} onChange={setDestination} />
+          {modified && <SaveAsPreset settings={settings} base={preset} onSaved={(p) => choosePreset(p.id)} />}
+          <DestinationField value={destination} onChange={setDestination} status={status} />
+          {request && <ExportPlanTable plan={plan} />}
           <ExportSettingsForm value={settings} onChange={editSettings} />
           {createJob.isError && <ErrorState error={createJob.error} />}
         </div>

@@ -1112,10 +1112,14 @@ threads. The library protects every imported folder in the path guard. Per-photo
   first); relative `--dest` paths are taken from the current directory.
 
 ### UI
-- [ ] **P5.14** Export dialog on real data: **Browse…** opens the folder browser (the one from the import dialog);
+- [x] **P5.14** Export dialog on real data: **Browse…** opens the folder browser (the one from the import dialog);
   the destination is checked as you type (a refused photo folder shows in red with the reason); a **plan table**
   (name, pixel size, decode size, collision, warnings) before exporting; "Export" starts the job and opens it;
   **Save as preset…** from modified settings. The "simulated" labels and Phase 5 tooltips go away.
+  Done: the destination is checked (debounced) and the plan fetched once settings settle; Export / Next stay
+  disabled until the folder is accepted and the plan has no error. The same field and plan are in the Apply &
+  export wizard. Settings form: RAW decode (automatic / full), creator, keywords; the GPS switch only for "All
+  metadata". The "DEMO DATA" tag is gone (nothing is mock any more).
 - [ ] **P5.15** Presets screen: duplicate, edit (the same `ExportSettingsForm`), rename and delete custom presets;
   built-ins are read-only with "Duplicate to edit".
 - [ ] **P5.16** Jobs page for exports: per photo the output file name, pixel size, file size and warnings, and a

@@ -1,16 +1,28 @@
-import { FolderOpen } from 'lucide-react'
-import { useJobs } from '../../api/queries'
-import { Button, Field, TextInput, Tooltip } from '../../components/ui'
+import { CircleAlert, FolderOpen } from 'lucide-react'
+import { useState } from 'react'
+import { useExportDestinations } from '../../api/queries'
+import type { DestinationCheck } from '../../api/types'
+import { Button, Field, TextInput } from '../../components/ui'
+import { FolderBrowser } from '../library/FolderBrowser'
 
-/** Output folder input with quick picks from recent jobs. */
-export function DestinationField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const { data: jobs } = useJobs()
-  const recent = [...new Set((jobs ?? []).map((j) => j.destination).filter((d): d is string => Boolean(d)))].slice(
-    0,
-    3,
-  )
+/** Output folder input with a folder browser, recent folders and a check as you type. */
+export function DestinationField({
+  value,
+  onChange,
+  status,
+}: {
+  value: string
+  onChange: (value: string) => void
+  status: DestinationCheck | undefined
+}) {
+  const { data: recent } = useExportDestinations()
+  const [browsing, setBrowsing] = useState(false)
+  const refused = status && !status.ok
   return (
-    <Field label="Destination folder" hint="Exports are new files; original photos are never changed.">
+    <Field
+      label="Destination folder"
+      hint={status?.ok && !status.exists ? 'The folder will be created.' : 'Exports are new files; original photos are never changed.'}
+    >
       <div className="flex gap-2">
         <TextInput
           className="flex-1"
@@ -18,19 +30,22 @@ export function DestinationField({ value, onChange }: { value: string; onChange:
           placeholder="e.g. C:\Users\you\Pictures\Exports"
           onChange={(e) => onChange(e.target.value)}
           aria-label="Destination folder"
+          aria-invalid={refused || undefined}
         />
-        <Tooltip content="Folder browser arrives with real export in Phase 5. Type or paste a path for now.">
-          <span>
-            <Button disabled aria-label="Browse for folder">
-              <FolderOpen className="size-4" aria-hidden /> Browse…
-            </Button>
-          </span>
-        </Tooltip>
+        <Button onClick={() => setBrowsing(true)}>
+          <FolderOpen className="size-4" aria-hidden /> Browse…
+        </Button>
       </div>
-      {recent.length > 0 && (
+      {refused && (
+        <p role="alert" className="flex items-start gap-1.5 pt-1 text-xs text-err">
+          <CircleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+          {status.reason}
+        </p>
+      )}
+      {recent && recent.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 pt-1">
           <span className="text-[11px] text-muted">Recent:</span>
-          {recent.map((d) => (
+          {recent.slice(0, 4).map((d) => (
             <button
               key={d}
               type="button"
@@ -41,6 +56,16 @@ export function DestinationField({ value, onChange }: { value: string; onChange:
             </button>
           ))}
         </div>
+      )}
+      {browsing && (
+        <FolderBrowser
+          open={browsing}
+          onOpenChange={setBrowsing}
+          initialPath={value.trim() || recent?.[0] || null}
+          onChoose={onChange}
+          title="Choose the export folder"
+          description="New files are written here. Photo folders can't be chosen (originals are read-only)."
+        />
       )}
     </Field>
   )
