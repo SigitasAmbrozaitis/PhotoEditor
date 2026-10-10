@@ -1044,7 +1044,7 @@ threads. The library protects every imported folder in the path guard. Per-photo
   sub-IFD, so TIFFs carry Make/Model/DateTime/Artist/Copyright/Software as TIFF tags and the dates, exposure and
   lens in XMP; GPS goes only into JPEG/PNG (a warning says so for TIFF). PNG is written by OpenCV, and our code
   adds `pHYs`, `iCCP`, `eXIf` and an XMP `iTXt` chunk.
-- [ ] **P5.8** Naming + collisions (`core/export/naming.py`): expand the template per photo (sequence in export
+- [x] **P5.8** Naming + collisions (`core/export/naming.py`): expand the template per photo (sequence in export
   order; the UI and CLI order photos by capture time, then file name), make names unique **within the batch**
   (`_2`…), then apply the collision policy against the destination, case-insensitively (Windows). Over-long names
   are shortened, keeping the extension.
