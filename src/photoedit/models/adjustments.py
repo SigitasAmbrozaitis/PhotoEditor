@@ -210,6 +210,30 @@ class Geometry(_Group):
     flip_vertical: bool = Field(default=False, description="Mirror top-bottom (before the quarter turn).")
 
 
+class GeometryChange(BaseModel):
+    """A change to a photo's geometry; only the fields given change.
+
+    Core applies them in this order: reset, flips, quarter turn, angle, aspect, crop. Flips and quarter turns
+    carry the crop along (it keeps framing the same content), and a flip mirrors the angle. After a change of
+    angle or aspect the crop is shrunk around its center until it fits the straightened image; a crop given
+    explicitly is checked as is and rejected if it doesn't fit.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    reset: bool = Field(default=False, description="Start from the original framing.")
+    flip_horizontal: bool | None = None
+    flip_vertical: bool | None = None
+    rotate: QuarterTurn | None = None
+    angle: float | None = Field(default=None, ge=-45, le=45)
+    aspect: str | None = Field(
+        default=None,
+        pattern=r"^\d+(\.\d+)?:\d+(\.\d+)?$",
+        description="Lock this crop aspect ratio; send null explicitly to unlock (free).",
+    )
+    crop: CropRect | None = None
+
+
 class Lens(_Group):
     profile_corrections: bool = Field(default=False, description="Apply lens distortion/vignetting profile.")
     remove_chromatic_aberration: bool = False

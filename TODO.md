@@ -1236,12 +1236,12 @@ read-only crop overlay toggle and a disabled angle slider.
     `cache/models/`, fetched by `photoedit models fetch` with a pinned SHA-256 (6b).
 
 ### Core
-- [ ] **P6a.2** Model (`models/adjustments.py`): `rotate` (0/90/180/270), and the coordinate frame written into
+- [x] **P6a.2** Model (`models/adjustments.py`): `rotate` (0/90/180/270), and the coordinate frame written into
   the field descriptions. The model checks only what it can know on its own (ranges, non-empty boxes). The rules
   that need the photo's size (crop inside the straightened image; crop ratio matches the `aspect` lock within one
   full-size pixel) are checked in core when an edit is saved (P6a.4), with clear messages. Tests: validation
   messages, JSON round-trip, old edits (without the new field) still load.
-- [ ] **P6a.3** Geometry math (`core/geometry.py`, pure functions; the export's geometry builds on it): the upright
+- [x] **P6a.3** Geometry math (`core/geometry.py`, pure functions; the export's geometry builds on it): the upright
   frame after flips and quarter turns; the straighten transform; "is this crop inside the straightened image";
   `constrain_crop(crop, angle, aspect, frame)` (shrink around the center until it fits, keeping the ratio);
   `largest_crop(ratio, angle, frame)`; and the affine map from a normalized crop to source pixels for any decode
