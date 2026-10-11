@@ -17,6 +17,7 @@ from photoedit.config import load_settings
 if TYPE_CHECKING:
     from photoedit.core.catalog import CatalogPhoto
     from photoedit.models import Job
+    from photoedit.models.adjustments import GeometryChange
     from photoedit.models.export import ExportSettings
     from photoedit.services import Services
 
@@ -39,6 +40,8 @@ style_app = typer.Typer(
 app.add_typer(style_app, name="style")
 preset_app = typer.Typer(help="Export presets: list, show, duplicate, delete, check.", no_args_is_help=True)
 app.add_typer(preset_app, name="preset")
+crop_app = typer.Typer(help="A photo's crop, straighten angle, quarter turn and flips.", no_args_is_help=True)
+app.add_typer(crop_app, name="crop")
 
 ConfigOption = Annotated[
     Path | None,
@@ -730,6 +733,99 @@ def _follow(services: Services, job_id: str) -> None:
             size = f", {item.output_bytes // 1024} KB" if item.output_bytes else ""
             extra = "; ".join([*([item.message] if item.message else []), *item.warnings])
             typer.echo(f"  {count} {item.filename} → {name}{pixels}{size}" + (f" ({extra})" if extra else ""))
+
+
+PhotoArg = Annotated[str, typer.Argument(help="An imported photo (file name like DSCF5437, or its id).")]
+
+
+def _geometry_report(services: Services, photo: CatalogPhoto) -> str:
+    detail = services.library.photo_detail(photo.id)
+    geometry = detail.edit.adjustments.geometry
+    size = f"{detail.photo.edited_width}×{detail.photo.edited_height} px"
+    return f"{photo.path.name}: {size}\n{geometry.model_dump_json(indent=2)}"
+
+
+def _change_geometry(photo_name: str, change: GeometryChange, config: Path | None) -> None:
+    from photoedit.core.errors import InvalidRequestError
+
+    services = _open_services(config)
+    try:
+        photo = _find_photos(services, [photo_name])[0]
+        try:
+            services.library.set_geometry(photo.id, change)
+        except InvalidRequestError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(1) from None
+        typer.echo(_geometry_report(services, photo))
+    finally:
+        services.close()
+
+
+@crop_app.command("show")
+def crop_show(photo: PhotoArg, config: ConfigOption = None) -> None:
+    """Print a photo's geometry and its size after it."""
+    services = _open_services(config)
+    try:
+        typer.echo(_geometry_report(services, _find_photos(services, [photo])[0]))
+    finally:
+        services.close()
+
+
+@crop_app.command("set")
+def crop_set(
+    photo: PhotoArg,
+    crop: Annotated[
+        str | None,
+        typer.Option(help="LEFT,TOP,RIGHT,BOTTOM in 0..1 of the frame (after flips and the quarter turn)."),
+    ] = None,
+    aspect: Annotated[str | None, typer.Option(help="Lock a crop aspect ratio like 4:5, or 'free'.")] = None,
+    angle: Annotated[
+        float | None, typer.Option(help="Straighten angle in degrees, clockwise (-45..45).")
+    ] = None,
+    rotate: Annotated[int | None, typer.Option(help="Quarter turn clockwise: 0, 90, 180 or 270.")] = None,
+    flip_h: Annotated[bool | None, typer.Option("--flip-h/--no-flip-h", help="Mirror left-right.")] = None,
+    flip_v: Annotated[bool | None, typer.Option("--flip-v/--no-flip-v", help="Mirror top-bottom.")] = None,
+    config: ConfigOption = None,
+) -> None:
+    """Change a photo's geometry (only the options given). An angle or aspect change shrinks the crop to fit
+    the straightened photo; an explicit crop that doesn't fit is refused."""
+    from pydantic import ValidationError
+
+    from photoedit.models.adjustments import GeometryChange
+
+    values: dict[str, object] = {}
+    if crop is not None:
+        parts = crop.split(",")
+        if len(parts) != 4:
+            raise typer.BadParameter("give four numbers: LEFT,TOP,RIGHT,BOTTOM", param_hint="--crop")
+        values["crop"] = dict(zip(("left", "top", "right", "bottom"), parts, strict=True))
+    if aspect is not None:
+        values["aspect"] = None if aspect.lower() == "free" else aspect
+    for name, value in (
+        ("angle", angle),
+        ("rotate", rotate),
+        ("flip_horizontal", flip_h),
+        ("flip_vertical", flip_v),
+    ):
+        if value is not None:
+            values[name] = value
+    if not values:
+        raise typer.BadParameter("nothing to change: give at least one option")
+    try:
+        change = GeometryChange.model_validate(values)
+    except ValidationError as exc:
+        first = exc.errors()[0]
+        where = ".".join(str(part) for part in first["loc"])
+        raise typer.BadParameter(f"{where}: {first['msg']}") from None
+    _change_geometry(photo, change, config)
+
+
+@crop_app.command("reset")
+def crop_reset(photo: PhotoArg, config: ConfigOption = None) -> None:
+    """Back to the original framing (no crop, angle, turn or flips)."""
+    from photoedit.models.adjustments import GeometryChange
+
+    _change_geometry(photo, GeometryChange(reset=True), config)
 
 
 PresetArg = Annotated[str, typer.Argument(help="Export preset id.")]

@@ -184,6 +184,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photos/{photo_id}/geometry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change Geometry
+         * @description Change the photo's crop, straighten angle, aspect lock, quarter turn or flips (only the fields given).
+         *     Flips and turns carry the crop along; after an angle or aspect change the crop shrinks to fit the
+         *     straightened photo. An explicit crop that reaches outside it is rejected.
+         */
+        post: operations["change_geometry_api_photos__photo_id__geometry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photos/{photo_id}/style": {
         parameters: {
             query?: never;
@@ -247,6 +269,44 @@ export interface paths {
         };
         /** Photo Preview */
         get: operations["photo_preview_api_photos__photo_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photos/{photo_id}/zoom/{level}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Photo Zoom
+         * @description The zoom view at 50 or 100 %. Starts its decode if needed (100 %: ~13 to 25 s the first time); ask
+         *     again until ``state`` is ``ready``.
+         */
+        get: operations["photo_zoom_api_photos__photo_id__zoom__level__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photos/{photo_id}/zoom/{level}/tiles/{tx}/{ty}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Photo Tile */
+        get: operations["photo_tile_api_photos__photo_id__zoom__level__tiles__tx___ty__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1438,6 +1498,37 @@ export interface components {
              * @default false
              */
             flip_vertical: boolean;
+        };
+        /**
+         * GeometryChange
+         * @description A change to a photo's geometry; only the fields given change.
+         *
+         *     Core applies them in this order: reset, flips, quarter turn, angle, aspect, crop. Flips and quarter turns
+         *     carry the crop along (it keeps framing the same content), and a flip mirrors the angle. After a change of
+         *     angle or aspect the crop is shrunk around its center until it fits the straightened image; a crop given
+         *     explicitly is checked as is and rejected if it doesn't fit.
+         */
+        GeometryChange: {
+            /**
+             * Reset
+             * @description Start from the original framing.
+             * @default false
+             */
+            reset: boolean;
+            /** Flip Horizontal */
+            flip_horizontal?: boolean | null;
+            /** Flip Vertical */
+            flip_vertical?: boolean | null;
+            /** Rotate */
+            rotate?: (0 | 90 | 180 | 270) | null;
+            /** Angle */
+            angle?: number | null;
+            /**
+             * Aspect
+             * @description Lock this crop aspect ratio; send null explicitly to unlock (free).
+             */
+            aspect?: string | null;
+            crop?: components["schemas"]["CropRect-Input"] | null;
         };
         /** GradeWheel */
         "GradeWheel-Input": {
@@ -3115,6 +3206,39 @@ export interface components {
              */
             tint: number | null;
         };
+        /**
+         * ZoomInfo
+         * @description The zoom view of a photo at one level: tiles of the edited image (after its geometry).
+         */
+        ZoomInfo: {
+            /** @description Percent of the photo's full size: 50 or 100 (1:1). */
+            level: components["schemas"]["ZoomLevel"];
+            /**
+             * State
+             * @description 100 % needs the full decode (~13 to 25 s the first time); tiles exist once ready.
+             * @enum {string}
+             */
+            state: "decoding" | "ready";
+            /**
+             * Width
+             * @description The edited image's width at this level.
+             */
+            width: number | null;
+            /** Height */
+            height: number | null;
+            /**
+             * Tile Size
+             * @description Tiles are this many pixels square (edge tiles less).
+             * @default 512
+             */
+            tile_size: number;
+        };
+        /**
+         * ZoomLevel
+         * @description Zoom view levels in percent of the photo's full size.
+         * @enum {integer}
+         */
+        ZoomLevel: 50 | 100;
     };
     responses: never;
     parameters: never;
@@ -3450,6 +3574,41 @@ export interface operations {
             };
         };
     };
+    change_geometry_api_photos__photo_id__geometry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeometryChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhotoDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     set_photo_style_api_photos__photo_id__style_put: {
         parameters: {
             query?: never;
@@ -3539,8 +3698,10 @@ export interface operations {
     photo_preview_api_photos__photo_id__preview_get: {
         parameters: {
             query?: {
-                /** @description Show the unedited photo (same as after until Phase 3). */
+                /** @description The photo's default look with the edit's geometry (same framing). */
                 before?: boolean;
+                /** @description The whole straightened frame without the crop (the crop tool's view). */
+                uncropped?: boolean;
                 /** @description Long edge in pixels. */
                 size?: number;
             };
@@ -3560,6 +3721,82 @@ export interface operations {
                 content: {
                     "image/jpeg": unknown;
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    photo_zoom_api_photos__photo_id__zoom__level__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                photo_id: string;
+                level: components["schemas"]["ZoomLevel"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoomInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    photo_tile_api_photos__photo_id__zoom__level__tiles__tx___ty__get: {
+        parameters: {
+            query?: {
+                /** @description The default look with the edit's geometry. */
+                before?: boolean;
+            };
+            header?: never;
+            path: {
+                photo_id: string;
+                level: components["schemas"]["ZoomLevel"];
+                tx: number;
+                ty: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JPEG image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description Still decoding: ask /zoom/{level} until ready */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

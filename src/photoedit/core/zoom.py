@@ -19,8 +19,8 @@ from typing import Literal
 from photoedit.core.cache import resize_linear
 from photoedit.core.catalog import CatalogPhoto
 from photoedit.core.decode import LinearImage, decode_linear, is_raw
+from photoedit.models.photo import ZoomLevel
 
-type ZoomLevel = Literal[50, 100]
 type ZoomState = Literal["idle", "decoding", "ready"]
 
 _ITEMS: dict[int, int] = {50: 2, 100: 1}

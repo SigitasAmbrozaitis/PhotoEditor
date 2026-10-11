@@ -29,6 +29,7 @@ from photoedit.models import (
 )
 from photoedit.models.export import DestinationCheck, ExportPlan
 from photoedit.models.fs import DirListing
+from photoedit.models.photo import ZoomInfo
 from photoedit.models.style import StyleCreate
 from photoedit.services import Services
 
@@ -437,3 +438,44 @@ def test_sidecar_camera_jpeg(client: TestClient, tmp_path: Path) -> None:
     pid = _photo_ids(client)[0]
     r = client.get(f"/api/photos/{pid}/sidecar")
     assert r.status_code == 404 and "no camera JPEG" in r.json()["detail"]
+
+
+# ----------------------------------------------------------------- geometry + zoom (Phase 6a)
+
+
+def test_geometry_endpoint(client: TestClient, photos: Path) -> None:
+    _import(client, photos)
+    pid = _photo_ids(client)[0]  # a.jpg, 320 × 200
+    r = client.post(f"/api/photos/{pid}/geometry", json={"rotate": 90, "aspect": "1:1"})
+    assert r.status_code == 200, r.text
+    detail = PhotoDetail.model_validate(r.json())
+    assert detail.edit.adjustments.geometry.rotate == 90
+    assert (detail.photo.edited_width, detail.photo.edited_height) == (200, 200)
+    straightened = client.post(f"/api/photos/{pid}/geometry", json={"angle": 5}).json()
+    assert straightened["edit"]["adjustments"]["geometry"]["angle"] == 5
+    # An explicit crop reaching into the blank corners, and unknown fields, are refused.
+    full = {"left": 0, "top": 0, "right": 1, "bottom": 1}
+    r = client.post(f"/api/photos/{pid}/geometry", json={"crop": full})
+    assert r.status_code == 400 and "blank corners" in r.json()["detail"]
+    assert client.post(f"/api/photos/{pid}/geometry", json={"spin": 3}).status_code == 422
+    assert client.post("/api/photos/nope/geometry", json={"reset": True}).status_code == 404
+    frame = client.get(f"/api/photos/{pid}/preview", params={"size": 256, "uncropped": True})
+    assert frame.status_code == 200 and frame.headers["content-type"] == "image/jpeg"
+    with Image.open(io.BytesIO(frame.content)) as image:
+        assert image.size == (160, 256)  # the whole turned frame
+
+
+def test_zoom_and_tiles(client: TestClient, photos: Path) -> None:
+    _import(client, photos)
+    pid = _photo_ids(client)[0]
+    info = ZoomInfo.model_validate(client.get(f"/api/photos/{pid}/zoom/100").json())
+    deadline = time.monotonic() + TIMEOUT
+    while info.state != "ready" and time.monotonic() < deadline:
+        time.sleep(0.05)
+        info = ZoomInfo.model_validate(client.get(f"/api/photos/{pid}/zoom/100").json())
+    assert (info.state, info.width, info.height) == ("ready", 320, 200)
+    tile = client.get(f"/api/photos/{pid}/zoom/100/tiles/0/0")
+    assert tile.status_code == 200 and tile.headers["content-type"] == "image/jpeg"
+    assert client.get(f"/api/photos/{pid}/zoom/100/tiles/0/0", params={"before": True}).status_code == 200
+    assert client.get(f"/api/photos/{pid}/zoom/100/tiles/5/0").status_code == 400
+    assert client.get(f"/api/photos/{pid}/zoom/75").status_code == 422

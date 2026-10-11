@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -119,7 +119,13 @@ class PhotoDetail(BaseModel):
     as_shot: AsShot | None = Field(default=None, description="None if the camera recorded no white balance.")
 
 
-ZoomLevel = Literal[50, 100]
+class ZoomLevel(IntEnum):
+    """Zoom view levels in percent of the photo's full size."""
+
+    HALF = 50
+    FULL = 100
+
+
 TILE_SIZE = 512
 
 

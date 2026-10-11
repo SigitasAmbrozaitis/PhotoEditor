@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from photoedit.models.adjustments import AdjustmentGroup, AdjustmentParams
+from photoedit.models.adjustments import AdjustmentGroup, AdjustmentParams, GeometryChange
 from photoedit.models.export import ExportPlan, ExportPlanItem, ExportPreset, ExportSettings
 from photoedit.models.job import (
     ApplyAndExportRequest,
@@ -77,6 +77,7 @@ __all__ = [
     "ExportSettings",
     "ExposureMetering",
     "ExposureRule",
+    "GeometryChange",
     "GroupReference",
     "ImportRequest",
     "Job",
