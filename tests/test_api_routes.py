@@ -29,6 +29,7 @@ from photoedit.models import (
 )
 from photoedit.models.export import DestinationCheck, ExportPlan
 from photoedit.models.fs import DirListing
+from photoedit.models.photo import ZoomInfo
 from photoedit.models.style import StyleCreate
 from photoedit.services import Services
 
@@ -398,8 +399,12 @@ def test_edit_errors(client: TestClient, photos: Path) -> None:
     body = AdjustmentParams().model_dump(mode="json", by_alias=True)
     body["geometry"]["angle"] = 5
     r = client.put(f"/api/photos/{pid}/edit", json=body)
-    assert r.status_code == 400 and "geometry.angle (Phase 6)" in r.json()["detail"]
+    assert r.status_code == 400 and "blank corners" in r.json()["detail"]
     body["geometry"]["angle"] = 0
+    body["presence"]["clarity"] = 10
+    r = client.put(f"/api/photos/{pid}/edit", json=body)
+    assert r.status_code == 400 and "presence.clarity (Phase 9)" in r.json()["detail"]
+    body["presence"]["clarity"] = 0
     body["tone"]["exposure"] = 9
     assert client.put(f"/api/photos/{pid}/edit", json=body).status_code == 422
     assert (
@@ -413,9 +418,8 @@ def test_engine_info(client: TestClient) -> None:
     from photoedit.models import EngineInfo
 
     info = EngineInfo.model_validate(client.get("/api/engine").json())
-    assert (
-        info.later_phase_parameters["geometry"] == 6 and info.later_phase_parameters["presence.clarity"] == 9
-    )
+    assert info.later_phase_parameters["presence.clarity"] == 9
+    assert "geometry" not in info.later_phase_parameters  # renders since Phase 6a
     assert "-eng" in info.render_identity
 
 
@@ -434,3 +438,53 @@ def test_sidecar_camera_jpeg(client: TestClient, tmp_path: Path) -> None:
     pid = _photo_ids(client)[0]
     r = client.get(f"/api/photos/{pid}/sidecar")
     assert r.status_code == 404 and "no camera JPEG" in r.json()["detail"]
+
+
+# ----------------------------------------------------------------- geometry + zoom (Phase 6a)
+
+
+def test_geometry_endpoint(client: TestClient, photos: Path) -> None:
+    _import(client, photos)
+    pid = _photo_ids(client)[0]  # a.jpg, 320 × 200
+    r = client.post(f"/api/photos/{pid}/geometry", json={"rotate": 90, "aspect": "1:1"})
+    assert r.status_code == 200, r.text
+    detail = PhotoDetail.model_validate(r.json())
+    assert detail.edit.adjustments.geometry.rotate == 90
+    assert (detail.photo.edited_width, detail.photo.edited_height) == (200, 200)
+    straightened = client.post(f"/api/photos/{pid}/geometry", json={"angle": 5}).json()
+    assert straightened["edit"]["adjustments"]["geometry"]["angle"] == 5
+    # An explicit crop reaching into the blank corners, and unknown fields, are refused.
+    full = {"left": 0, "top": 0, "right": 1, "bottom": 1}
+    r = client.post(f"/api/photos/{pid}/geometry", json={"crop": full})
+    assert r.status_code == 400 and "blank corners" in r.json()["detail"]
+    assert client.post(f"/api/photos/{pid}/geometry", json={"spin": 3}).status_code == 422
+    assert client.post("/api/photos/nope/geometry", json={"reset": True}).status_code == 404
+    upright = client.get(f"/api/photos/{pid}/preview", params={"size": 256, "upright": True})
+    assert upright.status_code == 200 and upright.headers["content-type"] == "image/jpeg"
+    with Image.open(io.BytesIO(upright.content)) as image:
+        assert image.size == (256, 160)  # as shot: no turn, no crop
+    # A dry run from a draft: nothing saved.
+    saved = client.get(f"/api/photos/{pid}").json()["edit"]["adjustments"]["geometry"]
+    draft = {"geometry": {"rotate": 0}, "change": {"angle": 10}}
+    r = client.post(f"/api/photos/{pid}/geometry/preview", json=draft)
+    assert r.status_code == 200 and r.json()["angle"] == 10 and r.json()["rotate"] == 0
+    assert r.json()["crop"]["right"] - r.json()["crop"]["left"] < 1
+    assert client.get(f"/api/photos/{pid}").json()["edit"]["adjustments"]["geometry"] == saved
+    bad = {"geometry": {"angle": 10}, "change": {"crop": full}}
+    assert client.post(f"/api/photos/{pid}/geometry/preview", json=bad).status_code == 400
+
+
+def test_zoom_and_tiles(client: TestClient, photos: Path) -> None:
+    _import(client, photos)
+    pid = _photo_ids(client)[0]
+    info = ZoomInfo.model_validate(client.get(f"/api/photos/{pid}/zoom/100").json())
+    deadline = time.monotonic() + TIMEOUT
+    while info.state != "ready" and time.monotonic() < deadline:
+        time.sleep(0.05)
+        info = ZoomInfo.model_validate(client.get(f"/api/photos/{pid}/zoom/100").json())
+    assert (info.state, info.width, info.height) == ("ready", 320, 200)
+    tile = client.get(f"/api/photos/{pid}/zoom/100/tiles/0/0")
+    assert tile.status_code == 200 and tile.headers["content-type"] == "image/jpeg"
+    assert client.get(f"/api/photos/{pid}/zoom/100/tiles/0/0", params={"before": True}).status_code == 200
+    assert client.get(f"/api/photos/{pid}/zoom/100/tiles/5/0").status_code == 400
+    assert client.get(f"/api/photos/{pid}/zoom/75").status_code == 422

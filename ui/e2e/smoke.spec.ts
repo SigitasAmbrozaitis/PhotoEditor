@@ -301,3 +301,49 @@ test('custom preset → export → files written', async ({ page }) => {
   await shot(page, '20-export-job')
   expect(readdirSync(`${EXPORTS}/custom`)).toHaveLength(2)
 })
+
+test('crop: 4:5 + straighten → thumbnail turns 4:5; zoom to 100 % and pan', async ({ page }) => {
+  await page.goto('/library')
+  await page.getByRole('listbox', { name: 'Photos' }).getByRole('option', { name: 'E2E_0002.JPG' }).dblclick()
+  await expect(page.getByRole('heading', { name: 'E2E_0002.JPG' })).toBeVisible()
+  await page.getByRole('button', { name: 'Crop', exact: true }).click()
+  const tool = page.getByTestId('crop-tool')
+  await tool.getByRole('combobox', { name: 'Aspect ratio' }).selectOption('4:5')
+  await tool.getByRole('spinbutton', { name: 'Straighten angle' }).fill('5')
+  await expect(page.getByRole('status', { name: 'Checking the crop' })).toHaveCount(0, { timeout: 10_000 })
+  await expect(tool.getByRole('img', { name: /whole photo/ })).toHaveJSProperty('complete', true, { timeout: 15_000 })
+  await shot(page, '18-crop-tool')
+  await tool.getByRole('button', { name: /Done/ }).click()
+  await expect(tool).toHaveCount(0)
+  const panel = page.getByRole('complementary', { name: 'Photo details' })
+  await expect(panel.getByText(/changes? for this photo · saved/)).toBeVisible({ timeout: 10_000 })
+
+  // The saved geometry, as core keeps it; the photo and its thumbnail are 4:5 now.
+  const photos = await (await page.request.get('/api/photos', { params: { limit: 500 } })).json()
+  const photo = photos.items.find((p: { filename: string }) => p.filename === 'E2E_0002.JPG')
+  expect(Math.abs(photo.edited_width / photo.edited_height - 0.8)).toBeLessThan(0.01)
+  // Decoded in the page (the e2e code has no DOM types, hence the string).
+  const thumb: { width: number; height: number } = await page.evaluate(`(async () => {
+    const image = new Image()
+    image.src = '/api/photos/${photo.id}/thumbnail?v=${photo.image_version}'
+    await image.decode()
+    return { width: image.naturalWidth, height: image.naturalHeight }
+  })()`)
+  expect(Math.abs(thumb.width / thumb.height - 0.8)).toBeLessThan(0.02)
+
+  // Zoom: 100 % tiles of the edited photo, pan by dragging, Escape back to fit.
+  await page.getByRole('button', { name: '100%' }).click()
+  const view = page.getByTestId('zoom-view')
+  await expect(view.locator('img[src*="/zoom/100/tiles/"]').first()).toBeVisible({ timeout: 30_000 })
+  const before = await view.locator('img[src*="/tiles/"]').first().getAttribute('style')
+  const box = (await view.boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width / 2 - 120, box.y + box.height / 2 - 80, { steps: 5 })
+  await page.mouse.up()
+  await expect(view.locator('img[src*="/tiles/"]').first()).not.toHaveAttribute('style', before ?? '')
+  await shot(page, '19-zoom-100')
+  await page.keyboard.press('Escape')
+  await expect(view).toHaveCount(0)
+  await expect(page.getByRole('img', { name: /E2E_0002.JPG \(after\)/ })).toBeVisible()
+})

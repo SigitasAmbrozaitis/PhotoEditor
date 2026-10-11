@@ -99,6 +99,29 @@ def test_geometry_aspect_format() -> None:
         Geometry(aspect="square")
 
 
+@pytest.mark.parametrize("turn", [0, 90, 180, 270])
+def test_geometry_quarter_turns(turn: int) -> None:
+    geometry = Geometry.model_validate({"rotate": turn, "angle": -12.5, "flip_horizontal": True})
+    assert Geometry.model_validate_json(geometry.model_dump_json()) == geometry
+
+
+@pytest.mark.parametrize("bad", [{"rotate": 45}, {"rotate": -90}, {"angle": 45.5}, {"angle": -46}])
+def test_geometry_rejects_out_of_range(bad: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        Geometry.model_validate(bad)
+
+
+def test_geometry_without_new_fields_still_loads() -> None:
+    # Edits saved before quarter turns existed have no "rotate".
+    old = {"crop": {"left": 0.1, "top": 0, "right": 1, "bottom": 1}, "aspect": None, "angle": 2}
+    geometry = Geometry.model_validate(old)
+    assert geometry.rotate == 0 and geometry.angle == 2
+    assert AdjustmentParams.model_validate({"geometry": old}).changed_fields() == {
+        "geometry.crop.left": 0.1,
+        "geometry.angle": 2,
+    }
+
+
 @given(
     exposure=st.floats(min_value=-5, max_value=5),
     contrast=st.floats(min_value=-100, max_value=100),
@@ -124,6 +147,8 @@ def _photo(**overrides: object) -> Photo:
         "file_size": 1,
         "width": 6240,
         "height": 4160,
+        "edited_width": 6240,
+        "edited_height": 4160,
     }
     data.update(overrides)
     return Photo.model_validate(data)

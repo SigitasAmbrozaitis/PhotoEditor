@@ -49,9 +49,9 @@ EXPORT_QUEUE = "export"
 RECENT_FILE = "recent-destinations.json"
 RECENT_LIMIT = 10
 MAX_AUTO_WORKERS = 10
-# Peak memory of one worker rendering a full-size X-T3 export (measured 1.6 GiB, P5.11). Workers that
-# would not fit in the free memory aren't started.
-WORKER_PEAK_BYTES = 1.7 * 1024**3
+# Peak memory of one worker rendering a full-size X-T3 export (measured 1.6 GiB, P5.11; a straightened crop
+# adds ~0.1 GiB, P6a.5). Workers that would not fit in the free memory aren't started.
+WORKER_PEAK_BYTES = 1.8 * 1024**3
 
 type ExecutorFactory = Callable[[int], Executor]
 
@@ -314,7 +314,7 @@ class Exporter:
                 p.path.name.lower(),
             ),
         )
-        geometries = [export_geometry(p.width, p.height, settings, is_raw=is_raw(p.path)) for p in photos]
+        geometries = [export_geometry(*_edited_size(p), settings, is_raw=is_raw(p.path)) for p in photos]
         existing = {p.name.lower() for p in dest.iterdir() if p.is_file()} if dest.is_dir() else set()
         fields = [
             NameFields(
@@ -354,8 +354,8 @@ class Exporter:
             raise InvalidRequestError(f"{edit.style_error}; fix the style or remove it from this photo")
         return ExportTask(
             path=photo.path,
-            width=photo.width,
-            height=photo.height,
+            width=_edited_size(photo)[0],
+            height=_edited_size(photo)[1],
             adjustments=edit.adjustments,
             profile=profile_of(photo),
             anchors=self._library.renderer.anchors(photo),
@@ -364,6 +364,11 @@ class Exporter:
             copyright=item.copyright,
             creator=settings.metadata.creator or self._settings.export_creator,
         )
+
+
+def _edited_size(photo: CatalogPhoto) -> tuple[int, int]:
+    """The photo's full size after its own geometry: what an export's aspect crop and size work inside."""
+    return photo.edited_width or photo.width, photo.edited_height or photo.height
 
 
 def reveal_in_file_manager(path: Path) -> None:

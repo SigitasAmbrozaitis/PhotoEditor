@@ -1,22 +1,27 @@
 import { ArrowLeft, Camera, ChevronLeft, ChevronRight, Columns2, Crop, Download, Eye, EyeOff } from 'lucide-react'
 import { Tabs } from 'radix-ui'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { imageUrls } from '../../api/client'
 import { usePhotoDetail, usePhotos, useStyles } from '../../api/queries'
-import type { Photo } from '../../api/types'
+import type { Geometry, Photo, ZoomLevel } from '../../api/types'
 import { Button, ErrorState, Loading, Stars } from '../../components/ui'
 import { cn } from '../../lib/cn'
 import { useSelection } from '../../state/selection'
 import { ExportDialog } from '../export/ExportDialog'
 import { AdjustmentPanel } from './AdjustmentPanel'
+import { CropTool } from './CropTool'
+import { withValue, type EditSession } from './editSession'
 import { PhotoViewer, type ViewMode } from './PhotoViewer'
+import { ZoomView } from './ZoomView'
+import type { Point } from './zoomMath'
 
 function formatBytes(bytes: number): string {
   return `${(bytes / 1_000_000).toFixed(1)} MB`
 }
 
 function InfoPanel({ photo, styleName }: { photo: Photo; styleName?: string }) {
+  const cropped = photo.edited_width !== photo.width || photo.edited_height !== photo.height
   const rows: [string, ReactNode][] = [
     ['File', <span key="v" className="font-mono">{photo.filename}</span>],
     ['Folder', <span key="v" className="break-all">{photo.folder}</span>],
@@ -38,6 +43,7 @@ function InfoPanel({ photo, styleName }: { photo: Photo; styleName?: string }) {
     ['Shutter', photo.shutter ? `${photo.shutter} s` : '—'],
     ['ISO', photo.iso ?? '—'],
     ['Dimensions', `${photo.width} × ${photo.height}`],
+    ...(cropped ? [['Cropped', `${photo.edited_width} × ${photo.edited_height}`] as [string, ReactNode]] : []),
     ['File size', formatBytes(photo.file_size)],
     ['Rating', <Stars key="v" rating={photo.rating} />],
     ['Style', styleName ?? 'No style'],
@@ -82,6 +88,16 @@ const MODES: { mode: ViewMode; label: string; icon: typeof Eye }[] = [
   { mode: 'camera', label: 'Camera JPEG', icon: Camera },
 ]
 
+type Zoom = 'fit' | ZoomLevel
+
+const ZOOMS: { level: Zoom; label: string; title: string }[] = [
+  { level: 'fit', label: 'Fit', title: 'The whole photo (Z toggles)' },
+  { level: 50, label: '50%', title: 'Half size' },
+  { level: 100, label: '100%', title: '1:1, where sharpening can be judged (Z)' },
+]
+
+const CENTER: Point = { x: 0.5, y: 0.5 }
+
 export function PhotoPage() {
   const { photoId = '' } = useParams()
   const navigate = useNavigate()
@@ -90,7 +106,18 @@ export function PhotoPage() {
   const list = usePhotos({ sort: 'date', order: 'asc' })
   const styles = useStyles()
   const [mode, setMode] = useState<ViewMode>('after')
-  const [showCrop, setShowCrop] = useState(false)
+  // The open photo's edit session lives in its adjustment panel; the crop tool saves through it too.
+  const session = useRef<EditSession | null>(null)
+  // Both belong to the photo they were opened on: another photo starts uncropped and fitted.
+  const [crop, setCrop] = useState<{ photoId: string; geometry: Geometry } | null>(null)
+  const [zoomState, setZoomState] = useState<{ photoId: string; level: Zoom; focus: Point } | null>(null)
+  const cropping = crop?.photoId === photoId
+  const setCropping = (on: boolean) => {
+    const geometry = session.current?.params.geometry ?? detail.data?.edit.adjustments.geometry
+    setCrop(on && geometry ? { photoId, geometry } : null)
+  }
+  const zoom = zoomState?.photoId === photoId ? zoomState : { level: 'fit' as Zoom, focus: CENTER }
+  const setZoom = (next: { level: Zoom; focus: Point }) => setZoomState({ photoId, ...next })
   const [exporting, setExporting] = useState(false)
 
   const photos = useMemo(() => list.data?.items ?? [], [list.data])
@@ -98,6 +125,7 @@ export function PhotoPage() {
   const prev = index > 0 ? photos[index - 1] : undefined
   const next = index >= 0 && index < photos.length - 1 ? photos[index + 1] : undefined
   const styleName = styles.data?.find((s) => s.id === detail.data?.photo.style_id)?.name
+  const canZoom = mode !== 'camera' && !cropping
 
   useEffect(() => {
     // Keep the shown photo selected so "Apply style…" / "Export…" act on it. Runs only when the photo changes.
@@ -107,22 +135,31 @@ export function PhotoPage() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // Keys a control already handled (a focused slider's arrows, a curve point) or typed into a field are
-      // not page shortcuts: otherwise ←/→ on a slider would switch photos.
-      if (e.defaultPrevented) return
+      // not page shortcuts: otherwise ←/→ on a slider would switch photos. The crop tool has its own keys.
+      if (e.defaultPrevented || cropping) return
       const target = e.target as HTMLElement | null
       if (target?.closest('input, select, textarea, [contenteditable="true"], [role="slider"]')) return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      const key = e.key.toLowerCase()
       if (e.key === 'ArrowLeft' && prev) void navigate(`/library/${prev.id}`)
       else if (e.key === 'ArrowRight' && next) void navigate(`/library/${next.id}`)
-      else if (e.key === 'Escape') void navigate('/library')
-      else if (e.key === '\\') setMode((m) => (m === 'before' ? 'after' : 'before'))
+      else if (e.key === 'Escape') {
+        if (zoom.level !== 'fit') setZoom({ ...zoom, level: 'fit' })
+        else void navigate('/library')
+      } else if (e.key === '\\') setMode((m) => (m === 'before' ? 'after' : 'before'))
+      else if (key === 'r') {
+        setZoom({ ...zoom, level: 'fit' })
+        setCropping(true)
+      } else if (key === 'z' && canZoom) setZoom({ level: zoom.level === 'fit' ? 100 : 'fit', focus: CENTER })
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [navigate, prev, next])
+  })
 
   if (detail.isError) return <ErrorState error={detail.error} />
   if (!detail.data) return <Loading label="Loading photo…" />
   const { photo, edit } = detail.data
+  const zoomLevel = canZoom ? zoom.level : 'fit'
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -159,9 +196,10 @@ export function PhotoPage() {
               key={m}
               type="button"
               aria-pressed={mode === m}
+              disabled={cropping}
               onClick={() => setMode(m)}
               className={cn(
-                'flex items-center gap-1 px-2 py-1 text-xs',
+                'flex items-center gap-1 px-2 py-1 text-xs disabled:opacity-50',
                 mode === m ? 'bg-raised text-strong' : 'text-muted hover:bg-hover',
               )}
             >
@@ -169,7 +207,34 @@ export function PhotoPage() {
             </button>
           ))}
         </div>
-        <Button size="sm" aria-pressed={showCrop} variant={showCrop ? 'primary' : 'secondary'} onClick={() => setShowCrop((v) => !v)}>
+        <div role="group" aria-label="Zoom" className="flex rounded border border-line">
+          {ZOOMS.map(({ level, label, title }) => (
+            <button
+              key={level}
+              type="button"
+              aria-pressed={zoomLevel === level}
+              disabled={!canZoom}
+              title={title}
+              onClick={() => setZoom({ level, focus: zoom.level === 'fit' ? CENTER : zoom.focus })}
+              className={cn(
+                'px-2 py-1 text-xs disabled:opacity-50',
+                zoomLevel === level ? 'bg-raised text-strong' : 'text-muted hover:bg-hover',
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <Button
+          size="sm"
+          aria-pressed={cropping}
+          variant={cropping ? 'primary' : 'secondary'}
+          title="Crop, straighten, rotate and flip (R)"
+          onClick={() => {
+            setZoom({ ...zoom, level: 'fit' })
+            setCropping(!cropping)
+          }}
+        >
           <Crop className="size-3.5" aria-hidden /> Crop
         </Button>
         <Button size="sm" onClick={() => setExporting(true)}>
@@ -181,7 +246,29 @@ export function PhotoPage() {
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 p-3">
-            <PhotoViewer photo={photo} mode={mode} crop={showCrop ? edit.adjustments.geometry.crop : null} />
+            {cropping && crop ? (
+              <CropTool
+                photo={photo}
+                geometry={crop.geometry}
+                onCancel={() => setCropping(false)}
+                onDone={(geometry) => {
+                  const current = session.current
+                  current?.commit(withValue(current.params, 'geometry', geometry))
+                  setCropping(false)
+                }}
+              />
+            ) : zoomLevel !== 'fit' ? (
+              <ZoomView
+                key={`${photo.id}-${zoomLevel}`}
+                photo={photo}
+                level={zoomLevel}
+                mode={mode}
+                focus={zoom.focus}
+                onExit={() => setZoom({ ...zoom, level: 'fit' })}
+              />
+            ) : (
+              <PhotoViewer photo={photo} mode={mode} onZoomAt={(point) => setZoom({ level: 100, focus: point })} />
+            )}
           </div>
           <Filmstrip photos={photos} currentId={photo.id} />
         </div>
@@ -207,6 +294,7 @@ export function PhotoPage() {
                 // A new style (or a new version of it) changes every value: start a fresh edit session.
                 key={`${photo.id}-${edit.style_id ?? ''}-${edit.style_version ?? ''}`}
                 detail={detail.data}
+                sessionRef={session}
               />
             </Tabs.Content>
             <Tabs.Content value="info" className="min-h-0 flex-1 overflow-y-auto">

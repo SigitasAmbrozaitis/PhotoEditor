@@ -488,11 +488,18 @@ def color_adjust(
 _VIGNETTE_DARKEN_EV = 2.0  # corners at amount -100
 
 
-def vignette_mask(height: int, width: int, params: Vignette) -> F32:
-    """0 at the center, rising to 1 toward the corners, shaped by midpoint, roundness and feather."""
+def vignette_mask(
+    height: int, width: int, params: Vignette, *, window: tuple[int, int, int, int] | None = None
+) -> F32:
+    """0 at the center, rising to 1 toward the corners, shaped by midpoint, roundness and feather.
+
+    ``window`` = (left, top, right, bottom) gives just that part of the mask (the same values, computed
+    alone).
+    """
+    left, top, right, bottom = window or (0, 0, width, height)
     y, x = np.meshgrid(
-        np.linspace(-1, 1, height, dtype=np.float32),
-        np.linspace(-1, 1, width, dtype=np.float32),
+        np.linspace(-1, 1, height, dtype=np.float32)[top:bottom],
+        np.linspace(-1, 1, width, dtype=np.float32)[left:right],
         indexing="ij",
     )
     roundness = params.roundness / 100

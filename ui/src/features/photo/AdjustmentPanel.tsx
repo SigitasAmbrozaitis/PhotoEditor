@@ -1,6 +1,6 @@
 import { Accordion, Slider, Tabs } from 'radix-ui'
 import { ChevronDown, Redo2, RotateCcw, Undo2 } from 'lucide-react'
-import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { useEngine } from '../../api/queries'
 import type { AdjustmentParams, PhotoDetail } from '../../api/types'
 import { Button, Tooltip } from '../../components/ui'
@@ -9,7 +9,6 @@ import {
   BASIC_GROUPS,
   DETAIL_GROUPS,
   formatValue,
-  GEOMETRY_FIELDS,
   getPath,
   GRADE_WHEELS,
   gradeFields,
@@ -219,9 +218,19 @@ function Group({
   )
 }
 
-/** The adjustments of the open photo: every slider edits and saves automatically. */
-export function AdjustmentPanel({ detail }: { detail: PhotoDetail }) {
+/** The adjustments of the open photo: every slider edits and saves automatically. `sessionRef` gets the edit
+ * session, so other tools (the crop tool) save through it and share its undo history. */
+export function AdjustmentPanel({
+  detail,
+  sessionRef,
+}: {
+  detail: PhotoDetail
+  sessionRef?: RefObject<EditSession | null>
+}) {
   const session = useEditSession(detail)
+  useEffect(() => {
+    if (sessionRef) sessionRef.current = session
+  })
   const engine = useEngine()
   const defaults = detail.edit.defaults
   const ctx: SliderContext = {
@@ -368,8 +377,8 @@ export function AdjustmentPanel({ detail }: { detail: PhotoDetail }) {
           </Group>
         ))}
         <Group value="geometry" title="Crop & geometry">
-          <p className="pb-1 text-[11px] text-muted">Crop, straighten and flip arrive in Phase 6.</p>
-          {GEOMETRY_FIELDS.map((f) => slider(f))}
+          {/* Geometry changes go through the crop tool: core keeps the crop inside the straightened photo. */}
+          <p className="text-[11px] text-muted">Crop, straighten, rotate and flip with the Crop tool (R).</p>
         </Group>
         <Group value="lens" title="Lens corrections">
           <p className="text-[11px] text-muted">Profile corrections and chromatic aberration arrive in Phase 9.</p>

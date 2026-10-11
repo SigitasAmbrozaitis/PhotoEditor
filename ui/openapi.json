@@ -498,6 +498,112 @@
         }
       }
     },
+    "/api/photos/{photo_id}/geometry": {
+      "post": {
+        "tags": [
+          "edit"
+        ],
+        "summary": "Change Geometry",
+        "description": "Change the photo's crop, straighten angle, aspect lock, quarter turn or flips (only the fields given).\nFlips and turns carry the crop along; after an angle or aspect change the crop shrinks to fit the\nstraightened photo. An explicit crop that reaches outside it is rejected.",
+        "operationId": "change_geometry_api_photos__photo_id__geometry_post",
+        "parameters": [
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeometryChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/photos/{photo_id}/geometry/preview": {
+      "post": {
+        "tags": [
+          "edit"
+        ],
+        "summary": "Preview Geometry",
+        "description": "The geometry a change would give, starting from ``geometry`` (e.g. the crop tool's draft). Nothing is\nsaved; save it with PUT /edit.",
+        "operationId": "preview_geometry_api_photos__photo_id__geometry_preview_post",
+        "parameters": [
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeometryPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Geometry-Output"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/photos/{photo_id}/style": {
       "put": {
         "tags": [
@@ -633,11 +739,23 @@
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Show the unedited photo (same as after until Phase 3).",
+              "description": "The photo's default look with the edit's geometry (same framing).",
               "default": false,
               "title": "Before"
             },
-            "description": "Show the unedited photo (same as after until Phase 3)."
+            "description": "The photo's default look with the edit's geometry (same framing)."
+          },
+          {
+            "name": "upright",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Without any geometry: the whole photo as shot, with its colors (the crop tool).",
+              "default": false,
+              "title": "Upright"
+            },
+            "description": "Without any geometry: the whole photo as shot, with its colors (the crop tool)."
           },
           {
             "name": "size",
@@ -660,6 +778,136 @@
             "content": {
               "image/jpeg": {}
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/photos/{photo_id}/zoom/{level}": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Photo Zoom",
+        "description": "The zoom view at 50 or 100 %. Starts its decode if needed (100 %: ~13 to 25 s the first time); ask\nagain until ``state`` is ``ready``.",
+        "operationId": "photo_zoom_api_photos__photo_id__zoom__level__get",
+        "parameters": [
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          },
+          {
+            "name": "level",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ZoomLevel"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ZoomInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/photos/{photo_id}/zoom/{level}/tiles/{tx}/{ty}": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Photo Tile",
+        "operationId": "photo_tile_api_photos__photo_id__zoom__level__tiles__tx___ty__get",
+        "parameters": [
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          },
+          {
+            "name": "level",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ZoomLevel"
+            }
+          },
+          {
+            "name": "tx",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tx"
+            }
+          },
+          {
+            "name": "ty",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Ty"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "The default look with the edit's geometry.",
+              "default": false,
+              "title": "Before"
+            },
+            "description": "The default look with the edit's geometry."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "JPEG image",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "202": {
+            "description": "Still decoding: ask /zoom/{level} until ready"
           },
           "422": {
             "description": "Validation Error",
@@ -2510,7 +2758,7 @@
         "additionalProperties": false,
         "type": "object",
         "title": "CropRect",
-        "description": "Crop rectangle in normalized image coordinates (0..1), applied after rotation."
+        "description": "Crop rectangle in normalized coordinates (0..1) of the frame after flips and the quarter turn.\n\nThe straighten angle turns the image inside that frame, so the rectangle stays put while the angle\nchanges. It must lie inside the straightened image (no blank corners); that needs the photo's size, so\ncore checks it when an edit is saved."
       },
       "CropRect-Output": {
         "properties": {
@@ -2552,7 +2800,7 @@
           "bottom"
         ],
         "title": "CropRect",
-        "description": "Crop rectangle in normalized image coordinates (0..1), applied after rotation."
+        "description": "Crop rectangle in normalized coordinates (0..1) of the frame after flips and the quarter turn.\n\nThe straighten angle turns the image inside that frame, so the rectangle stays put while the angle\nchanges. It must lie inside the straightened image (no blank corners); that needs the photo's size, so\ncore checks it when an edit is saved."
       },
       "CurvePoint": {
         "properties": {
@@ -3394,30 +3642,45 @@
               }
             ],
             "title": "Aspect",
-            "description": "Locked aspect ratio such as '4:5'. None = free."
+            "description": "Locked crop aspect ratio, width:height of the crop as shown (e.g. '4:5'). None = free."
           },
           "angle": {
             "type": "number",
             "maximum": 45.0,
             "minimum": -45.0,
             "title": "Angle",
-            "description": "Straighten / rotate angle in degrees.",
+            "description": "Straighten angle in degrees, clockwise positive, around the center of the frame.",
+            "default": 0
+          },
+          "rotate": {
+            "type": "integer",
+            "enum": [
+              0,
+              90,
+              180,
+              270
+            ],
+            "title": "Rotate",
+            "description": "Quarter turn clockwise in degrees (0, 90, 180, 270), after the flips.",
             "default": 0
           },
           "flip_horizontal": {
             "type": "boolean",
             "title": "Flip Horizontal",
+            "description": "Mirror left-right (before the quarter turn).",
             "default": false
           },
           "flip_vertical": {
             "type": "boolean",
             "title": "Flip Vertical",
+            "description": "Mirror top-bottom (before the quarter turn).",
             "default": false
           }
         },
         "additionalProperties": false,
         "type": "object",
-        "title": "Geometry"
+        "title": "Geometry",
+        "description": "Per-photo framing, applied in this order: flips → quarter turn → straighten → crop."
       },
       "Geometry-Output": {
         "properties": {
@@ -3435,24 +3698,38 @@
               }
             ],
             "title": "Aspect",
-            "description": "Locked aspect ratio such as '4:5'. None = free."
+            "description": "Locked crop aspect ratio, width:height of the crop as shown (e.g. '4:5'). None = free."
           },
           "angle": {
             "type": "number",
             "maximum": 45.0,
             "minimum": -45.0,
             "title": "Angle",
-            "description": "Straighten / rotate angle in degrees.",
+            "description": "Straighten angle in degrees, clockwise positive, around the center of the frame.",
+            "default": 0
+          },
+          "rotate": {
+            "type": "integer",
+            "enum": [
+              0,
+              90,
+              180,
+              270
+            ],
+            "title": "Rotate",
+            "description": "Quarter turn clockwise in degrees (0, 90, 180, 270), after the flips.",
             "default": 0
           },
           "flip_horizontal": {
             "type": "boolean",
             "title": "Flip Horizontal",
+            "description": "Mirror left-right (before the quarter turn).",
             "default": false
           },
           "flip_vertical": {
             "type": "boolean",
             "title": "Flip Vertical",
+            "description": "Mirror top-bottom (before the quarter turn).",
             "default": false
           }
         },
@@ -3462,10 +3739,119 @@
           "crop",
           "aspect",
           "angle",
+          "rotate",
           "flip_horizontal",
           "flip_vertical"
         ],
-        "title": "Geometry"
+        "title": "Geometry",
+        "description": "Per-photo framing, applied in this order: flips → quarter turn → straighten → crop."
+      },
+      "GeometryChange": {
+        "properties": {
+          "reset": {
+            "type": "boolean",
+            "title": "Reset",
+            "description": "Start from the original framing.",
+            "default": false
+          },
+          "flip_horizontal": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flip Horizontal"
+          },
+          "flip_vertical": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flip Vertical"
+          },
+          "rotate": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "enum": [
+                  0,
+                  90,
+                  180,
+                  270
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rotate"
+          },
+          "angle": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 45.0,
+                "minimum": -45.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Angle"
+          },
+          "aspect": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\d+(\\.\\d+)?:\\d+(\\.\\d+)?$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aspect",
+            "description": "Lock this crop aspect ratio; send null explicitly to unlock (free)."
+          },
+          "crop": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CropRect-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "GeometryChange",
+        "description": "A change to a photo's geometry; only the fields given change.\n\nCore applies them in this order: reset, flips, quarter turn, angle, aspect, crop. Flips and quarter turns\ncarry the crop along (it keeps framing the same content), and a flip mirrors the angle. After a change of\nangle or aspect the crop is shrunk around its center until it fits the straightened image; a crop given\nexplicitly is checked as is and rejected if it doesn't fit."
+      },
+      "GeometryPreviewRequest": {
+        "properties": {
+          "geometry": {
+            "$ref": "#/components/schemas/Geometry-Input"
+          },
+          "change": {
+            "$ref": "#/components/schemas/GeometryChange"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "geometry",
+          "change"
+        ],
+        "title": "GeometryPreviewRequest",
+        "description": "A geometry and a change to try on it (nothing is saved)."
       },
       "GradeWheel-Input": {
         "properties": {
@@ -4683,6 +5069,18 @@
             "title": "Height",
             "description": "Pixel height after orientation."
           },
+          "edited_width": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Edited Width",
+            "description": "Pixel width after the edit's geometry (crop, quarter turn)."
+          },
+          "edited_height": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Edited Height",
+            "description": "Pixel height after the edit's geometry."
+          },
           "rating": {
             "type": "integer",
             "maximum": 5.0,
@@ -4744,6 +5142,8 @@
           "focal_length",
           "width",
           "height",
+          "edited_width",
+          "edited_height",
           "rating",
           "style_id",
           "has_overrides",
@@ -7160,6 +7560,74 @@
         ],
         "title": "WhiteBalanceRule",
         "description": "White balance relative to each photo, instead of a fixed Kelvin value."
+      },
+      "ZoomInfo": {
+        "properties": {
+          "level": {
+            "$ref": "#/components/schemas/ZoomLevel",
+            "description": "Percent of the photo's full size: 50 or 100 (1:1)."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "decoding",
+              "ready"
+            ],
+            "title": "State",
+            "description": "100 % needs the full decode (~13 to 25 s the first time); tiles exist once ready."
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width",
+            "description": "The edited image's width at this level."
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "tile_size": {
+            "type": "integer",
+            "title": "Tile Size",
+            "description": "Tiles are this many pixels square (edge tiles less).",
+            "default": 512
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "level",
+          "state",
+          "width",
+          "height",
+          "tile_size"
+        ],
+        "title": "ZoomInfo",
+        "description": "The zoom view of a photo at one level: tiles of the edited image (after its geometry)."
+      },
+      "ZoomLevel": {
+        "type": "integer",
+        "enum": [
+          50,
+          100
+        ],
+        "title": "ZoomLevel",
+        "description": "Zoom view levels in percent of the photo's full size."
       }
     }
   }

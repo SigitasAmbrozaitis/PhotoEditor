@@ -134,6 +134,13 @@ into `config.local.toml` (`export_copyright = "© {year} Your Name"`). Exports r
 RAWs are decoded at half size when that's enough for the output (Instagram, web), which is much faster. See
 [docs/export.md](docs/export.md).
 
+**Crop and zoom.** In the Photo view, **Crop** (key R) opens the crop tool: drag the corners, pick an aspect
+(4:5, 1:1, …), straighten, rotate by 90° or flip; the crop always stays inside the straightened photo, and
+Enter applies (Ctrl+Z undoes it like any change). Thumbnails, previews and exports show the crop; an export's
+own aspect crop (e.g. Instagram 4:5) is taken inside it. **Fit / 50% / 100%** (or Z, or a click on the photo)
+zoom in, so sharpening can be judged at 1:1; the first 100 % view of a RAW needs its full decode (~12-25 s).
+See [docs/geometry.md](docs/geometry.md).
+
 An unedited RAW renders through a **camera profile** fitted to that camera's own JPEGs (FUJIFILM X-T3 · Provia
 ships with the tool; other cameras get a neutral generic profile). See [docs/default-look.md](docs/default-look.md).
 
@@ -187,6 +194,8 @@ uv run photoedit export DSCF5437 --preset instagram-portrait --dest output\expor
 ```
 
 Presets: `photoedit preset list | show ID | duplicate ID --name "My preset" | delete ID | check`.
+Geometry: `photoedit crop show PHOTO | set PHOTO [--aspect 4:5] [--angle -2] [--rotate 90] [--flip-h]
+[--crop L,T,R,B] | reset PHOTO`.
 `photoedit benchmark --export full|instagram` times real exports per worker count.
 
 For UI development with hot reload (backend plus Vite dev server on http://localhost:5173):
@@ -232,7 +241,7 @@ src/photoedit/     Python package: CLI, config, safety (write guard), API, core,
 ui/                web UI (React + TypeScript + Vite)
 tests/             Python tests
 scripts/           dev helpers (dev.cmd, e2e_setup.py for e2e test photos, update_golden.py)
-docs/              benchmark results, the default look (camera profile), tone sliders, styles
+docs/              benchmark results, the default look (camera profile), tone sliders, styles, export, geometry
 styles/            saved styles: style.json + README + history (sample images stay local)
 export-presets/    your own export presets (one JSON file each; the built-in ones are in code)
 workspace/         local catalog (catalog.sqlite) and per-photo edits (git-ignored)

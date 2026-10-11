@@ -94,9 +94,20 @@ def test_reset(store: EditStore) -> None:
 
 
 def test_later_phase_parameters_are_rejected(store: EditStore) -> None:
-    with pytest.raises(UnsupportedParameterError, match=r"geometry.angle"):
-        store.save(photo(), params(geometry={"angle": 5}))
+    with pytest.raises(UnsupportedParameterError, match=r"presence.clarity"):
+        store.save(photo(), params(presence={"clarity": 5}))
     assert not store.path("abc123").exists()
+
+
+def test_geometry_that_doesnt_fit_the_photo_is_rejected(store: EditStore) -> None:
+    # Straightened without shrinking the crop: the corners would be blank.
+    with pytest.raises(InvalidRequestError, match="blank corners"):
+        store.save(photo(), params(geometry={"angle": 5}))
+    with pytest.raises(InvalidRequestError, match="locked aspect ratio 1:1"):
+        store.save(photo(), params(geometry={"aspect": "1:1"}))
+    assert not store.path("abc123").exists()
+    fitted = {"angle": 5, "crop": {"left": 0.2, "top": 0.2, "right": 0.8, "bottom": 0.8}}
+    assert store.save(photo(), params(geometry=fitted)).adjustments.geometry.angle == 5
 
 
 def test_edit_files_go_through_the_guard(tmp_path: Path) -> None:

@@ -3,45 +3,30 @@ import { imageUrls } from '../../api/client'
 import type { Photo } from '../../api/types'
 import { Spinner } from '../../components/ui'
 import { fitInside, useElementSize } from '../../hooks/useElementSize'
+import { cn } from '../../lib/cn'
 
 export type ViewMode = 'after' | 'before' | 'split' | 'camera'
 
-interface Crop {
-  left: number
-  top: number
-  right: number
-  bottom: number
-}
-
-function CropOverlay({ crop }: { crop: Crop }) {
-  const style = {
-    left: `${crop.left * 100}%`,
-    top: `${crop.top * 100}%`,
-    width: `${(crop.right - crop.left) * 100}%`,
-    height: `${(crop.bottom - crop.top) * 100}%`,
-  }
-  return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden" data-testid="crop-overlay">
-      <div className="absolute border border-white/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.55)]" style={style}>
-        {[1, 2].map((i) => (
-          <div key={`v${i}`} className="absolute top-0 bottom-0 w-px bg-white/30" style={{ left: `${(i * 100) / 3}%` }} />
-        ))}
-        {[1, 2].map((i) => (
-          <div key={`h${i}`} className="absolute right-0 left-0 h-px bg-white/30" style={{ top: `${(i * 100) / 3}%` }} />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-/** Large preview with after / before / split-compare modes and an optional crop overlay. */
-export function PhotoViewer({ photo, mode, crop }: { photo: Photo; mode: ViewMode; crop?: Crop | null }) {
+/** Large preview (the edited photo, cropped) with after / before / split-compare modes. A click on the photo
+ * calls `onZoomAt` with the point clicked (0..1 of the photo), to zoom in there. */
+export function PhotoViewer({
+  photo,
+  mode,
+  onZoomAt,
+}: {
+  photo: Photo
+  mode: ViewMode
+  onZoomAt?: (point: { x: number; y: number }) => void
+}) {
   const boxRef = useRef<HTMLDivElement>(null)
   const box = useElementSize(boxRef)
-  const fitted = fitInside(box, photo.width / photo.height)
+  // The camera JPEG is the whole frame; the renders show the edit's crop and turn.
+  const aspect = mode === 'camera' ? photo.width / photo.height : photo.edited_width / photo.edited_height
+  const fitted = fitInside(box, aspect)
   const [split, setSplit] = useState(50)
   const after = imageUrls.preview(photo.id, { size: 1600, version: photo.image_version })
-  const before = imageUrls.preview(photo.id, { size: 1600, before: true })
+  // "Before" keeps the edit's geometry, so it changes with the edit too.
+  const before = imageUrls.preview(photo.id, { size: 1600, before: true, version: photo.image_version })
   const shown = mode === 'before' ? before : mode === 'camera' ? imageUrls.sidecar(photo.id, 1600) : after
   // The first preview of a RAW takes a second or two to render; show a spinner until the image arrives.
   const [settled, setSettled] = useState<{ src: string; ok: boolean } | null>(null)
@@ -55,7 +40,13 @@ export function PhotoViewer({ photo, mode, crop }: { photo: Photo; mode: ViewMod
           draggable={false}
           onLoad={() => setSettled({ src: shown, ok: true })}
           onError={() => setSettled({ src: shown, ok: false })}
-          className="block h-full w-full object-contain select-none"
+          onClick={(e) => {
+            if (!onZoomAt || mode === 'camera') return
+            const rect = e.currentTarget.getBoundingClientRect()
+            if (!rect.width || !rect.height) return onZoomAt({ x: 0.5, y: 0.5 })
+            onZoomAt({ x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height })
+          }}
+          className={cn('block h-full w-full object-contain select-none', onZoomAt && mode !== 'camera' && 'cursor-zoom-in')}
         />
         {settled?.src !== shown ? (
           settled?.ok ? (
@@ -99,7 +90,6 @@ export function PhotoViewer({ photo, mode, crop }: { photo: Photo; mode: ViewMod
             />
           </>
         )}
-        {crop && <CropOverlay crop={crop} />}
       </div>
     </div>
   )

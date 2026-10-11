@@ -56,11 +56,18 @@ export const api = {
 export const imageUrls = {
   thumbnail: (photoId: string, version?: string) =>
     buildUrl(`/api/photos/${encodeURIComponent(photoId)}/thumbnail`, { v: version }),
-  preview: (photoId: string, opts: { before?: boolean; size?: number; version?: string } = {}) =>
+  preview: (photoId: string, opts: { before?: boolean; upright?: boolean; size?: number; version?: string } = {}) =>
     buildUrl(`/api/photos/${encodeURIComponent(photoId)}/preview`, {
       before: opts.before ? true : undefined,
+      upright: opts.upright ? true : undefined,
       size: opts.size,
-      v: opts.before ? undefined : opts.version,
+      v: opts.version,
+    }),
+  /** One tile of the zoom view (the edited photo at 50 or 100 %). */
+  tile: (photoId: string, level: number, tx: number, ty: number, opts: { before?: boolean; version?: string } = {}) =>
+    buildUrl(`/api/photos/${encodeURIComponent(photoId)}/zoom/${level}/tiles/${tx}/${ty}`, {
+      before: opts.before ? true : undefined,
+      v: opts.version,
     }),
   /** A photo with one version of a style and none of its own tweaks (to compare versions). */
   styleVersion: (styleId: string, version: number, photoId: string, size = 800) =>

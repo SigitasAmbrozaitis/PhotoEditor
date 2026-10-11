@@ -345,3 +345,50 @@ def test_before_and_after_previews(env: Env) -> None:
     edited.presence.saturation = -100
     env.library.save_edit(pid, edited)
     assert env.library.preview(pid, 256) != env.library.preview(pid, 256, before=True)
+
+
+# ----------------------------------------------------------------- geometry (Phase 6a)
+
+
+def _size(jpeg: bytes) -> tuple[int, int]:
+    with Image.open(io.BytesIO(jpeg)) as image:
+        return image.size
+
+
+def test_geometry_changes_save_and_show_everywhere(env: Env) -> None:
+    from photoedit.models.adjustments import GeometryChange
+
+    fill_folder(env.photos)
+    env.run_import()
+    pid = env.library.list_photos(sort=PhotoSort.NAME).items[0].id  # a.jpg, 320 × 200
+    edit = env.library.set_geometry(pid, GeometryChange(aspect="1:1", rotate=90))
+    assert edit.adjustments.geometry.rotate == 90 and edit.adjustments.geometry.aspect == "1:1"
+    photo = env.library.photo_detail(pid).photo
+    assert (photo.width, photo.height) == (320, 200)
+    assert (photo.edited_width, photo.edited_height) == (200, 200)
+    assert env.reopen().photo_detail(pid).photo.edited_width == 200
+    # After and before frame the same square; the crop tool's view is the photo as shot.
+    assert _size(env.library.preview(pid, 256)) == (200, 200)
+    assert _size(env.library.preview(pid, 256, before=True)) == (200, 200)
+    assert _size(env.library.preview(pid, 256, upright=True)) == (256, 160)
+    assert _size(env.library.thumbnail(pid)) == (200, 200)
+
+    straightened = env.library.set_geometry(pid, GeometryChange(angle=-4))
+    assert straightened.adjustments.geometry.crop.right - straightened.adjustments.geometry.crop.left < 1
+    reset = env.library.set_geometry(pid, GeometryChange(reset=True))
+    assert reset.adjustments.geometry.rotate == 0
+    photo = env.library.photo_detail(pid).photo
+    assert (photo.edited_width, photo.edited_height) == (320, 200)
+
+
+def test_invalid_geometry_changes_nothing(env: Env) -> None:
+    from photoedit.core.errors import InvalidRequestError
+    from photoedit.models.adjustments import CropRect, GeometryChange
+
+    fill_folder(env.photos)
+    env.run_import()
+    pid = env.library.list_photos(sort=PhotoSort.NAME).items[0].id
+    env.library.set_geometry(pid, GeometryChange(angle=10))
+    with pytest.raises(InvalidRequestError, match="blank corners"):
+        env.library.set_geometry(pid, GeometryChange(crop=CropRect()))
+    assert env.library.edit(pid).adjustments.geometry.angle == 10

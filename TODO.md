@@ -12,7 +12,7 @@ Derived from [PLAN.md](PLAN.md) v0.3. This checklist is written for an AI to fol
 - ⛔ **STOP** = halt and wait for the user. Never continue past a STOP without the user's explicit go-ahead.
 - 🧑 **Human test** = steps the user runs by hand at the end of a phase, with the expected result for each step.
 - If something is ambiguous or the plan seems wrong, **ask**. Don't guess. Plan changes go into PLAN.md first.
-- **Phases 0–5 and 3b (deferred, at the end) are detailed.** Later phases are an outline and get detailed at the start of each phase. Writing that detail is the first item in each phase.
+- **Phases 0–6b and 3b (deferred, at the end) are detailed.** Later phases are an outline and get detailed at the start of each phase. Writing that detail is the first item in each phase.
 - Golden rules: originals are read-only; never write outside `C:\Work\PhotoEditing` (except export destinations the user
   chose); commit as `SigitasAmbrozaitis`.
 
@@ -1008,7 +1008,7 @@ threads. The library protects every imported folder in the path guard. Per-photo
   → exactly 1080×566, 1.414:1 → 3508×2480). Output sizes come from the exact (unrounded) crop; the pixel crop then
   takes the output's exact ratio, so resizing never stretches. The plan reports the decode as `half` / `full`
   (`DecodeUsed`); JPEG/TIFF originals always decode fully. `subject` is rejected here when there is a crop.
-- [ ] **P5.5** Output color (`core/export/colorspace.py`): Rec.2020 linear → sRGB / Display P3 / Adobe RGB (matrices
+- [x] **P5.5** Output color (`core/export/colorspace.py`): Rec.2020 linear → sRGB / Display P3 / Adobe RGB (matrices
   from the primaries in `core/color.py`, D65), desaturate into the target gamut, encode with the target's curve
   (sRGB curve for sRGB and P3, gamma 563/256 for Adobe RGB). The existing `output_srgb` becomes the sRGB case of
   this with identical results, so previews and golden images don't change. An ICC v2 profile builder (header,
@@ -1016,6 +1016,8 @@ threads. The library protects every imported folder in the path guard. Per-photo
   Tests: a saturated Rec.2020 color lands on the expected values in each space; out-of-gamut colors keep their hue;
   LittleCMS (`ImageCms`) opens each profile, and converting through it to sRGB matches our math within 1/255; the
   sRGB path is bit-identical to the old `output_srgb`.
+  Done (commit c8030a0; ticked 2026-10-11): `stages.output_encode(display, space)` in the pipeline and the ICC
+  builder in `core/export/icc.py` (not a separate `colorspace.py`); tests in `tests/test_export_icc.py`.
 - [x] **P5.6** Output sharpening (`core/export/sharpen.py`): unsharp mask on luminance after resizing, from a fixed
   table of screen / matte / glossy × low / standard / high. For paper the radius scales with PPI (as Lightroom's
   output sharpening does; matte gets more, since ink spreads on it). `none` leaves pixels untouched. The table goes
@@ -1185,15 +1187,333 @@ threads. The library protects every imported folder in the path guard. Per-photo
 **Approved 2026-10-11.** The user ran the human test: export works. Full-size export speed is accepted for now and
 stays an open concern (PLAN §7.1), to be decided at the start of Phase 9.
 
-## Phase 6: Geometry & centering (outline)
-- [ ] **P6.0** Detail this phase. ⛔ STOP for review.
-- [ ] Crop / rotate / straighten / flip / zoom in the pipeline. Subject detection (faces + saliency). `suggest_crop(aspect)`.
-  Must handle small, off-center subjects (rally/drift cars shot from far away, often with panning blur) and cats
-  (incl. a black cat on dark backgrounds); test on the style sample folders.
-- [ ] Crop overlay in the Photo view.
-- [ ] 1:1 zoom view (full-resolution crops of the visible area) so sharpening can be judged (deferred from Phase 3,
-  2026-10-09).
-- 🧑 Human test + ⛔ STOP.
+## Phase 6a: Geometry, crop tool & zoom view
+
+Phase 6 was split on 2026-10-11 (PLAN §0): **6a** = per-photo geometry, the crop tool and the zoom view; **6b** =
+subject detection, suggested crops and the export's `subject` anchor. Each has its own branch, human test and merge.
+Branch: `phase-6a-geometry`.
+
+Goal (6a): crop, straighten, flip and quarter turns render in previews, thumbnails and exports. The Photo view has a
+crop tool. A **zoom view** shows 50 % and 100 % (1:1), so sharpening can be judged. Everything works from the CLI and
+core functions, ready for the MCP server in Phase 7.
+
+Starting point (Phase 5): `models/adjustments.py` already has `Geometry` (crop rectangle in normalized coordinates
+"after rotation", `aspect` lock, `angle` ±45°, flips). Setting any of it is rejected as "Phase 6"
+(`LATER_PHASE_PARAMETERS`). Styles never carry geometry (`models/style.py`), and applying a style keeps a photo's
+geometry. Previews render from a 2048 px linear base in RAM (`LinearCache`, half-size LibRaw decode, ~1.3 s).
+Exports compute a centered aspect crop in full-size pixels (`core/export/geometry.py`). The Photo view has a
+read-only crop overlay toggle and a disabled angle slider.
+
+**Design** (confirmed 2026-10-11):
+- **Order and coordinates.** Geometry is applied to the linear base **before** the per-pixel stages. That gives
+  the same result as PLAN 4.3's order (every stage before vignette is per pixel) and renders only the pixels the
+  crop keeps. Steps: flip → quarter turn → straighten by `angle` around the center → crop. The crop is normalized
+  to the upright frame after the quarter turn, so the rectangle stays still while the angle changes. The vignette
+  stays relative to the crop (post-crop). Sharpening scales with the crop's full-size width.
+- **No blank corners.** A crop must lie inside the straightened image. An invalid crop is rejected (golden rule
+  5). Changing the angle or the aspect goes through one core operation, `constrain_crop`, which shrinks the crop
+  around its center until it fits (Lightroom's "constrain to image"). The UI and the AI both call it.
+- **Tone stays put.** Tone anchors and auto-exposure metering keep measuring the **whole** photo, so cropping never
+  changes brightness. Subject-weighted metering stays in Phase 8.
+- **Before view** = the same geometry with the colors reset, so Split lines up. The crop tool shows the whole
+  straightened photo with the crop rectangle on it.
+
+- [x] **P6a.0** Detail this phase into items. ⛔ STOP for the user to review it. Reviewed 2026-10-11: the user
+  answered the decisions (P6a.1) and asked to split Phase 6 into 6a and 6b.
+
+### Decisions (confirmed 2026-10-11, recorded in PLAN.md §0)
+- [x] **P6a.1** The user's answers:
+  - **Subject detection: B** = classical cues + a small pretrained object detector run locally on the CPU by
+    OpenCV (`cv2.dnn`), downloaded once after the user's OK (Phase 6b). Explained to the user: a local detector
+    that only returns labeled boxes, not a generative or chat model; Claude joins only in Phase 7, via MCP.
+  - **Suggested crop framing: both, selectable**: `centered` (default) or `thirds` (Phase 6b).
+  - **Quarter turns: yes**: `geometry.rotate` (0/90/180/270) with rotate left/right buttons.
+  - **Zoom view: the wait is acceptable**: 100 % needs the full decode (~13–25 s the first time per photo); the
+    50 % view is shown enlarged meanwhile. Speed-ups stay with the PLAN §7.1 decision in Phase 9.
+  - **Split** into 6a and 6b.
+  - Defaults accepted with the review: the Before view keeps the geometry; detection runs lazily and is cached in
+    the catalog; a manual subject box is stored in the edit and wins over detection (6b); the model lives in
+    `cache/models/`, fetched by `photoedit models fetch` with a pinned SHA-256 (6b).
+
+### Core
+- [x] **P6a.2** Model (`models/adjustments.py`): `rotate` (0/90/180/270), and the coordinate frame written into
+  the field descriptions. The model checks only what it can know on its own (ranges, non-empty boxes). The rules
+  that need the photo's size (crop inside the straightened image; crop ratio matches the `aspect` lock within one
+  full-size pixel) are checked in core when an edit is saved (P6a.4), with clear messages. Tests: validation
+  messages, JSON round-trip, old edits (without the new field) still load.
+- [x] **P6a.3** Geometry math (`core/geometry.py`, pure functions; the export's geometry builds on it): the upright
+  frame after flips and quarter turns; the straighten transform; "is this crop inside the straightened image";
+  `constrain_crop(crop, angle, aspect, frame)` (shrink around the center until it fits, keeping the ratio);
+  `largest_crop(ratio, angle, frame)`; and the affine map from a normalized crop to source pixels for any decode
+  size (half/full/2048 base), so every size renders the same framing. Tests with exact values: identity, each
+  flip and quarter turn, ±45° on landscape and portrait frames, a crop touching a rotated edge (in) and one pixel
+  past it (out), constrain at several angles, and the source map at three decode sizes.
+- [x] **P6a.4** Pipeline and edits:
+  - `render` takes the geometry. Only the crop's pixels are mapped from the base with one `cv2.warpAffine`
+    (cubic, in linear light; area-averaged first when shrinking by more than 2×, so there is no aliasing), then the
+    per-pixel stages, the vignette relative to the crop, and sharpening scaled by the crop's full-size width.
+    `"geometry"` leaves `LATER_PHASE_PARAMETERS`.
+  - The default geometry skips the warp, so unedited photos stay **bit-identical** (no golden image changes, no
+    `ENGINE_VERSION` bump). Any pixel change for edited geometry is new behavior and needs no bump.
+  - `Library.save_edit` checks the photo-dependent rules from P6a.2. `Library.set_geometry(photo, …)` applies
+    angle/aspect/rotate/flip changes through `constrain_crop` and saves.
+  - Previews, thumbnails and the Library grid show the cropped photo. `Photo` gains `edited_width`/`edited_height`
+    (the full-size pixels after geometry), so the UI lays out the cropped aspect without loading the image.
+  - The crop tool's view: `preview?uncropped=true` renders the straightened whole frame (cached like previews).
+  Tests: the warp maps a synthetic grid exactly where the math says; flips and quarter turns are exact pixel
+  permutations; a straightened crop has no blank pixels at the corners; strips and full frame are identical; the
+  determinism of `warpAffine` (two renders, same bytes); the vignette follows the crop; saving an invalid crop is
+  refused with its message.
+  Done: `core/render/warp.py` (`apply_geometry`). Without an angle, flips, turns and the crop are array views
+  (exact); with one, a single cubic `warpAffine` maps the crop at the source's resolution (edges repeated; the crop
+  tool's frame view shows black outside the straightened image), then an area resize. The catalog (schema v5)
+  stores the edited size. "Before" = the photo's defaults with the edit's geometry (`EditStore.before`). The
+  adjustment panel's straighten slider is replaced by a note: geometry goes through the crop tool (P6a.10).
+- [x] **P6a.5** Export inside the photo's crop: the export's frame becomes the photo's crop. The aspect crop, the
+  output size and the decode choice are computed inside it (P5.1). The worker warps only that region from the
+  decode, so no full rotated copy is made (`WORKER_PEAK_BYTES` re-measured, must not grow by more than 10 %).
+  Tests: a cropped photo's Instagram export is 1080×1350 and shows the crop's content; straightened + aspect crop;
+  a crop smaller than the output size warns "enlarged"; the half/full decode choice uses the crop's size.
+  Done: the worker maps the export's aspect box into the photo's crop (`sub_crop`) and calls `apply_geometry`
+  once, so unedited photos give the same bytes as before. Peak RAM of one full-size export (DSCF5437, process
+  tree): 1.67 GiB unedited, 1.76 GiB straightened (+5 %), 1.16 GiB turned + 4:5 → `WORKER_PEAK_BYTES` 1.8 GiB.
+- [x] **P6a.6** Bases for zooming: the half-size decode kept unresized (LRU of 2, ~80 MB each) for 50 %, and the
+  full decode (LRU of 1, ~310 MB) for 100 %, decoded in a background thread on the first request. Its status
+  (`decoding`, `ready`) is visible, so the UI can show the interim view. Memory measured and documented. Tests with
+  a fake decoder: LRU, one decode at a time per photo, status.
+  Done: `core/zoom.py` (`ZoomBases`): one decode thread per level, so a 50 % decode never waits behind a 100 %
+  one; the decode records its result before its future completes; a failed decode is reported by the next
+  request. Also keeps the geometry-applied image of the photo being viewed. Sizes: 311 MB (full X-T3, float32),
+  78 MB (half); timings go into `docs/geometry.md` (P6a.14).
+- [x] **P6a.7** Tile rendering: `render_tile(photo, edit, zoom, tx, ty)` renders a 512 px tile of the edited image
+  (after geometry) at 50 % or 100 % with the exact pipeline. A margin is rendered for sharpening and then cut off,
+  and the vignette is relative to the whole crop (`vignette_mask` with an offset). Tiles are cached on disk by edit
+  revision under `cache/renders/`, with the same pruning as previews. Tests: tiles stitched together equal a full
+  render of the same size (bit-identical, sharpening included); the edge tiles; a new edit revision gives new tiles.
+  Done: `pipeline.render_window` (the per-pixel stages are now `_Pointwise`, shared with `render`) and
+  `Renderer.tile` / `Library.tile` / `Library.zoom_info`. Stitched tiles equal the whole render **within float
+  rounding** (≤ 3e-7: vectorized loops round a row's last elements differently), and their 8-bit pixels are
+  identical. Before-tiles use the photo's defaults with the edit's geometry.
+
+### API + CLI
+- [x] **P6a.8** Endpoints:
+  - `POST /api/photos/{id}/geometry` (angle/rotate/aspect/flip changes, applied through `constrain_crop`, saved) →
+    the new edit. A plain `PUT` of the edit still works and is validated (P6a.4).
+  - `GET /api/photos/{id}/preview?uncropped=true`, `GET /api/photos/{id}/tiles/{zoom}/{tx}/{ty}`,
+    `GET /api/photos/{id}/zoom-status?zoom=100`.
+  - `Photo.edited_width/edited_height`.
+  Regenerate `openapi.json` + `schema.d.ts`. Tests for every endpoint, including invalid geometry → 400 with the
+  message.
+  Done: the zoom routes are `GET /api/photos/{id}/zoom/{level}` (`ZoomInfo`; starts the decode) and
+  `GET /api/photos/{id}/zoom/{level}/tiles/{tx}/{ty}` (`?before=`; 202 while still decoding). `ZoomLevel` is an
+  int enum (50, 100) so the path converts.
+- [x] **P6a.9** CLI: `photoedit crop set PHOTO [--crop L,T,R,B] [--aspect 4:5] [--angle …] [--rotate …]
+  [--flip-h] [--flip-v]`, `photoedit crop show PHOTO`, `photoedit crop reset PHOTO`. Tests with `CliRunner`.
+
+### UI
+- [x] **P6a.10** Crop tool (the "Crop" button, key `R` as in Lightroom): the whole straightened photo with an
+  editable rectangle (drag corners and edges, drag inside to move, rule-of-thirds grid while dragging). Aspect
+  menu: free, original, 1:1, 4:5, 5:4, 2:3, 3:2, 16:9, 9:16, plus "swap orientation". Straighten slider with a
+  number field. Rotate left/right, flip horizontal/vertical, Reset. Enter or Done applies, Esc cancels. Dragging
+  uses the same "inside the straightened image" rule for the feel of it. The server stays the authority: a
+  rejected crop shows its message and the last valid crop returns. Undo/redo cover crop changes like slider
+  changes. The "Phase 6" note on the angle slider goes away.
+  Done: `CropTool.tsx` + `cropMath.ts`. The tool edits a draft: turns, flips, the angle and the aspect go to a new
+  dry-run endpoint `POST /api/photos/{id}/geometry/preview` (core constrains, nothing is saved; latest-wins while
+  the straighten slider moves). It shows the photo as shot (`preview?upright=true`, which replaced the planned
+  `uncropped`) and turns, flips and straightens it on screen with CSS, so the slider is instant. Done checks the
+  crop with core once more, then saves through the photo's edit session (one undo step). The panel's angle slider
+  became a note pointing to the crop tool. Esc in the crop tool cancels it (it no longer leaves the photo).
+- [x] **P6a.11** Zoom view: Fit / 50 % / 100 % buttons. `Z` or a click toggles Fit ↔ 100 % at the clicked point.
+  Drag to pan (space + drag while the crop tool is open). Tiles load for the visible area only. At 100 %, while the
+  full decode runs, the 50 % tiles are shown enlarged with "Loading full size…". A small navigator shows where the
+  view is. Works in After/Before/Split.
+  Done: `ZoomView.tsx` + `zoomMath.ts`; Fit / 50% / 100% buttons in the header (disabled for the camera JPEG and
+  while cropping); `Z` toggles Fit ↔ 100 % at the center, a click on the photo zooms in there, a click without
+  dragging (or Esc) goes back. The navigator is the thumbnail with the view outlined. The pan offset is rounded to
+  whole pixels so tiles meet without seams.
+- [x] **P6a.12** UI tests: Vitest for the crop tool (drag, aspect lock, straighten → constrain call, rejected crop,
+  undo) and the zoom view (tile URLs for a viewport, the interim state). Playwright: crop a photo to 4:5 and check
+  the thumbnail turns 4:5; straighten by 5°; zoom to 100 % and pan. Screenshots of the crop tool and the zoom view.
+  Done: Vitest 112 (`cropMath`, `zoomMath`, `CropZoom.test.tsx`: core calls, a corner drag, a refused crop, Esc,
+  undo, 100 % tiles, the interim 50 % view, before tiles). Playwright 7 (new: crop 4:5 + 5° → the 4:5 thumbnail;
+  100 % tiles and panning; screenshots 18-crop-tool, 19-zoom-100).
+
+### Tests + docs
+- [x] **P6a.13** Golden: synthetic geometry references (committed: a test chart with a crop, a straighten, flips
+  and quarter turns). Real (local, `@pytest.mark.golden`): `DSCF5437.RAF` cropped and straightened, as a preview
+  and as an export at the same framing; the sample folders' hashes are unchanged.
+  Done: two committed references `synthetic-*-framed.png` (the busy edit with a flip, a quarter turn, 7° and a
+  4:5 crop); the earlier references are unchanged byte for byte. `tests/test_geometry_golden.py` (local): a
+  turned, straightened 4:5 edit of DSCF5437 renders identically twice, and its preview and export frame the
+  same picture (blurred ΔE2000 0.3-0.4; a 2 px shift gives ~2.5). Found on the way: the two differ in fine
+  detail (ΔE mean ~1.5 unstraightened, ~3 straightened) because the preview resamples the 2048 px working base
+  and the export its own decode; framing is identical.
+- [x] **P6a.14** `docs/geometry.md` (frames and order, the no-blank-corners rule and `constrain_crop`, export
+  inside the crop, the zoom view and its memory/time) and README (crop tool, CLI).
+  Done: `docs/geometry.md` (with the zoom timings measured on DSCF5437: half decode 0.4 s, full decode 12.5 s,
+  a tile 0.15 s, the straighten warp 0.65 s at 100 %), README (crop and zoom, CLI), `docs/export.md` (exports
+  work inside the photo's crop; ~1.8 GiB per worker), CLAUDE.md layout.
+- [x] **P6a.15** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e).
+  Done 2026-10-11: pytest 818 passed (incl. golden, 6.6 min), ruff, format, mypy clean; Vitest 112 passed,
+  oxlint clean, build OK; Playwright 7 passed.
+
+### 🧑 Human test: Phase 6a
+0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`.
+1. `uv run photoedit ui` → open a photo in `2026-08-11` → **Crop** → drag the corners, choose 4:5, straighten by
+   about 3° → no blank corners appear, and the crop shrinks when needed. Done → the Photo view, the filmstrip and
+   the Library thumbnail show the crop. Ctrl+Z undoes it, Ctrl+Shift+Z redoes it.
+2. Rotate right, then flip horizontal → the preview follows. Reset → the original framing returns.
+3. Before and Split show the same framing as After.
+4. Zoom: **100 %** on a sharp photo → the first time it says it is loading full size (up to ~25 s), then the
+   detail is sharp. Pan around. Change Sharpening amount → the difference is visible at 100 %. 50 % appears quickly.
+5. Export the cropped and straightened photo with **Web full size** and with **Instagram portrait** → the files
+   show the same framing as the Photo view (Instagram: a 4:5 crop inside your crop).
+6. CLI: `uv run photoedit crop show DSCF5437`, `crop set DSCF5437 --angle 2`, `crop reset DSCF5437`.
+7. The photo folders are unchanged (Explorer, Date modified). `uv run pytest -m golden` passes.
+8. **Give feedback** on the crop tool's feel and the zoom view.
+
+### ⛔ STOP: user approves Phase 6a
+
+**Approved 2026-10-11.** The user tested it ("looks solid"). Requested for later: a 3×3 grid overlay
+(rule of thirds) to compose by, planned as P6b.13.
+
+## Phase 6b: Subject detection & suggested crops
+
+Goal: the code finds each photo's **main subject** (a car, a cat, a person…) and **suggests a crop** for an aspect
+ratio, framed on that subject (centered or on the thirds). The export's aspect crop can center on the subject
+(`anchor: subject`). A subject box set by hand wins. Branch `phase-6b-subject` from `main` after 6a is merged.
+
+What the samples show (looked at 2026-10-11): rally (`2026-08-16`) cars are ~5–15 % of the frame width, with dust
+and a helicopter in some shots. Drift (`2026-07-26`) cars are tiny (~3–8 %) in frames full of crowd, banners and
+tire smoke, so "the most salient thing" is usually the crowd. The cats (`2026-08-11`, `2026-08-17`) fill half the
+frame (orange) or almost disappear into a dark room (black). The sunsets have no subject: a TV tower, or nothing.
+Fujifilm files record the AF point in their maker notes (tag 0x1023 FocusPixel, e.g. 3121×2517 of 6240×4160). In
+AF-C zone mode, as at the rally, that is the zone's center and not the tracked car, so it is only a weak hint.
+
+**Design** (confirmed 2026-10-11, approach B):
+- **Subject** = one main box per photo, plus the other candidates found, each with a kind (`car`, `animal`,
+  `person`, `face`, `salient`, `af_point`) and a score. A box the user or the AI sets by hand (`geometry.subject`
+  in the edit) always wins over detection. Detection is cached in the catalog per detector identity, like the tone
+  anchors, so exports stay deterministic.
+- **Detector**: classical cues + a small pretrained object detector (COCO classes) run by OpenCV's `cv2.dnn` on
+  the CPU. It only returns labeled boxes. The model is downloaded once, after the user's OK.
+- **Suggested crop** = the largest crop of the requested ratio that keeps the subject box plus a margin.
+  Placement `centered` (default: the subject as close to the center as the frame allows) or `thirds` (the
+  subject's center on the nearest thirds intersection, which keeps the side the photographer chose). `zoom` > 1
+  makes it tighter around the subject. With no subject found it falls back to a center crop and says so.
+
+- [ ] **P6b.0** Re-check this detail against what 6a built, and update it. ⛔ STOP for the user to review it.
+
+### Dependencies
+- [ ] **P6b.1** Choose the model (the proposal is YOLOX from the OpenCV Model Zoo, Apache-2.0; a smaller variant
+  if it detects small cars as well, measured on a few samples). ⛔ **Ask the user before downloading**, showing the
+  file name, URL, size and SHA-256. Then `photoedit models fetch`: the pinned model goes into
+  `cache/models/<name>`, checked by SHA-256. An existing file with the right hash is left alone. A wrong hash is
+  deleted and reported. Downloads go through the path guard (`cache/` is tool-owned). `detector_identity()` = model
+  name + hash + OpenCV version. Tests use a fake downloader (no network in tests).
+
+### Core
+- [ ] **P6b.2** Model: `geometry.subject: SubjectBox | None` (normalized box in the same frame as the crop),
+  `SubjectInfo`, `CropSuggestion`, `CropPlacement` (`centered` | `thirds`). Tests: validation, round-trip, old
+  edits load.
+- [ ] **P6b.3** AF point: read the Fujifilm maker note at import (FocusPixel 0x1023, AF mode 0x1022, and faces
+  detected 0x4100/0x4103 if present) into the catalog, as an upright normalized point, through a catalog migration
+  (already-imported photos get it on the next import or on first use). Other cameras get none. Reading never
+  unpacks the RAW. Tests with synthetic maker-note bytes (including truncated and wrong-header ones) and the
+  orientation mapping. Golden: the values for 3 sample files.
+- [ ] **P6b.4** Classical cues (`core/subject/cues.py`, on a ~1024 px render of the photo): a sharpness map (local
+  Laplacian energy relative to the photo's own spread), spectral-residual saliency, and Haar detectors for human
+  faces and cat faces (bundled with OpenCV). Each one returns candidate boxes with a score. Tests on synthetic
+  images: a sharp square on a blurred background, a bright blob on noise, deterministic output, and an empty or
+  flat image gives no candidates.
+- [ ] **P6b.5** Object detector (`core/subject/detector.py`): the model through `cv2.dnn` on overlapping 640 px
+  tiles of the half-size image plus one whole-frame pass, then merged with class-wise NMS. Threads fixed for
+  determinism. Classes of interest are mapped to kinds (car/truck/bus → `car`, motorcycle, cat/dog → `animal`,
+  person, airplane/bird…). Without the model file, detection uses only the cues and says so. Tests: tiling and NMS
+  math on synthetic boxes; with the model present (golden), two runs give identical boxes, and a sample photo with
+  a car finds it. Time per photo measured.
+- [ ] **P6b.6** Choosing the main subject (`core/subject/choose.py`): score every candidate by kind priority
+  (vehicle/animal > face > person > salient), size (not tiny, not the whole frame), sharpness inside the box
+  (panning), and closeness to the AF point. Crowds count as one weak "people" region when a vehicle is present.
+  Result: `SubjectInfo` (main box, kind, score, source `detected`/`manual`/`af_point`/`none`, candidates,
+  detector identity). It is stored in the catalog and recomputed only when the detector identity changes.
+  `Library.subject(photo)` returns the manual box from the edit if one is set. Tests: the scoring rules on
+  constructed candidate sets (car vs crowd, cat face vs saliency, nothing found → `none`).
+- [ ] **P6b.7** `suggest_crop(photo, aspect, *, orientation=auto, placement=centered, zoom=1.0)` →
+  `CropSuggestion` (crop rectangle in the edit's frame, the current angle kept, the subject used, warnings such as
+  "subject is cut off: it is wider than a 4:5 crop allows" or "no subject found: centered"). Pure math on top of
+  `core/geometry.py`: the largest crop of the ratio inside the straightened image containing the subject box plus
+  a margin (≥ 5 % of the crop), placed per `placement` and clamped to the frame. `zoom` tightens it toward the
+  subject box plus margin, capped there. Tests: subject in a corner → the crop touches that edge; subject too
+  large → a warning, crop centered on it; thirds picks the nearest intersection; zoom 1/1.5/max; rotated photos;
+  portrait vs landscape ratio with `orientation`.
+- [ ] **P6b.8** Export `anchor: subject`: the aspect crop inside the photo's crop is placed by P6b.7's rule
+  (centered, zoom 1). With no subject it falls back to center, with a warning in the plan. The built-in Instagram
+  presets switch to `subject`. The export plan shows each photo's subject source. Missing detections are computed
+  when the plan is made, in parallel, and cached. Tests: the plan and the files for a synthetic photo with a known
+  off-center subject; the fallback warning; determinism.
+- [ ] **P6b.9** Evaluation set + report: hand-labeled main-subject boxes for ~40 photos across the four sample
+  folders (rally, drift, both cats, orange cat + sunsets), including hard ones: tiny drift cars, the black cat,
+  the helicopter, and sunsets with no subject. Claude labels them from previews, and the user checks the labels on
+  a contact sheet. Labels go in `tests/data/subject-labels.json` (file names + boxes, committed; the photos stay
+  local). `photoedit subject eval` prints, per folder, the detection hit rate (the labeled box's center is inside
+  the found box, or IoU ≥ 0.3) and the share of 4:5 suggested crops that keep ≥ 95 % of the labeled box. It also
+  writes a contact sheet with labeled vs found boxes to `output/contact-sheets/`. **Targets**: hits ≥ 80 % and
+  crops ≥ 90 % in each folder (photos labeled "no subject" count as hits when the result is `none` or the crop is
+  centered). Results go into `docs/geometry.md`. ⛔ **If a target is missed, STOP and discuss**, with the misses,
+  their causes and the options (e.g. a larger model, tuned scoring, manual or AI subjects for that kind of shot).
+
+### API + CLI
+- [ ] **P6b.10** Endpoints: `GET /api/photos/{id}/subject` (detect if needed) → `SubjectInfo` (the manual box goes
+  through the edit); `POST /api/photos/{id}/suggest-crop` (`aspect`, `orientation`, `placement`, `zoom`) →
+  `CropSuggestion` (nothing saved); `POST /api/jobs` `detect_subjects` (a selection, in the background); the export
+  plan's subject column. Regenerate `openapi.json` + `schema.d.ts`. Tests for every endpoint.
+- [ ] **P6b.11** CLI: `photoedit subject detect [PHOTO…|--folder DIR] | show PHOTO | eval`, `photoedit crop suggest
+  PHOTO --aspect 4:5 [--orientation …] [--placement thirds] [--zoom 1.2] [--apply]`, `photoedit models fetch`
+  (P6b.1). Tests with `CliRunner`.
+
+### UI
+- [ ] **P6b.12** Crop tool: **Suggest crop** for the chosen aspect (placement centered/thirds, zoom slider). A
+  "Show subject" toggle draws the main box (labeled with its kind and source) and the other candidates faintly.
+  "Set subject" lets you drag a box by hand, and "Use detected" clears it. The Library gets a "Detect subjects"
+  action for the selection (a background job).
+- [ ] **P6b.13** Grid overlay (requested 2026-10-11 after the 6a test): a 3×3 rule-of-thirds grid to compose by,
+  on demand rather than only while dragging. A **Grid** toggle (key `G`) in the crop tool, where it shows over
+  the crop rectangle all the time, and in the Photo view (Fit), where it shows over the photo. The choice is
+  remembered per browser. It fits with Suggest crop's `thirds` placement: the subject lands on a grid
+  intersection. Display only (no edit data), so nothing reaches the render or exports.
+- [ ] **P6b.14** Export dialog: the "Detected subject" anchor is enabled (no "(Phase 6)"), and the plan table
+  shows each photo's subject (kind + source, or "none → centered").
+- [ ] **P6b.15** UI tests: Vitest for Suggest crop (placement, zoom), the subject overlay and manual box, and the
+  export dialog's subject column, the grid toggle (button and `G`, remembered). Playwright: suggest a 4:5 crop and apply it; export with the Instagram preset
+  (subject anchor). Screenshots of the subject overlay.
+
+### Tests + docs
+- [ ] **P6b.16** Golden (local): subject detection on the labeled set matches the stored results (determinism);
+  Instagram exports of labeled photos keep the labeled subject; the sample folders' hashes are unchanged.
+- [ ] **P6b.17** `docs/geometry.md` (subject cues, the model, how the main subject is chosen, the evaluation
+  results, suggested crops and placement, the export `subject` anchor) and README (`models fetch`, subject CLI).
+- [ ] **P6b.18** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e).
+
+### 🧑 Human test: Phase 6b
+0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`,
+   `uv run photoedit models fetch`.
+1. Rally (`2026-08-16`) and drift (`2026-07-26`): open several photos → Crop → **Show subject** → the car is
+   boxed (or say which ones are wrong) → **Suggest crop** 4:5 and 1:1, centered and thirds → the car stays in the
+   frame. Same for the cats (`2026-08-11`, `2026-08-17`), including the black cat.
+2. **Grid** (or `G`) in the crop tool and in the Photo view → a 3×3 grid; after Suggest crop with **thirds**, the
+   subject sits on a grid intersection. Reload → the grid setting is remembered.
+3. On a photo where detection is wrong: **Set subject** → drag a box on the right thing → Suggest crop now frames
+   it.
+4. Library → select ~10 rally/drift photos → Export… with **Instagram portrait** → the plan shows each photo's
+   subject → export → in the files the cars are inside the 4:5 frame (not cut off by a center crop).
+5. `uv run photoedit subject eval` → the report and contact sheet match `docs/geometry.md`. `uv run photoedit crop
+   suggest DSCF5437 --aspect 4:5` prints a suggestion.
+6. The photo folders are unchanged (Explorer, Date modified). `uv run pytest -m golden` passes.
+7. **Give feedback** on the grid, the suggested framing, detection misses and the subject tools.
+
+### ⛔ STOP: user approves Phase 6b
 
 ## Phase 7: MCP server (outline)
 - [ ] **P7.0** Detail this phase. ⛔ STOP for review.

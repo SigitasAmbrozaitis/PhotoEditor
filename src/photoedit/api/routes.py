@@ -30,6 +30,7 @@ from photoedit.models import (
     StyleSummary,
     StyleView,
 )
+from photoedit.models.adjustments import Geometry, GeometryChange, GeometryPreviewRequest
 from photoedit.models.export import (
     DestinationCheck,
     DestinationCheckRequest,
@@ -40,6 +41,7 @@ from photoedit.models.export import (
     RevealRequest,
 )
 from photoedit.models.fs import DirListing
+from photoedit.models.photo import ZoomInfo, ZoomLevel
 from photoedit.models.style import (
     PhotoStyleRequest,
     StyleCreate,
@@ -143,6 +145,22 @@ def save_edit(photo_id: str, adjustments: Annotated[AdjustmentParams, Body()], s
     return svc.library.photo_detail(photo_id)
 
 
+@router.post("/photos/{photo_id}/geometry", response_model=PhotoDetail, tags=["edit"])
+def change_geometry(photo_id: str, change: Annotated[GeometryChange, Body()], svc: Svc) -> PhotoDetail:
+    """Change the photo's crop, straighten angle, aspect lock, quarter turn or flips (only the fields given).
+    Flips and turns carry the crop along; after an angle or aspect change the crop shrinks to fit the
+    straightened photo. An explicit crop that reaches outside it is rejected."""
+    svc.library.set_geometry(photo_id, change)
+    return svc.library.photo_detail(photo_id)
+
+
+@router.post("/photos/{photo_id}/geometry/preview", response_model=Geometry, tags=["edit"])
+def preview_geometry(photo_id: str, request: Annotated[GeometryPreviewRequest, Body()], svc: Svc) -> Geometry:
+    """The geometry a change would give, starting from ``geometry`` (e.g. the crop tool's draft). Nothing is
+    saved; save it with PUT /edit."""
+    return svc.library.preview_geometry(photo_id, request.geometry, request.change)
+
+
 @router.put("/photos/{photo_id}/style", response_model=PhotoDetail, tags=["edit"])
 def set_photo_style(photo_id: str, request: Annotated[PhotoStyleRequest, Body()], svc: Svc) -> PhotoDetail:
     """Give the photo a style right away (null removes it). Tweaks of what the style sets are replaced."""
@@ -176,11 +194,42 @@ def photo_preview(
     photo_id: str,
     svc: Svc,
     before: Annotated[
-        bool, Query(description="Show the unedited photo (same as after until Phase 3).")
+        bool, Query(description="The photo's default look with the edit's geometry (same framing).")
+    ] = False,
+    upright: Annotated[
+        bool,
+        Query(description="Without any geometry: the whole photo as shot, with its colors (the crop tool)."),
     ] = False,
     size: Annotated[int, Query(ge=256, le=4096, description="Long edge in pixels.")] = 1600,
 ) -> Response:
-    data = svc.library.preview(photo_id, size, before=before)
+    data = svc.library.preview(photo_id, size, before=before, upright=upright)
+    return Response(content=data, media_type=JPEG, headers=IMAGE_CACHE)
+
+
+@router.get("/photos/{photo_id}/zoom/{level}", response_model=ZoomInfo, tags=["library"])
+def photo_zoom(photo_id: str, level: ZoomLevel, svc: Svc) -> ZoomInfo:
+    """The zoom view at 50 or 100 %. Starts its decode if needed (100 %: ~13 to 25 s the first time); ask
+    again until ``state`` is ``ready``."""
+    return svc.library.zoom_info(photo_id, level)
+
+
+@router.get(
+    "/photos/{photo_id}/zoom/{level}/tiles/{tx}/{ty}",
+    response_class=Response,
+    responses={**IMAGE_RESPONSE, 202: {"description": "Still decoding: ask /zoom/{level} until ready"}},
+    tags=["library"],
+)
+def photo_tile(
+    photo_id: str,
+    level: ZoomLevel,
+    tx: int,
+    ty: int,
+    svc: Svc,
+    before: Annotated[bool, Query(description="The default look with the edit's geometry.")] = False,
+) -> Response:
+    data = svc.library.tile(photo_id, level, tx, ty, before=before)
+    if data is None:
+        return Response(status_code=status.HTTP_202_ACCEPTED)
     return Response(content=data, media_type=JPEG, headers=IMAGE_CACHE)
 
 

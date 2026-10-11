@@ -20,10 +20,14 @@ from photoedit.core.cache import THUMBNAIL_LONG_EDGE, LinearCache, resize_linear
 from photoedit.core.catalog import CatalogPhoto
 from photoedit.core.decode import LinearImage, decode_linear, is_raw
 from photoedit.core.edits import EffectiveEdit
+from photoedit.core.errors import InvalidRequestError
 from photoedit.core.render.anchors import PhotoStats, ToneAnchors, measure_stats
-from photoedit.core.render.pipeline import render, render_identity
+from photoedit.core.render.pipeline import geometry_stage, render, render_identity, render_window, shown_width
 from photoedit.core.render.profile import CameraProfile, profile_for
 from photoedit.core.render.stages import quantize
+from photoedit.core.zoom import ZoomBases
+from photoedit.models.adjustments import Geometry
+from photoedit.models.photo import TILE_SIZE, ZoomInfo, ZoomLevel
 from photoedit.safety import PathGuard
 
 PREVIEW_QUALITY = 90
@@ -69,12 +73,14 @@ class Renderer:
         guard: PathGuard,
         linear: LinearCache | None = None,
         *,
+        zoom: ZoomBases | None = None,
         remember_stats: StatsSink | None = None,
     ) -> None:
         self._guard = guard
         self.identity = render_identity()
         self._root = cache_dir / "renders" / self.identity
         self.linear = linear or LinearCache()
+        self.zoom = zoom or ZoomBases()
         self._remember_stats = remember_stats
         self._stats: dict[str, PhotoStats] = {}
         self._locks: dict[Path, threading.Lock] = {}
@@ -102,22 +108,90 @@ class Renderer:
             self._remember_stats(photo.id, measured.model_dump(), self.identity)
         return measured
 
-    def preview_path(self, photo: CatalogPhoto, edit: EffectiveEdit, long_edge: int) -> Path:
-        return self._root / photo.id / f"{edit.revision}-{long_edge}.jpg"
+    def preview_path(
+        self, photo: CatalogPhoto, edit: EffectiveEdit, long_edge: int, *, upright: bool = False
+    ) -> Path:
+        suffix = "-upright" if upright else ""
+        return self._root / photo.id / f"{edit.revision}-{long_edge}{suffix}.jpg"
 
     def thumbnail_path(self, photo: CatalogPhoto, edit: EffectiveEdit) -> Path:
         return self._root / photo.id / f"{edit.revision}-thumb.jpg"
 
-    def preview(self, photo: CatalogPhoto, edit: EffectiveEdit, long_edge: int) -> bytes:
-        """JPEG of ``photo`` with ``edit`` at ``long_edge`` px (never larger than the working size)."""
-        path = self.preview_path(photo, edit, long_edge)
+    def preview(
+        self, photo: CatalogPhoto, edit: EffectiveEdit, long_edge: int, *, upright: bool = False
+    ) -> bytes:
+        """JPEG of ``photo`` with ``edit`` at ``long_edge`` px (never larger than the working size).
+
+        ``upright`` leaves out the geometry: the whole photo as shot, with the edit's colors (the crop tool
+        turns, straightens and crops it on screen).
+        """
+        path = self.preview_path(photo, edit, long_edge, upright=upright)
         with self._lock(path):
             if path.is_file():
                 return path.read_bytes()
             base = self.linear.get(photo)
-            data = self._encode(photo, edit, base, long_edge, PREVIEW_QUALITY, self.anchors(photo, base))
+            anchors = self.anchors(photo, base)
+            data = self._encode(photo, edit, base, long_edge, PREVIEW_QUALITY, anchors, upright=upright)
             self._guard.write_atomic(path, data)
             return data
+
+    def zoom_info(self, photo: CatalogPhoto, edit: EffectiveEdit, level: ZoomLevel) -> ZoomInfo:
+        """Start the decode for ``level`` if needed; once ready, the edited image's size at that level."""
+        if self.zoom.request(photo, level) != "ready":
+            return ZoomInfo(level=level, state="decoding")
+        image = self._zoom_image(photo, edit, level)
+        if image is None:  # dropped by another photo's decode just now
+            return ZoomInfo(level=level, state="decoding")
+        height, width = image.pixels.shape[:2]
+        return ZoomInfo(level=level, state="ready", width=width, height=height)
+
+    def tile_path(self, photo: CatalogPhoto, edit: EffectiveEdit, level: ZoomLevel, tx: int, ty: int) -> Path:
+        return self._root / photo.id / f"{edit.revision}-z{level}-{tx}-{ty}.jpg"
+
+    def tile(
+        self, photo: CatalogPhoto, edit: EffectiveEdit, level: ZoomLevel, tx: int, ty: int
+    ) -> bytes | None:
+        """JPEG of one ``TILE_SIZE`` tile of the edited image at ``level`` (the same pixels as that part of a
+        whole render at that size); None while the base is still decoding."""
+        path = self.tile_path(photo, edit, level, tx, ty)
+        with self._lock(path):
+            if path.is_file():
+                return path.read_bytes()
+            self.zoom.request(photo, level)
+            image = self._zoom_image(photo, edit, level)
+            if image is None:
+                return None
+            height, width = image.pixels.shape[:2]
+            left, top = tx * TILE_SIZE, ty * TILE_SIZE
+            if tx < 0 or ty < 0 or left >= width or top >= height:
+                raise InvalidRequestError(
+                    f"tile {tx},{ty} is outside the {width}×{height} image at {level} %"
+                )
+            base = self.zoom.peek(photo, level)
+            assert base is not None
+            pixels = render_window(
+                image,
+                edit.adjustments,
+                profile_of(photo),
+                anchors=self.anchors(photo),
+                full_width=shown_width(base, edit.adjustments.geometry, photo.width),
+                window=(left, top, min(width, left + TILE_SIZE), min(height, top + TILE_SIZE)),
+            )
+            buf = io.BytesIO()
+            Image.fromarray(np.asarray(quantize(pixels, 8))).save(buf, "JPEG", quality=PREVIEW_QUALITY)
+            data = buf.getvalue()
+            self._guard.write_atomic(path, data)
+            return data
+
+    def _zoom_image(self, photo: CatalogPhoto, edit: EffectiveEdit, level: ZoomLevel) -> LinearImage | None:
+        """The zoom base with the edit's geometry applied (kept while the geometry stays the same)."""
+        geometry = edit.adjustments.geometry
+        return self.zoom.derived(
+            photo,
+            level,
+            geometry.model_dump_json(),
+            lambda base: geometry_stage(base, edit.adjustments, original_width=photo.width)[0],
+        )
 
     def has_thumbnail(self, photo: CatalogPhoto, edit: EffectiveEdit) -> bool:
         return self.thumbnail_path(photo, edit).is_file()
@@ -163,6 +237,7 @@ class Renderer:
         removed = sum(1 for p in root.rglob("*") if p.is_file())
         shutil.rmtree(root)
         self.linear.clear()
+        self.zoom.clear()
         return removed
 
     def _encode(
@@ -173,10 +248,15 @@ class Renderer:
         long_edge: int,
         quality: int,
         anchors: ToneAnchors,
+        *,
+        upright: bool = False,
     ) -> bytes:
+        adjustments = edit.adjustments
+        if upright:
+            adjustments = adjustments.model_copy(update={"geometry": Geometry()})
         pixels = render(
             base,
-            edit.adjustments,
+            adjustments,
             profile_of(photo),
             original_width=photo.width,
             long_edge=long_edge,

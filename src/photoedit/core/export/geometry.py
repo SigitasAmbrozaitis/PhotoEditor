@@ -10,6 +10,7 @@ import math
 from dataclasses import dataclass
 
 from photoedit.core.errors import InvalidRequestError
+from photoedit.core.geometry import parse_ratio
 from photoedit.models.export import (
     AspectSettings,
     CropAnchor,
@@ -49,14 +50,6 @@ class ExportGeometry:
 
 def _round(value: float) -> int:
     return math.floor(value + 0.5)
-
-
-def parse_ratio(ratio: str) -> float:
-    """'4:5' → 0.8 (width ÷ height)."""
-    width, height = (float(part) for part in ratio.split(":"))
-    if width <= 0 or height <= 0:
-        raise InvalidRequestError(f"aspect ratio '{ratio}' must have two positive numbers")
-    return width / height
 
 
 def _oriented(ratio: float, orientation: Orientation, width: int, height: int) -> float:

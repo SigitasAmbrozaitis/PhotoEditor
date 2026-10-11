@@ -22,11 +22,13 @@ from PIL import Image
 from photoedit.core import color
 from photoedit.core.cache import resize_linear
 from photoedit.core.decode import LinearImage, decode_linear
+from photoedit.core.geometry import largest_crop
 from photoedit.core.render.anchors import measure_anchors
 from photoedit.core.render.pipeline import render, render_identity
 from photoedit.core.render.profile import GENERIC, CameraProfile, profile_for
 from photoedit.core.render.stages import quantize
 from photoedit.models import AdjustmentParams
+from photoedit.models.adjustments import Geometry
 from photoedit.safety import PathGuard
 
 type U8 = npt.NDArray[np.uint8]
@@ -71,6 +73,19 @@ GOLDEN_EDITS: dict[str, AdjustmentParams] = {
 }
 
 
+def _framed() -> AdjustmentParams:
+    """The busy edit with every geometry step (P6a.13): a flip, a quarter turn, a straighten and a 4:5 crop
+    that fits the turned 64 × 96 frame of the synthetic scene."""
+    crop = largest_crop(0.8, 7, 64, 96)
+    geometry = Geometry(flip_horizontal=True, rotate=90, angle=7, aspect="4:5", crop=crop)
+    return GOLDEN_EDITS["busy"].model_copy(update={"geometry": geometry})
+
+
+# Synthetic references also cover the geometry; real-photo references keep GOLDEN_EDITS (a crop fitted to one
+# frame shape doesn't fit every photo).
+SYNTHETIC_EDITS: dict[str, AdjustmentParams] = {**GOLDEN_EDITS, "framed": _framed()}
+
+
 def synthetic_scene() -> LinearImage:
     """96×64 scene-linear test image: the chart (6×4 patches of 16 px) over a gray ramp and a hue ramp."""
     height, width = 64, 96
@@ -93,14 +108,14 @@ def synthetic_scene() -> LinearImage:
 
 
 def render_synthetic(profile: CameraProfile, edit: str) -> U8:
-    out = render(synthetic_scene(), GOLDEN_EDITS[edit], profile, original_width=96)
+    out = render(synthetic_scene(), SYNTHETIC_EDITS[edit], profile, original_width=96)
     return np.asarray(quantize(out, 8), dtype=np.uint8)
 
 
 def synthetic_cases() -> list[tuple[str, CameraProfile, str]]:
     """(file stem, profile, edit) for every committed synthetic golden image."""
     xt3 = profile_for("FUJIFILM X-T3")
-    return [(f"synthetic-{p.id}-{e}", p, e) for p in (GENERIC, xt3) for e in GOLDEN_EDITS]
+    return [(f"synthetic-{p.id}-{e}", p, e) for p in (GENERIC, xt3) for e in SYNTHETIC_EDITS]
 
 
 # ----------------------------------------------------------------- real photos (local only)

@@ -4,14 +4,48 @@
     {
       "name": "backend",
       "runtimeExecutable": ".venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "photoedit", "ui", "--no-browser", "--port", "8766"],
+      "runtimeArgs": [
+        "-m",
+        "photoedit",
+        "ui",
+        "--no-browser",
+        "--port",
+        "8766"
+      ],
+      "port": 8766
+    },
+    {
+      "name": "backend-sandbox",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "photoedit",
+        "ui",
+        "--no-browser",
+        "--port",
+        "8766"
+      ],
+      "env": {
+        "PHOTOEDIT_WORKSPACE_DIR": "output/preview/workspace",
+        "PHOTOEDIT_CACHE_DIR": "output/preview/cache",
+        "PHOTOEDIT_STYLES_DIR": "output/preview/styles",
+        "PHOTOEDIT_PRESETS_DIR": "output/preview/export-presets"
+      },
       "port": 8766
     },
     {
       "name": "ui-dev",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["ui/node_modules/vite/bin/vite.js", "ui", "--port", "5174", "--strictPort"],
-      "env": { "PHOTOEDIT_BACKEND": "http://127.0.0.1:8766" },
+      "runtimeArgs": [
+        "ui/node_modules/vite/bin/vite.js",
+        "ui",
+        "--port",
+        "5174",
+        "--strictPort"
+      ],
+      "env": {
+        "PHOTOEDIT_BACKEND": "http://127.0.0.1:8766"
+      },
       "port": 5174
     }
   ]
