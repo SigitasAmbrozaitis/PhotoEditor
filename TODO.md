@@ -1523,13 +1523,20 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   crops ≥ 90 % in each folder (photos labeled "no subject" count as hits when the result is `none` or the crop is
   centered). Results go into `docs/geometry.md`. ⛔ **If a target is missed, STOP and discuss**, with the misses,
   their causes and the options (e.g. a larger model, tuned scoring, manual or AI subjects for that kind of shot).
+  **Status 2026-10-11, at the STOP**: 44 photos labeled (`tests/data/subject-labels.json`); `photoedit subject
+  eval` built. The crop score counts against what a crop of that size could keep at most, since a cat filling a
+  2:3 frame can't fit a 4:5 crop. Results: drift 92/92 %, both cats 83/92 %, rally 93/93 % (all pass);
+  orange cat + sunsets **33/33 % (missed)**. The four TV-tower sunsets are labeled "no subject", and saliency
+  moves their crops. Measured option, not committed: saliency never the main subject on its own → rally
+  100/100 %, sunsets 83/83 % (one miss: DSCF6288, the crop follows the camera's focus point on the tower).
+  Waiting for the user: label check + which option.
 
 ### API + CLI
-- [ ] **P6b.10** Endpoints: `GET /api/photos/{id}/subject` (detect if needed) → `SubjectInfo`;
+- [x] **P6b.10** Endpoints: `GET /api/photos/{id}/subject` (detect if needed) → `SubjectInfo`;
   `PUT /api/photos/{id}/subject` (`{box}` or `{box: null}` = use detected); `POST /api/photos/{id}/suggest-crop`
   (`geometry` = the draft, `aspect`, `orientation`, `placement`, `zoom`) → `CropSuggestion` (nothing saved); `POST /api/jobs` `detect_subjects` (a selection, in the background); the export
   plan's subject column. Regenerate `openapi.json` + `schema.d.ts`. Tests for every endpoint.
-- [ ] **P6b.11** CLI: `photoedit subject detect [PHOTO…|--folder DIR] | show PHOTO | eval`, `photoedit crop suggest
+- [x] **P6b.11** CLI: `photoedit subject detect [PHOTO…|--folder DIR] | show PHOTO | eval`, `photoedit crop suggest
   PHOTO --aspect 4:5 [--orientation …] [--placement thirds] [--zoom 1.2] [--apply]`, `photoedit models fetch`
   (P6b.1). Tests with `CliRunner`.
 

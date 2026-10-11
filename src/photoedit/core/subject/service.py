@@ -22,6 +22,7 @@ from photoedit.core.decode import decode_linear, is_raw
 from photoedit.core.edits import source_defaults
 from photoedit.core.errors import NotFoundError
 from photoedit.core.geometry import check_geometry, oriented_ratio, parse_ratio, subject_in_frame, turned_size
+from photoedit.core.jobs import ItemResult, ItemSpec
 from photoedit.core.library import Library
 from photoedit.core.metadata import AfMode
 from photoedit.core.render.pipeline import render
@@ -45,6 +46,7 @@ from photoedit.core.subject.model_files import (
     verified_model_path,
 )
 from photoedit.core.subject.suggest import suggest
+from photoedit.models import Job, JobKind
 from photoedit.models.crop import CropSuggestion, CropSuggestionRequest
 from photoedit.models.subject import (
     SubjectBox,
@@ -61,6 +63,9 @@ NO_OBJECT_MODEL = (
     "saliency and the focus point). Run `photoedit models fetch`."
 )
 NO_FACE_MODEL = "No face model, so faces were not looked for. Run `photoedit models fetch`."
+# Photos detected at once by a background job: each holds a half-size decode (~0.3 GiB at its peak), and
+# OpenCV runs single-threaded here (see the render pipeline), so photos in parallel use the cores.
+DETECT_THREADS = 6
 
 
 class Subjects:
@@ -156,6 +161,25 @@ class Subjects:
             kind=info.kind if framed is not None else None,
             subject=framed,
             warnings=warnings,
+        )
+
+    def detect_job(self, photo_ids: list[str]) -> Job:
+        """Detect the photos' subjects in the background; photos already detected are skipped quickly."""
+        photos = [self._library.photo(pid) for pid in photo_ids]  # NotFoundError before anything starts
+
+        def work(index: int) -> ItemResult:
+            photo = photos[index]
+            info = self.detected(photo)
+            found = f"{info.kind.value} ({info.source.value})" if info.kind else info.source.value
+            return ItemResult(photo_id=photo.id, message=found, warnings=tuple(info.notes))
+
+        noun = "photo" if len(photos) == 1 else "photos"
+        return self._library.jobs.submit(
+            JobKind.DETECT_SUBJECTS,
+            f"Detect subjects in {len(photos)} {noun}",
+            [ItemSpec(filename=p.path.name, photo_id=p.id) for p in photos],
+            work,
+            parallel=DETECT_THREADS,
         )
 
     def cached(self, photo: CatalogPhoto) -> SubjectInfo | None:

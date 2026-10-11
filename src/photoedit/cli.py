@@ -44,6 +44,8 @@ crop_app = typer.Typer(help="A photo's crop, straighten angle, quarter turn and 
 app.add_typer(crop_app, name="crop")
 models_app = typer.Typer(help="Pinned detector models for subject detection.", no_args_is_help=True)
 app.add_typer(models_app, name="models")
+subject_app = typer.Typer(help="Photos' main subjects: detect, show, evaluate.", no_args_is_help=True)
+app.add_typer(subject_app, name="subject")
 
 ConfigOption = Annotated[
     Path | None,
@@ -822,6 +824,53 @@ def crop_set(
     _change_geometry(photo, change, config)
 
 
+@crop_app.command("suggest")
+def crop_suggest(
+    photo: PhotoArg,
+    aspect: Annotated[str, typer.Option(help="Crop ratio, e.g. 4:5.")],
+    orientation: Annotated[
+        str, typer.Option(help="auto (follow the photo), portrait or landscape.")
+    ] = "auto",
+    placement: Annotated[str, typer.Option(help="centered or thirds.")] = "centered",
+    zoom: Annotated[float, typer.Option(help="1 = the largest crop; higher = tighter (up to 10).")] = 1.0,
+    apply: Annotated[
+        bool, typer.Option("--apply", help="Set the suggested crop and lock its aspect.")
+    ] = False,
+    config: ConfigOption = None,
+) -> None:
+    """Suggest a crop of a ratio framing the photo's subject, in its current flips, turn and angle."""
+    from pydantic import ValidationError
+
+    from photoedit.models.adjustments import GeometryChange
+    from photoedit.models.crop import CropSuggestionRequest
+
+    services = _open_services(config)
+    try:
+        found = _find_photos(services, [photo])[0]
+        geometry = services.library.photo_detail(found.id).edit.adjustments.geometry
+        try:
+            request = CropSuggestionRequest.model_validate(
+                {
+                    "geometry": geometry,
+                    "aspect": aspect,
+                    "orientation": orientation,
+                    "placement": placement,
+                    "zoom": zoom,
+                }
+            )
+        except ValidationError as exc:
+            first = exc.errors()[0]
+            raise typer.BadParameter(f"{'.'.join(str(p) for p in first['loc'])}: {first['msg']}") from None
+        suggestion = services.subjects.suggest_crop(found, request)
+        typer.echo(suggestion.model_dump_json(indent=2))
+        if apply:
+            change = GeometryChange(crop=suggestion.crop, aspect=suggestion.aspect)
+            services.library.set_geometry(found.id, change)
+            typer.echo(_geometry_report(services, found))
+    finally:
+        services.close()
+
+
 @crop_app.command("reset")
 def crop_reset(photo: PhotoArg, config: ConfigOption = None) -> None:
     """Back to the original framing (no crop, angle, turn or flips)."""
@@ -943,6 +992,102 @@ def models_fetch(
             continue
         typer.echo(f"  {status.value}: {model_path(settings.cache_dir, model)}")
     if failed:
+        raise typer.Exit(1)
+
+
+@subject_app.command("detect")
+def subject_detect(
+    photos: PhotosArg = None,
+    folder: Annotated[
+        Path | None, typer.Option(help="Every photo of this imported folder instead of PHOTO….")
+    ] = None,
+    config: ConfigOption = None,
+) -> None:
+    """Detect the photos' main subjects (stored; photos already detected are skipped)."""
+    services = _open_services(config)
+    try:
+        chosen = _folder_photos(services, folder) if folder else _find_photos(services, photos)
+        done = _run_job(services, services.subjects.detect_job([p.id for p in chosen]))
+        for item in done.items:
+            if item.message:
+                typer.echo(f"  {item.filename}: {item.message}")
+            for warning in item.warnings:
+                typer.echo(f"    {warning}")
+    finally:
+        services.close()
+
+
+@subject_app.command("show")
+def subject_show(photo: PhotoArg, config: ConfigOption = None) -> None:
+    """Print a photo's subject (detected now if needed) with every candidate found, as JSON."""
+    services = _open_services(config)
+    try:
+        info = services.subjects.subject(_find_photos(services, [photo])[0])
+        typer.echo(info.model_dump_json(indent=2))
+    finally:
+        services.close()
+
+
+@subject_app.command("eval")
+def subject_eval(
+    labels: Annotated[
+        Path | None,
+        typer.Option(help="Labeled boxes (default: tests/data/subject-labels.json in the project)."),
+    ] = None,
+    config: ConfigOption = None,
+) -> None:
+    """Compare detection with hand-labeled subjects: hit rate and 4:5 crops per folder, plus a contact sheet.
+
+    Folders of the labels that aren't imported yet are imported (read-only). Exits with 1 if a folder misses
+    its targets.
+    """
+    from photoedit.core.library import CURRENT_FOLDER
+    from photoedit.core.subject.evaluate import contact_sheet, load_labels, report, scores
+
+    settings = load_settings(config)
+    labels_path = labels or settings.project_root / "tests" / "data" / "subject-labels.json"
+    loaded = load_labels(labels_path)
+    known = [
+        *settings.style_sample_dirs,
+        *([settings.sample_photos_dir] if settings.sample_photos_dir else []),
+    ]
+    folders = {d.name: d for d in known if d.is_dir()}
+    absent = sorted({p.folder for p in loaded.photos} - set(folders))
+    if absent:
+        typer.echo(f"Skipping labels of folders that aren't configured or present: {', '.join(absent)}")
+    chosen = [p for p in loaded.photos if p.folder in folders]
+    services = _open_services(config)
+    try:
+        previous = services.catalog.get_state(CURRENT_FOLDER)
+        for name in sorted({p.folder for p in chosen}):
+            if any(
+                services.catalog.get_by_path(folders[name] / p.file) is None
+                for p in chosen
+                if p.folder == name
+            ):
+                typer.echo(f"Importing {folders[name]}...")
+                services.jobs.wait(services.library.import_folder(folders[name]).id)
+        if previous is not None:
+            services.catalog.set_state(CURRENT_FOLDER, previous)
+        photos = []
+        for label in chosen:
+            photo = services.catalog.get_by_path(folders[label.folder] / label.file)
+            if photo is None:
+                raise typer.BadParameter(
+                    f"{label.folder}/{label.file} is not in its folder", param_hint="--labels"
+                )
+            photos.append(photo)
+        typer.echo(f"Detecting subjects in {len(photos)} photos (stored ones are reused)...")
+        from photoedit.core.subject.evaluate import evaluate
+
+        results = evaluate(chosen, photos, services.subjects.detected)
+        typer.echo(report(results))
+        sheet = settings.output_dir / "contact-sheets" / "subject-eval.jpg"
+        services.guard.write_atomic(sheet, contact_sheet(results, services.cache.thumbnail))
+        typer.echo(f"Contact sheet: {sheet}")
+    finally:
+        services.close()
+    if not all(s.passed for s in scores(results)):
         raise typer.Exit(1)
 
 

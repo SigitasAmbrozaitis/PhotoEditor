@@ -31,6 +31,7 @@ from photoedit.models import (
     StyleView,
 )
 from photoedit.models.adjustments import Geometry, GeometryChange, GeometryPreviewRequest
+from photoedit.models.crop import CropSuggestion, CropSuggestionRequest
 from photoedit.models.export import (
     DestinationCheck,
     DestinationCheckRequest,
@@ -41,6 +42,7 @@ from photoedit.models.export import (
     RevealRequest,
 )
 from photoedit.models.fs import DirListing
+from photoedit.models.job import DetectSubjectsRequest
 from photoedit.models.photo import ZoomInfo, ZoomLevel
 from photoedit.models.style import (
     PhotoStyleRequest,
@@ -57,6 +59,7 @@ from photoedit.models.style import (
     StyleVersionInfo,
     style_view,
 )
+from photoedit.models.subject import SubjectInfo, SubjectUpdate
 from photoedit.services import Services
 
 JPEG = "image/jpeg"
@@ -159,6 +162,29 @@ def preview_geometry(photo_id: str, request: Annotated[GeometryPreviewRequest, B
     """The geometry a change would give, starting from ``geometry`` (e.g. the crop tool's draft). Nothing is
     saved; save it with PUT /edit."""
     return svc.library.preview_geometry(photo_id, request.geometry, request.change)
+
+
+@router.get("/photos/{photo_id}/subject", response_model=SubjectInfo, tags=["edit"])
+def photo_subject(photo_id: str, svc: Svc) -> SubjectInfo:
+    """The photo's main subject: the box set by hand, else the detected one (detected now if needed, which
+    takes a few seconds the first time)."""
+    return svc.subjects.subject(svc.library.photo(photo_id))
+
+
+@router.put("/photos/{photo_id}/subject", response_model=SubjectInfo, tags=["edit"])
+def set_photo_subject(photo_id: str, request: Annotated[SubjectUpdate, Body()], svc: Svc) -> SubjectInfo:
+    """Set the subject by hand (upright photo coordinates), or ``{"box": null}`` to use the detected one.
+    Changes no pixels: the edit's revision and its previews stay."""
+    return svc.subjects.set_manual(svc.library.photo(photo_id), request.box)
+
+
+@router.post("/photos/{photo_id}/suggest-crop", response_model=CropSuggestion, tags=["edit"])
+def suggest_crop(
+    photo_id: str, request: Annotated[CropSuggestionRequest, Body()], svc: Svc
+) -> CropSuggestion:
+    """A crop of the ratio framing the photo's subject, in the frame of the given (draft) geometry. Nothing
+    is saved."""
+    return svc.subjects.suggest_crop(svc.library.photo(photo_id), request)
 
 
 @router.put("/photos/{photo_id}/style", response_model=PhotoDetail, tags=["edit"])
@@ -437,7 +463,9 @@ def list_jobs(svc: Svc) -> list[Job]:
 
 @router.post("/jobs", response_model=Job, status_code=status.HTTP_201_CREATED, tags=["jobs"])
 def create_job(request: Annotated[JobRequest, Body()], svc: Svc) -> Job:
-    """Apply a style, export, or apply then export."""
+    """Apply a style, export, apply then export, or detect subjects."""
+    if isinstance(request, DetectSubjectsRequest):
+        return svc.subjects.detect_job(request.photo_ids)
     if isinstance(request, ExportRequest):
         return svc.exporter.export(
             request.photo_ids, request.settings, request.destination, request.preset_id

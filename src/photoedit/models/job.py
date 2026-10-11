@@ -17,6 +17,7 @@ class JobKind(StrEnum):
     APPLY_STYLE = "apply_style"
     EXPORT = "export"
     APPLY_AND_EXPORT = "apply_and_export"
+    DETECT_SUBJECTS = "detect_subjects"
 
 
 class JobStatus(StrEnum):
@@ -94,4 +95,13 @@ class ApplyAndExportRequest(_JobRequest):
     destination: str = Field(min_length=1)
 
 
-JobRequest = Annotated[ApplyStyleRequest | ExportRequest | ApplyAndExportRequest, Field(discriminator="kind")]
+class DetectSubjectsRequest(_JobRequest):
+    """Detect the photos' main subjects in the background (stored; photos already detected are skipped)."""
+
+    kind: Literal[JobKind.DETECT_SUBJECTS] = JobKind.DETECT_SUBJECTS
+
+
+JobRequest = Annotated[
+    ApplyStyleRequest | ExportRequest | ApplyAndExportRequest | DetectSubjectsRequest,
+    Field(discriminator="kind"),
+]
