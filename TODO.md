@@ -1375,6 +1375,9 @@ read-only crop overlay toggle and a disabled angle slider.
 
 ### ⛔ STOP: user approves Phase 6a
 
+**Approved 2026-10-11.** The user tested it ("looks solid"). Requested for later: a 3×3 grid overlay
+(rule of thirds) to compose by, planned as P6b.13.
+
 ## Phase 6b: Subject detection & suggested crops
 
 Goal: the code finds each photo's **main subject** (a car, a cat, a person…) and **suggests a crop** for an aspect
@@ -1475,18 +1478,23 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   "Show subject" toggle draws the main box (labeled with its kind and source) and the other candidates faintly.
   "Set subject" lets you drag a box by hand, and "Use detected" clears it. The Library gets a "Detect subjects"
   action for the selection (a background job).
-- [ ] **P6b.13** Export dialog: the "Detected subject" anchor is enabled (no "(Phase 6)"), and the plan table
+- [ ] **P6b.13** Grid overlay (requested 2026-10-11 after the 6a test): a 3×3 rule-of-thirds grid to compose by,
+  on demand rather than only while dragging. A **Grid** toggle (key `G`) in the crop tool, where it shows over
+  the crop rectangle all the time, and in the Photo view (Fit), where it shows over the photo. The choice is
+  remembered per browser. It fits with Suggest crop's `thirds` placement: the subject lands on a grid
+  intersection. Display only (no edit data), so nothing reaches the render or exports.
+- [ ] **P6b.14** Export dialog: the "Detected subject" anchor is enabled (no "(Phase 6)"), and the plan table
   shows each photo's subject (kind + source, or "none → centered").
-- [ ] **P6b.14** UI tests: Vitest for Suggest crop (placement, zoom), the subject overlay and manual box, and the
-  export dialog's subject column. Playwright: suggest a 4:5 crop and apply it; export with the Instagram preset
+- [ ] **P6b.15** UI tests: Vitest for Suggest crop (placement, zoom), the subject overlay and manual box, and the
+  export dialog's subject column, the grid toggle (button and `G`, remembered). Playwright: suggest a 4:5 crop and apply it; export with the Instagram preset
   (subject anchor). Screenshots of the subject overlay.
 
 ### Tests + docs
-- [ ] **P6b.15** Golden (local): subject detection on the labeled set matches the stored results (determinism);
+- [ ] **P6b.16** Golden (local): subject detection on the labeled set matches the stored results (determinism);
   Instagram exports of labeled photos keep the labeled subject; the sample folders' hashes are unchanged.
-- [ ] **P6b.16** `docs/geometry.md` (subject cues, the model, how the main subject is chosen, the evaluation
+- [ ] **P6b.17** `docs/geometry.md` (subject cues, the model, how the main subject is chosen, the evaluation
   results, suggested crops and placement, the export `subject` anchor) and README (`models fetch`, subject CLI).
-- [ ] **P6b.17** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e).
+- [ ] **P6b.18** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e).
 
 ### 🧑 Human test: Phase 6b
 0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`,
@@ -1494,14 +1502,16 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
 1. Rally (`2026-08-16`) and drift (`2026-07-26`): open several photos → Crop → **Show subject** → the car is
    boxed (or say which ones are wrong) → **Suggest crop** 4:5 and 1:1, centered and thirds → the car stays in the
    frame. Same for the cats (`2026-08-11`, `2026-08-17`), including the black cat.
-2. On a photo where detection is wrong: **Set subject** → drag a box on the right thing → Suggest crop now frames
+2. **Grid** (or `G`) in the crop tool and in the Photo view → a 3×3 grid; after Suggest crop with **thirds**, the
+   subject sits on a grid intersection. Reload → the grid setting is remembered.
+3. On a photo where detection is wrong: **Set subject** → drag a box on the right thing → Suggest crop now frames
    it.
-3. Library → select ~10 rally/drift photos → Export… with **Instagram portrait** → the plan shows each photo's
+4. Library → select ~10 rally/drift photos → Export… with **Instagram portrait** → the plan shows each photo's
    subject → export → in the files the cars are inside the 4:5 frame (not cut off by a center crop).
-4. `uv run photoedit subject eval` → the report and contact sheet match `docs/geometry.md`. `uv run photoedit crop
+5. `uv run photoedit subject eval` → the report and contact sheet match `docs/geometry.md`. `uv run photoedit crop
    suggest DSCF5437 --aspect 4:5` prints a suggestion.
-5. The photo folders are unchanged (Explorer, Date modified). `uv run pytest -m golden` passes.
-6. **Give feedback** on the suggested framing, detection misses and the subject tools.
+6. The photo folders are unchanged (Explorer, Date modified). `uv run pytest -m golden` passes.
+7. **Give feedback** on the grid, the suggested framing, detection misses and the subject tools.
 
 ### ⛔ STOP: user approves Phase 6b
 

@@ -46,6 +46,7 @@
 | Zoom view (Phase 6a) | Fit / 50 % (half-size decode) / 100 % (full decode, ~13–25 s the first time per photo; the 50 % view is shown enlarged meanwhile). **Wait accepted**; speed-ups stay with §7.1 | 2026-10-11 |
 | Subject detection (Phase 6b) | **Classical cues** (AF point from the Fujifilm maker note, sharpness, saliency, OpenCV Haar faces) **+ a small pretrained object detector** (COCO classes) run locally on the CPU by OpenCV `cv2.dnn`. Only labeled boxes, not a generative model. Downloaded once by `photoedit models fetch` into `cache/models/` (pinned SHA-256), **after the user OKs the exact file**. Cached in the catalog per detector identity. A manual subject box (`geometry.subject`) wins | 2026-10-11 |
 | Suggested crops (Phase 6b) | Largest crop of the ratio keeping the subject + margin; placement **selectable: centered (default) or thirds**; `zoom` tightens | 2026-10-11 |
+| Grid overlay (Phase 6b, user request after the 6a test) | **3×3 rule-of-thirds grid on demand**: a Grid toggle (key G) in the crop tool and the Photo view, remembered per browser; display only (not part of the edit). Pairs with the `thirds` placement of suggested crops | 2026-10-11 |
 
 **Target machine**: i7-12700H (14 cores / 20 threads), 16 GB RAM, RTX 3060 Laptop (6 GB), Windows 11.
 .NET 9 SDK is installed. Python and uv are not installed yet.
