@@ -1182,6 +1182,9 @@ threads. The library protects every imported folder in the path guard. Per-photo
 
 ### ⛔ STOP: user approves Phase 5
 
+**Approved 2026-10-11.** The user ran the human test: export works. Full-size export speed is accepted for now and
+stays an open concern (PLAN §7.1), to be decided at the start of Phase 9.
+
 ## Phase 6: Geometry & centering (outline)
 - [ ] **P6.0** Detail this phase. ⛔ STOP for review.
 - [ ] Crop / rotate / straighten / flip / zoom in the pipeline. Subject detection (faces + saliency). `suggest_crop(aspect)`.
