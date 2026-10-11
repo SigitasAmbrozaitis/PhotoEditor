@@ -19,10 +19,9 @@ from photoedit.core.library import Library
 from photoedit.core.subject.cues import RGB8
 from photoedit.core.subject.service import NO_FACE_MODEL, NO_OBJECT_MODEL, Subjects
 from photoedit.models.adjustments import Geometry
+from photoedit.models.crop import CropPlacement, CropSuggestionRequest
 from photoedit.models.export import Orientation
 from photoedit.models.subject import (
-    CropPlacement,
-    CropSuggestionRequest,
     SubjectBox,
     SubjectCandidate,
     SubjectKind,

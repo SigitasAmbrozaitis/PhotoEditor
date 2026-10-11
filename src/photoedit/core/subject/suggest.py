@@ -22,7 +22,8 @@ from dataclasses import dataclass
 
 from photoedit.core.geometry import Rect, crop_inside
 from photoedit.models.adjustments import CropRect
-from photoedit.models.subject import CropPlacement, SubjectBox
+from photoedit.models.crop import CropPlacement
+from photoedit.models.subject import SubjectBox
 
 MARGIN = 0.05
 # The smallest crop (fraction of the largest one) a zoom can ask for: well above CropRect's 1 % minimum.

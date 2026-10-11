@@ -45,9 +45,8 @@ from photoedit.core.subject.model_files import (
     verified_model_path,
 )
 from photoedit.core.subject.suggest import suggest
+from photoedit.models.crop import CropSuggestion, CropSuggestionRequest
 from photoedit.models.subject import (
-    CropSuggestion,
-    CropSuggestionRequest,
     SubjectBox,
     SubjectCandidate,
     SubjectInfo,

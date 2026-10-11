@@ -1502,12 +1502,17 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   size comes from bisection and the center from an exact closest-point search: 0.1 ms straight, ~5 ms
   straightened. Where the frame's edge is closer than the margin, the crop goes to the edge (a subject at the
   photo's edge isn't "cut off"). `oriented_ratio` moved from the export code into `core/geometry.py`.
-- [ ] **P6b.8** Export `anchor: subject`: the aspect crop inside the photo's crop is placed by P6b.7's rule
+- [x] **P6b.8** Export `anchor: subject`: the aspect crop inside the photo's crop is placed by P6b.7's rule
   (centered, zoom 1), with the subject mapped into the edited photo's pixels (`subject_in_frame`, then cut to the
   photo's crop; a subject outside the crop counts as none). With no subject it falls back to center, with a warning in the plan. The built-in Instagram
   presets switch to `subject`. The export plan shows each photo's subject source. Missing detections are computed
   when the plan is made, in parallel, and cached. Tests: the plan and the files for a synthetic photo with a known
   off-center subject; the fallback warning; determinism.
+  Done 2026-10-11. The aspect box keeps the centered box's exact size; only its position follows the subject.
+  Detections missing when a plan is made run on up to 8 threads and are stored, so the export reuses them.
+  Plan items carry `subject` (source) and `subject_kind`, plus warnings ("no subject found: centered", "the
+  subject is outside the photo's crop: centered", "the subject is cut off: …"). Subject models split:
+  `models/crop.py` now holds the suggestion models, so `models/export.py` can use the subject enums.
 - [ ] **P6b.9** Evaluation set + report: hand-labeled main-subject boxes for ~40 photos across the four sample
   folders (rally, drift, both cats, orange cat + sunsets), including hard ones: tiny drift cars, the black cat,
   the helicopter, and sunsets with no subject. Claude labels them from previews, and the user checks the labels on

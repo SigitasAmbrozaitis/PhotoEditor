@@ -385,3 +385,20 @@ def subject_in_frame(box: SubjectBox, geometry: Geometry, width: float, height: 
     if right - left < MIN_BOX_SIZE or bottom - top < MIN_BOX_SIZE:
         return None
     return SubjectBox(left=left, top=top, right=right, bottom=bottom)
+
+
+def subject_in_crop(box: SubjectBox, geometry: Geometry, width: float, height: float) -> SubjectBox | None:
+    """``box`` (upright, normalized) normalized to the edited photo: mapped into the frame, then cut to the
+    geometry's crop. None when (almost) nothing of it is inside the crop."""
+    framed = subject_in_frame(box, geometry, width, height)
+    if framed is None:
+        return None
+    crop = geometry.crop
+    crop_w, crop_h = crop.right - crop.left, crop.bottom - crop.top
+    left = max(0.0, (framed.left - crop.left) / crop_w)
+    right = min(1.0, (framed.right - crop.left) / crop_w)
+    top = max(0.0, (framed.top - crop.top) / crop_h)
+    bottom = min(1.0, (framed.bottom - crop.top) / crop_h)
+    if right - left < MIN_BOX_SIZE or bottom - top < MIN_BOX_SIZE:
+        return None
+    return SubjectBox(left=left, top=top, right=right, bottom=bottom)

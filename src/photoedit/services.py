@@ -37,7 +37,12 @@ class Services:
         self.subjects = Subjects(self.library, settings.cache_dir)
         self.presets = PresetLibrary(settings.presets_dir, self.guard)
         self.exporter = Exporter(
-            self.library, self.jobs, self.guard, settings, executor_factory=export_executor
+            self.library,
+            self.jobs,
+            self.guard,
+            settings,
+            executor_factory=export_executor,
+            subjects=self.subjects,
         )
 
     def close(self) -> None:

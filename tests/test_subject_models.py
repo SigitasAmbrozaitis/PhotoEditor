@@ -17,9 +17,9 @@ from photoedit.core.scan import SourceKind
 from photoedit.core.styles import StyleLibrary
 from photoedit.models import AdjustmentParams
 from photoedit.models.adjustments import CropRect, Geometry
+from photoedit.models.crop import CropSuggestionRequest
 from photoedit.models.style import StyleCreate
 from photoedit.models.subject import (
-    CropSuggestionRequest,
     SubjectBox,
     SubjectCandidate,
     SubjectInfo,
@@ -217,3 +217,16 @@ def test_old_edit_files_load(store: EditStore) -> None:
     loaded = store.load("abc123")
     assert loaded == PhotoEditFile(photo_id="abc123", overrides={"tone.exposure": 1})
     assert store.subject("abc123") is None
+
+
+def test_subject_in_crop_is_normalized_to_the_edited_photo() -> None:
+    from photoedit.core.geometry import subject_in_crop
+
+    cropped = Geometry(crop=CropRect(left=0.2, top=0.1, right=0.7, bottom=0.9))
+    inside = subject_in_crop(box(0.3, 0.3, 0.4, 0.5), cropped, W, H)
+    assert close(inside, box(0.2, 0.25, 0.4, 0.5))
+    partly = subject_in_crop(box(0.6, 0.3, 0.8, 0.5), cropped, W, H)  # cut at the crop's right edge
+    assert close(partly, box(0.8, 0.25, 1.0, 0.5))
+    assert subject_in_crop(box(0.75, 0.3, 0.9, 0.5), cropped, W, H) is None  # outside the crop
+    turned = subject_in_crop(box(0.1, 0.2, 0.3, 0.6), Geometry(rotate=90), W, H)
+    assert close(turned, box(0.4, 0.1, 0.8, 0.3))

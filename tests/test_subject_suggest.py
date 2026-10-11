@@ -7,7 +7,8 @@ import pytest
 from photoedit.core.geometry import crop_inside, ratio_matches
 from photoedit.core.subject.suggest import MARGIN, suggest
 from photoedit.models.adjustments import CropRect
-from photoedit.models.subject import CropPlacement, SubjectBox
+from photoedit.models.crop import CropPlacement
+from photoedit.models.subject import SubjectBox
 
 W, H = 6000.0, 4000.0
 RATIO_4_5 = 4 / 5

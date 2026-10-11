@@ -8,6 +8,8 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from photoedit.models.subject import SubjectKind, SubjectSource
+
 
 class _Section(BaseModel):
     model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
@@ -117,7 +119,8 @@ class AspectSettings(_Section):
     )
     anchor: CropAnchor = Field(
         default=CropAnchor.CENTER,
-        description="What the aspect crop is centered on. 'subject' needs subject detection (Phase 6).",
+        description="What the aspect crop frames: the photo's main subject (set by hand or detected; "
+        "centered when there is none) or the center.",
     )
 
 
@@ -329,6 +332,12 @@ class ExportPlanItem(BaseModel):
     decode: DecodeUsed = Field(description="How the original is decoded for this export.")
     collision: CollisionStatus
     warnings: list[str] = Field(default_factory=list)
+    subject: SubjectSource | None = Field(
+        default=None,
+        description="Where the subject the aspect crop frames came from ('none' = centered). Only with the "
+        "'subject' anchor.",
+    )
+    subject_kind: SubjectKind | None = None
 
 
 class ExportPlan(BaseModel):

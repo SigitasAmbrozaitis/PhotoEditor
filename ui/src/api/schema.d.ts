@@ -882,7 +882,7 @@ export interface components {
              */
             orientation: components["schemas"]["Orientation"];
             /**
-             * @description What the aspect crop is centered on. 'subject' needs subject detection (Phase 6).
+             * @description What the aspect crop frames: the photo's main subject (set by hand or detected; centered when there is none) or the center.
              * @default center
              */
             anchor: components["schemas"]["CropAnchor"];
@@ -900,7 +900,7 @@ export interface components {
              */
             orientation: components["schemas"]["Orientation"];
             /**
-             * @description What the aspect crop is centered on. 'subject' needs subject detection (Phase 6).
+             * @description What the aspect crop frames: the photo's main subject (set by hand or detected; centered when there is none) or the center.
              * @default center
              */
             anchor: components["schemas"]["CropAnchor"];
@@ -1190,6 +1190,9 @@ export interface components {
             collision: components["schemas"]["CollisionStatus"];
             /** Warnings */
             warnings: string[];
+            /** @description Where the subject the aspect crop frames came from ('none' = centered). Only with the 'subject' anchor. */
+            subject: components["schemas"]["SubjectSource"] | null;
+            subject_kind: components["schemas"]["SubjectKind"] | null;
         };
         /** ExportPreset */
         ExportPreset: {
@@ -2879,6 +2882,16 @@ export interface components {
              */
             samples_stale: boolean;
         };
+        /**
+         * SubjectKind
+         * @enum {string}
+         */
+        SubjectKind: "car" | "motorcycle" | "aircraft" | "animal" | "person" | "face" | "salient" | "af_point";
+        /**
+         * SubjectSource
+         * @enum {string}
+         */
+        SubjectSource: "detected" | "manual" | "af_point" | "none";
         /**
          * TiffCompression
          * @enum {string}

@@ -25,7 +25,12 @@ def _instagram(width: int, height: int, ratio: str) -> dict[str, Any]:
         "file": {"format": "jpeg", "jpeg_quality": 92},
         "color_space": "srgb",
         "size": {"mode": "width_height", "width": width, "height": height, "dont_enlarge": False, "ppi": 72},
-        "aspect": {"ratio": ratio, "orientation": "auto" if ratio == "1:1" else _orientation(width, height)},
+        # Framed on the photo's subject (P6b.8): a center crop cuts off off-center cars and cats.
+        "aspect": {
+            "ratio": ratio,
+            "orientation": "auto" if ratio == "1:1" else _orientation(width, height),
+            "anchor": "subject",
+        },
         "sharpening": {"target": "screen", "amount": "standard"},
         "metadata": {"policy": "copyright_only", "strip_gps": True},
         "naming": {"template": "{original}_ig"},
