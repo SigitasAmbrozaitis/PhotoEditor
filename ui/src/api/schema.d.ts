@@ -206,6 +206,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photos/{photo_id}/geometry/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Geometry
+         * @description The geometry a change would give, starting from ``geometry`` (e.g. the crop tool's draft). Nothing is
+         *     saved; save it with PUT /edit.
+         */
+        post: operations["preview_geometry_api_photos__photo_id__geometry_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photos/{photo_id}/style": {
         parameters: {
             query?: never;
@@ -1529,6 +1550,14 @@ export interface components {
              */
             aspect?: string | null;
             crop?: components["schemas"]["CropRect-Input"] | null;
+        };
+        /**
+         * GeometryPreviewRequest
+         * @description A geometry and a change to try on it (nothing is saved).
+         */
+        GeometryPreviewRequest: {
+            geometry: components["schemas"]["Geometry-Input"];
+            change: components["schemas"]["GeometryChange"];
         };
         /** GradeWheel */
         "GradeWheel-Input": {
@@ -3609,6 +3638,41 @@ export interface operations {
             };
         };
     };
+    preview_geometry_api_photos__photo_id__geometry_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeometryPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Geometry-Output"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     set_photo_style_api_photos__photo_id__style_put: {
         parameters: {
             query?: never;
@@ -3700,8 +3764,8 @@ export interface operations {
             query?: {
                 /** @description The photo's default look with the edit's geometry (same framing). */
                 before?: boolean;
-                /** @description The whole straightened frame without the crop (the crop tool's view). */
-                uncropped?: boolean;
+                /** @description Without any geometry: the whole photo as shot, with its colors (the crop tool). */
+                upright?: boolean;
                 /** @description Long edge in pixels. */
                 size?: number;
             };

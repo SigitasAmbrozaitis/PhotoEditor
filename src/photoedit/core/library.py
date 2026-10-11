@@ -38,7 +38,7 @@ from photoedit.models import (
     PhotoSort,
     SortOrder,
 )
-from photoedit.models.adjustments import GeometryChange
+from photoedit.models.adjustments import Geometry, GeometryChange
 from photoedit.models.photo import ZoomInfo, ZoomLevel
 from photoedit.safety import PathGuard
 
@@ -325,6 +325,11 @@ class Library:
         geometry = apply_change(current.geometry, change, photo.width, photo.height)
         return self.save_edit(photo_id, current.model_copy(update={"geometry": geometry}))
 
+    def preview_geometry(self, photo_id: str, geometry: Geometry, change: GeometryChange) -> Geometry:
+        """``geometry`` with ``change`` applied for this photo, without saving (the crop tool's draft)."""
+        photo = self.photo(photo_id)
+        return apply_change(geometry, change, photo.width, photo.height)
+
     def reset_edit(self, photo_id: str) -> EffectiveEdit:
         """Drop the photo's own tweaks; its style stays (``set_photo_style(id, None)`` removes the style)."""
         photo = self.photo(photo_id)
@@ -363,18 +368,16 @@ class Library:
         self._require_original(photo)
         return self.renderer.thumbnail(photo, edit)
 
-    def preview(
-        self, photo_id: str, long_edge: int, *, before: bool = False, uncropped: bool = False
-    ) -> bytes:
+    def preview(self, photo_id: str, long_edge: int, *, before: bool = False, upright: bool = False) -> bytes:
         """The photo with its edit at ``long_edge`` px. ``before`` = unedited colors with the edit's geometry,
-        so before and after line up; ``uncropped`` = the whole straightened frame (the crop tool's view)."""
+        so before and after line up; ``upright`` = without any geometry (the crop tool's view)."""
         photo = self.photo(photo_id)
         edit = self.edits.effective(photo)
         if before:
             edit = self.edits.before(photo, edit.adjustments.geometry)
-        if not self.renderer.preview_path(photo, edit, long_edge, uncropped=uncropped).is_file():
+        if not self.renderer.preview_path(photo, edit, long_edge, upright=upright).is_file():
             self._require_original(photo)
-        return self.renderer.preview(photo, edit, long_edge, uncropped=uncropped)
+        return self.renderer.preview(photo, edit, long_edge, upright=upright)
 
     def zoom_info(self, photo_id: str, level: ZoomLevel) -> ZoomInfo:
         """The zoom view at ``level`` (50 or 100 %): starts its decode if needed."""

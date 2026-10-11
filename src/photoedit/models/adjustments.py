@@ -234,6 +234,15 @@ class GeometryChange(BaseModel):
     crop: CropRect | None = None
 
 
+class GeometryPreviewRequest(BaseModel):
+    """A geometry and a change to try on it (nothing is saved)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    geometry: Geometry
+    change: GeometryChange
+
+
 class Lens(_Group):
     profile_corrections: bool = Field(default=False, description="Apply lens distortion/vignetting profile.")
     remove_chromatic_aberration: bool = False

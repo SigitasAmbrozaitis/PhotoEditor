@@ -551,6 +551,59 @@
         }
       }
     },
+    "/api/photos/{photo_id}/geometry/preview": {
+      "post": {
+        "tags": [
+          "edit"
+        ],
+        "summary": "Preview Geometry",
+        "description": "The geometry a change would give, starting from ``geometry`` (e.g. the crop tool's draft). Nothing is\nsaved; save it with PUT /edit.",
+        "operationId": "preview_geometry_api_photos__photo_id__geometry_preview_post",
+        "parameters": [
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeometryPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Geometry-Output"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/photos/{photo_id}/style": {
       "put": {
         "tags": [
@@ -693,16 +746,16 @@
             "description": "The photo's default look with the edit's geometry (same framing)."
           },
           {
-            "name": "uncropped",
+            "name": "upright",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "The whole straightened frame without the crop (the crop tool's view).",
+              "description": "Without any geometry: the whole photo as shot, with its colors (the crop tool).",
               "default": false,
-              "title": "Uncropped"
+              "title": "Upright"
             },
-            "description": "The whole straightened frame without the crop (the crop tool's view)."
+            "description": "Without any geometry: the whole photo as shot, with its colors (the crop tool)."
           },
           {
             "name": "size",
@@ -3781,6 +3834,24 @@
         "type": "object",
         "title": "GeometryChange",
         "description": "A change to a photo's geometry; only the fields given change.\n\nCore applies them in this order: reset, flips, quarter turn, angle, aspect, crop. Flips and quarter turns\ncarry the crop along (it keeps framing the same content), and a flip mirrors the angle. After a change of\nangle or aspect the crop is shrunk around its center until it fits the straightened image; a crop given\nexplicitly is checked as is and rejected if it doesn't fit."
+      },
+      "GeometryPreviewRequest": {
+        "properties": {
+          "geometry": {
+            "$ref": "#/components/schemas/Geometry-Input"
+          },
+          "change": {
+            "$ref": "#/components/schemas/GeometryChange"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "geometry",
+          "change"
+        ],
+        "title": "GeometryPreviewRequest",
+        "description": "A geometry and a change to try on it (nothing is saved)."
       },
       "GradeWheel-Input": {
         "properties": {

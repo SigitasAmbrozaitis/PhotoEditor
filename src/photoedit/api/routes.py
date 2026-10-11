@@ -30,7 +30,7 @@ from photoedit.models import (
     StyleSummary,
     StyleView,
 )
-from photoedit.models.adjustments import GeometryChange
+from photoedit.models.adjustments import Geometry, GeometryChange, GeometryPreviewRequest
 from photoedit.models.export import (
     DestinationCheck,
     DestinationCheckRequest,
@@ -154,6 +154,13 @@ def change_geometry(photo_id: str, change: Annotated[GeometryChange, Body()], sv
     return svc.library.photo_detail(photo_id)
 
 
+@router.post("/photos/{photo_id}/geometry/preview", response_model=Geometry, tags=["edit"])
+def preview_geometry(photo_id: str, request: Annotated[GeometryPreviewRequest, Body()], svc: Svc) -> Geometry:
+    """The geometry a change would give, starting from ``geometry`` (e.g. the crop tool's draft). Nothing is
+    saved; save it with PUT /edit."""
+    return svc.library.preview_geometry(photo_id, request.geometry, request.change)
+
+
 @router.put("/photos/{photo_id}/style", response_model=PhotoDetail, tags=["edit"])
 def set_photo_style(photo_id: str, request: Annotated[PhotoStyleRequest, Body()], svc: Svc) -> PhotoDetail:
     """Give the photo a style right away (null removes it). Tweaks of what the style sets are replaced."""
@@ -189,13 +196,13 @@ def photo_preview(
     before: Annotated[
         bool, Query(description="The photo's default look with the edit's geometry (same framing).")
     ] = False,
-    uncropped: Annotated[
+    upright: Annotated[
         bool,
-        Query(description="The whole straightened frame without the crop (the crop tool's view)."),
+        Query(description="Without any geometry: the whole photo as shot, with its colors (the crop tool)."),
     ] = False,
     size: Annotated[int, Query(ge=256, le=4096, description="Long edge in pixels.")] = 1600,
 ) -> Response:
-    data = svc.library.preview(photo_id, size, before=before, uncropped=uncropped)
+    data = svc.library.preview(photo_id, size, before=before, upright=upright)
     return Response(content=data, media_type=JPEG, headers=IMAGE_CACHE)
 
 

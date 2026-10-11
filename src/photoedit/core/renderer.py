@@ -26,7 +26,7 @@ from photoedit.core.render.pipeline import geometry_stage, render, render_identi
 from photoedit.core.render.profile import CameraProfile, profile_for
 from photoedit.core.render.stages import quantize
 from photoedit.core.zoom import ZoomBases
-from photoedit.models.adjustments import CropRect
+from photoedit.models.adjustments import Geometry
 from photoedit.models.photo import TILE_SIZE, ZoomInfo, ZoomLevel
 from photoedit.safety import PathGuard
 
@@ -109,29 +109,29 @@ class Renderer:
         return measured
 
     def preview_path(
-        self, photo: CatalogPhoto, edit: EffectiveEdit, long_edge: int, *, uncropped: bool = False
+        self, photo: CatalogPhoto, edit: EffectiveEdit, long_edge: int, *, upright: bool = False
     ) -> Path:
-        suffix = "-frame" if uncropped else ""
+        suffix = "-upright" if upright else ""
         return self._root / photo.id / f"{edit.revision}-{long_edge}{suffix}.jpg"
 
     def thumbnail_path(self, photo: CatalogPhoto, edit: EffectiveEdit) -> Path:
         return self._root / photo.id / f"{edit.revision}-thumb.jpg"
 
     def preview(
-        self, photo: CatalogPhoto, edit: EffectiveEdit, long_edge: int, *, uncropped: bool = False
+        self, photo: CatalogPhoto, edit: EffectiveEdit, long_edge: int, *, upright: bool = False
     ) -> bytes:
         """JPEG of ``photo`` with ``edit`` at ``long_edge`` px (never larger than the working size).
 
-        ``uncropped`` shows the whole straightened frame without the crop (for the crop tool); the frame
-        outside the straightened image is black.
+        ``upright`` leaves out the geometry: the whole photo as shot, with the edit's colors (the crop tool
+        turns, straightens and crops it on screen).
         """
-        path = self.preview_path(photo, edit, long_edge, uncropped=uncropped)
+        path = self.preview_path(photo, edit, long_edge, upright=upright)
         with self._lock(path):
             if path.is_file():
                 return path.read_bytes()
             base = self.linear.get(photo)
             anchors = self.anchors(photo, base)
-            data = self._encode(photo, edit, base, long_edge, PREVIEW_QUALITY, anchors, uncropped=uncropped)
+            data = self._encode(photo, edit, base, long_edge, PREVIEW_QUALITY, anchors, upright=upright)
             self._guard.write_atomic(path, data)
             return data
 
@@ -249,12 +249,11 @@ class Renderer:
         quality: int,
         anchors: ToneAnchors,
         *,
-        uncropped: bool = False,
+        upright: bool = False,
     ) -> bytes:
         adjustments = edit.adjustments
-        if uncropped:
-            geometry = adjustments.geometry.model_copy(update={"crop": CropRect(), "aspect": None})
-            adjustments = adjustments.model_copy(update={"geometry": geometry})
+        if upright:
+            adjustments = adjustments.model_copy(update={"geometry": Geometry()})
         pixels = render(
             base,
             adjustments,
@@ -262,7 +261,6 @@ class Renderer:
             original_width=photo.width,
             long_edge=long_edge,
             anchors=anchors,
-            blank_outside=uncropped,
         )
         buf = io.BytesIO()
         Image.fromarray(np.asarray(quantize(pixels, 8))).save(buf, "JPEG", quality=quality, optimize=True)

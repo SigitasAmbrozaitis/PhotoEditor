@@ -367,10 +367,10 @@ def test_geometry_changes_save_and_show_everywhere(env: Env) -> None:
     assert (photo.width, photo.height) == (320, 200)
     assert (photo.edited_width, photo.edited_height) == (200, 200)
     assert env.reopen().photo_detail(pid).photo.edited_width == 200
-    # After and before frame the same square; the crop tool's view is the whole turned frame.
+    # After and before frame the same square; the crop tool's view is the photo as shot.
     assert _size(env.library.preview(pid, 256)) == (200, 200)
     assert _size(env.library.preview(pid, 256, before=True)) == (200, 200)
-    assert _size(env.library.preview(pid, 256, uncropped=True)) == (160, 256)
+    assert _size(env.library.preview(pid, 256, upright=True)) == (256, 160)
     assert _size(env.library.thumbnail(pid)) == (200, 200)
 
     straightened = env.library.set_geometry(pid, GeometryChange(angle=-4))

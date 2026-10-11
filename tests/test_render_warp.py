@@ -65,16 +65,19 @@ def test_the_warp_samples_where_the_math_says() -> None:
         assert out[v, u, 1] == pytest.approx(y, abs=0.1)
 
 
-def test_a_straightened_crop_has_no_blank_corners() -> None:
-    ones = np.ones((90, 140, 3), dtype=np.float32)
+def test_a_straightened_crop_samples_only_inside_the_photo() -> None:
     crop = largest_crop(4 / 5, -9, 140, 90)
     geometry = Geometry(angle=-9, crop=crop, aspect="4:5")
-    out = apply_geometry(_image(ones), geometry, blank_outside=True).pixels
-    assert float(out.min()) > 0.999
-    # The whole frame (the crop tool's view) shows the blank corners.
-    frame = apply_geometry(_image(ones), geometry, crop=CropRect(), blank_outside=True).pixels
-    assert frame.shape == (90, 140, 3)
-    assert float(frame[0, 0].max()) == 0 and float(frame[45, 70].min()) > 0.999
+    out_w, out_h = output_size(geometry, crop, 140, 90, None)
+    matrix = source_map(geometry, crop, 140, 90, out_w, out_h)
+    vs, us = np.mgrid[0:out_h, 0:out_w]
+    points = matrix @ np.stack([us.ravel(), vs.ravel(), np.ones(us.size)])
+    # Every output pixel's center comes from within the photo's pixel area (no blank corners).
+    assert points[0].min() >= -0.5 and points[0].max() <= 139.5
+    assert points[1].min() >= -0.5 and points[1].max() <= 89.5
+    # The whole frame at that angle would not.
+    frame = source_map(geometry, CropRect(), 140, 90, 140, 90)
+    assert (frame @ np.array([0, 0, 1.0]))[1] < -0.5
 
 
 def test_sizes() -> None:

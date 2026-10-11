@@ -91,7 +91,6 @@ def render(
     anchors: ToneAnchors | None = None,
     output: ColorSpace = ColorSpace.SRGB,
     low_memory: bool = False,
-    blank_outside: bool = False,
 ) -> F32:
     """Render to ``output``-encoded float pixels (0..1); sRGB unless an export asks for another space.
 
@@ -103,14 +102,11 @@ def render(
     ``anchors`` are the photo's tone anchors; the library passes the stored ones so every size of a photo gets
     the same tone curve. Without them they are measured on ``base``. ``low_memory`` renders in more, smaller
     strips, fewer at a time (for full-size exports in parallel worker processes); the pixels are the same.
-    ``blank_outside`` shows the frame outside a straightened image as black (the crop tool's view).
     """
     check_supported(params)
     if anchors is None and _needs_anchors(params):
         anchors = measure_anchors(base, profile)
-    image, full_width = geometry_stage(
-        base, params, original_width=original_width, long_edge=long_edge, blank_outside=blank_outside
-    )
+    image, full_width = geometry_stage(base, params, original_width=original_width, long_edge=long_edge)
     pointwise = _Pointwise.prepare(image, params, profile, anchors, output)
     height, width = image.pixels.shape[:2]
     vignette = params.effects.vignette
@@ -137,7 +133,6 @@ def geometry_stage(
     *,
     original_width: int,
     long_edge: int | None = None,
-    blank_outside: bool = False,
 ) -> tuple[LinearImage, float]:
     """``base`` with the edit's geometry applied (and limited to ``long_edge``), plus the width of what it
     shows in the photo's full-size pixels (for sharpening)."""
@@ -145,7 +140,7 @@ def geometry_stage(
     full_width = shown_width(base, geometry, original_width)
     if is_identity(geometry):
         return (resize_linear(base, long_edge) if long_edge is not None else base), full_width
-    return apply_geometry(base, geometry, long_edge=long_edge, blank_outside=blank_outside), full_width
+    return apply_geometry(base, geometry, long_edge=long_edge), full_width
 
 
 def shown_width(base: LinearImage, geometry: Geometry, original_width: int) -> float:

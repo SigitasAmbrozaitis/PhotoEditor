@@ -47,13 +47,11 @@ def apply_geometry(
     crop: CropRect | None = None,
     size: tuple[int, int] | None = None,
     long_edge: int | None = None,
-    blank_outside: bool = False,
 ) -> LinearImage:
     """``image`` (upright) with ``geometry`` applied, showing ``crop`` (default: the geometry's own).
 
     The result is ``size`` (width, height) if given, else the crop at the source's resolution, scaled down to
-    ``long_edge`` if that is smaller. ``blank_outside`` makes the parts of the crop outside the straightened
-    image black (the crop tool's whole-frame view); a valid crop has none.
+    ``long_edge`` if that is smaller.
     """
     crop = crop or geometry.crop
     height, width = image.pixels.shape[:2]
@@ -62,7 +60,7 @@ def apply_geometry(
     if geometry.angle == 0:
         pixels = _axis_aligned(image.pixels, geometry, crop)
     else:
-        pixels = _straightened(image.pixels, geometry, crop, blank_outside=blank_outside)
+        pixels = _straightened(image.pixels, geometry, crop)
     return dataclasses.replace(image, pixels=resize_to(pixels, *size))
 
 
@@ -81,9 +79,7 @@ def _axis_aligned(pixels: np.ndarray, geometry: Geometry, crop: CropRect) -> np.
     return np.ascontiguousarray(view[y0:y1, x0:x1], dtype=np.float32)
 
 
-def _straightened(
-    pixels: np.ndarray, geometry: Geometry, crop: CropRect, *, blank_outside: bool = False
-) -> np.ndarray:
+def _straightened(pixels: np.ndarray, geometry: Geometry, crop: CropRect) -> np.ndarray:
     """One cubic warp from the source slice the crop needs to the crop at the source's resolution."""
     height, width = pixels.shape[:2]
     crop_w, crop_h = crop_size(geometry, crop, width, height)
@@ -105,8 +101,8 @@ def _straightened(
         local,
         (out_w, out_h),
         flags=cv2.INTER_CUBIC | cv2.WARP_INVERSE_MAP,
-        # Inside the image the cubic kernel may reach a pixel past its edge: repeat the edge there.
-        borderMode=cv2.BORDER_CONSTANT if blank_outside else cv2.BORDER_REPLICATE,
+        # A valid crop stays inside the image, but the cubic kernel may reach a pixel past its edge.
+        borderMode=cv2.BORDER_REPLICATE,
     )
     # Cubic interpolation overshoots below black at hard edges.
     return np.maximum(warped, 0)

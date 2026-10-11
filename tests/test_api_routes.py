@@ -459,10 +459,19 @@ def test_geometry_endpoint(client: TestClient, photos: Path) -> None:
     assert r.status_code == 400 and "blank corners" in r.json()["detail"]
     assert client.post(f"/api/photos/{pid}/geometry", json={"spin": 3}).status_code == 422
     assert client.post("/api/photos/nope/geometry", json={"reset": True}).status_code == 404
-    frame = client.get(f"/api/photos/{pid}/preview", params={"size": 256, "uncropped": True})
-    assert frame.status_code == 200 and frame.headers["content-type"] == "image/jpeg"
-    with Image.open(io.BytesIO(frame.content)) as image:
-        assert image.size == (160, 256)  # the whole turned frame
+    upright = client.get(f"/api/photos/{pid}/preview", params={"size": 256, "upright": True})
+    assert upright.status_code == 200 and upright.headers["content-type"] == "image/jpeg"
+    with Image.open(io.BytesIO(upright.content)) as image:
+        assert image.size == (256, 160)  # as shot: no turn, no crop
+    # A dry run from a draft: nothing saved.
+    saved = client.get(f"/api/photos/{pid}").json()["edit"]["adjustments"]["geometry"]
+    draft = {"geometry": {"rotate": 0}, "change": {"angle": 10}}
+    r = client.post(f"/api/photos/{pid}/geometry/preview", json=draft)
+    assert r.status_code == 200 and r.json()["angle"] == 10 and r.json()["rotate"] == 0
+    assert r.json()["crop"]["right"] - r.json()["crop"]["left"] < 1
+    assert client.get(f"/api/photos/{pid}").json()["edit"]["adjustments"]["geometry"] == saved
+    bad = {"geometry": {"angle": 10}, "change": {"crop": full}}
+    assert client.post(f"/api/photos/{pid}/geometry/preview", json=bad).status_code == 400
 
 
 def test_zoom_and_tiles(client: TestClient, photos: Path) -> None:
