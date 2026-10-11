@@ -15,15 +15,18 @@ How a photo becomes an output file (Phase 5). The code is in `src/photoedit/core
 
 ## Pipeline
 
-1. **Geometry** (`geometry.py`): the aspect crop (centered; `subject` arrives with Phase 6), the output size and
-   whether the half-size decode is enough. All of this is in the photo's upright full-size pixels.
+1. **Geometry** (`geometry.py`): the aspect crop (centered; `subject` arrives with Phase 6b), the output size
+   and whether the half-size decode is enough. All of this is in the full-size pixels of the photo after its
+   own geometry (crop, straighten, turn: [geometry.md](geometry.md)), so the aspect crop is taken inside the
+   photo's crop.
 2. **Decode** (`worker.py`): LibRaw full size, or half size when its pixels still cover the output without
    enlarging (RAWs only; JPEG/TIFF originals always decode fully). `decode: full` in a preset forces full size.
    The print presets do that.
-3. **Crop, then resize** in linear light: area averaging when shrinking, bicubic when enlarging.
+3. **Geometry, crop, then resize** in linear light: the photo's flips, turn and straighten plus both crops
+   in one step (`core/render/warp.py`), then area averaging when shrinking, bicubic when enlarging.
 4. **Render** with the same pipeline as previews, with the photo's stored tone anchors, so an export looks like
    the Photo view. The post-crop vignette is relative to the crop. Full-size exports render in small strips
-   (`low_memory`) with the same pixels; this keeps a worker under ~1.6 GiB.
+   (`low_memory`) with the same pixels; this keeps a worker under ~1.7 GiB (~1.8 GiB with a straightened crop).
 5. **Output color space** (part of the render's last stage): sRGB, Display P3 or Adobe RGB (1998). Colors outside
    the space are pulled toward their own luminance until they fit, so hues don't shift.
 6. **Output sharpening** (`sharpen.py`, table below).
@@ -131,5 +134,5 @@ has `--dry-run` for the same.
 ## Speed
 
 Exports run in worker processes (`export_workers`, default automatic: at most 10, two cores left free, and only as
-many as fit in free memory at ~1.7 GiB each). One export job runs at a time; others wait in the queue. Measured
+many as fit in free memory at ~1.8 GiB each). One export job runs at a time; others wait in the queue. Measured
 numbers are in [benchmark.md](benchmark.md).

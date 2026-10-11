@@ -1349,8 +1349,11 @@ read-only crop overlay toggle and a disabled angle slider.
   same picture (blurred ΔE2000 0.3-0.4; a 2 px shift gives ~2.5). Found on the way: the two differ in fine
   detail (ΔE mean ~1.5 unstraightened, ~3 straightened) because the preview resamples the 2048 px working base
   and the export its own decode; framing is identical.
-- [ ] **P6a.14** `docs/geometry.md` (frames and order, the no-blank-corners rule and `constrain_crop`, export
+- [x] **P6a.14** `docs/geometry.md` (frames and order, the no-blank-corners rule and `constrain_crop`, export
   inside the crop, the zoom view and its memory/time) and README (crop tool, CLI).
+  Done: `docs/geometry.md` (with the zoom timings measured on DSCF5437: half decode 0.4 s, full decode 12.5 s,
+  a tile 0.15 s, the straighten warp 0.65 s at 100 %), README (crop and zoom, CLI), `docs/export.md` (exports
+  work inside the photo's crop; ~1.8 GiB per worker), CLAUDE.md layout.
 - [ ] **P6a.15** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e).
 
 ### 🧑 Human test: Phase 6a

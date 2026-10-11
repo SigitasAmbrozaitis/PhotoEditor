@@ -78,6 +78,7 @@ src/photoedit/
   models/       Pydantic data models = the API contract (photos, adjustments, styles, export, jobs)
   api/          FastAPI app + routes (thin); serves ui/dist
   core/         all real logic (library, edits, render, styles, export); core/presets.py = built-in presets,
+                core/geometry.py + core/render/warp.py = crop and straighten, core/zoom.py = zoom view bases,
                 core/export/ = geometry, color, sharpening, encoders, metadata, names, worker, service, presets
   mcp/          MCP server for Claude (Phase 7)
 tests/          pytest; mirrors src/
