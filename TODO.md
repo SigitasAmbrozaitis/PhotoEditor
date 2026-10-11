@@ -1451,11 +1451,16 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   before get it on their next (unchanged) import or from `Library.with_af_point` on first use. Camera face
   positions (0x4103) are **not read**: no sample has any (0x4100 = 0 in all), so their coordinate space can't
   be checked. The Haar faces of P6b.4 cover faces.
-- [ ] **P6b.4** Classical cues (`core/subject/cues.py`, on a ~1024 px render of the photo): a sharpness map (local
+- [x] **P6b.4** Classical cues (`core/subject/cues.py`, on a ~1024 px render of the photo): a sharpness map (local
   Laplacian energy relative to the photo's own spread), spectral-residual saliency, and Haar detectors for human
   faces and cat faces (bundled with OpenCV). Each one returns candidate boxes with a score. Tests on synthetic
   images: a sharp square on a blurred background, a bright blob on noise, deterministic output, and an empty or
   flat image gives no candidates.
+  Done 2026-10-11, with one change the user OKed: **OpenCV 5.0 dropped the Haar cascades**, so faces come
+  from **YuNet** (`cv2.FaceDetectorYN`, `face_detection_yunet_2026may.onnx`, 0.23 MB, MIT, pinned and fetched
+  like YOLOX). It runs on the 2048 px detection input (~90 ms; spectators' faces are ~30 px there). Cat faces
+  have no cue of their own: YOLOX's `cat` box covers cats. Sharpness needs a region ≥ 8× the photo's median
+  energy as well as 2 robust deviations above it, so an evenly sharp photo has no sharp region.
 - [ ] **P6b.5** Object detector (`core/subject/detector.py`): the model through `cv2.dnn` on overlapping 640 px
   tiles of the detection input plus one whole-frame pass, then merged with class-wise NMS. Threads fixed for
   determinism. Classes of interest are mapped to kinds (car/truck/bus → `car`, motorcycle, cat/dog → `animal`,

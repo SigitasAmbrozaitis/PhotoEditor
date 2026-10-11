@@ -901,27 +901,22 @@ def preset_check(config: ConfigOption = None) -> None:
 @models_app.command("list")
 def models_list(config: ConfigOption = None) -> None:
     """List the pinned detector models and whether each is present with the right hash."""
-    from photoedit.core.subject.model_files import DEFAULT_MODEL, MODEL_FILES, verified_model_path
+    from photoedit.core.subject.model_files import MODEL_FILES, verified_model_path
 
     settings = load_settings(config)
     for model in MODEL_FILES.values():
         state = "present" if verified_model_path(settings.cache_dir, model) else "not fetched"
-        default = " (default)" if model.name == DEFAULT_MODEL else ""
         size = f"{model.size / 1e6:.1f} MB"
-        typer.echo(f"{model.name}{default}: {model.description}, {size}, {state}")
+        typer.echo(f"{model.name}: {model.description}, {size}, {state}")
 
 
 @models_app.command("fetch")
 def models_fetch(
-    names: Annotated[
-        list[str] | None, typer.Argument(help="Models to fetch (default: the one detection uses).")
-    ] = None,
-    all_models: Annotated[bool, typer.Option("--all", help="Fetch every pinned model.")] = False,
+    names: Annotated[list[str] | None, typer.Argument(help="Models to fetch (default: all of them).")] = None,
     config: ConfigOption = None,
 ) -> None:
-    """Download the pinned detector model into cache/models/ (once; checked by SHA-256)."""
+    """Download the pinned detector models into cache/models/ (once; checked by SHA-256)."""
     from photoedit.core.subject.model_files import (
-        DEFAULT_MODEL,
         MODEL_FILES,
         ModelFileError,
         fetch_model,
@@ -933,7 +928,7 @@ def models_fetch(
     if unknown:
         known = ", ".join(MODEL_FILES)
         raise typer.BadParameter(f"unknown model {', '.join(unknown)} (known: {known})", param_hint="NAMES")
-    chosen = list(MODEL_FILES) if all_models else names or [DEFAULT_MODEL]
+    chosen = names or list(MODEL_FILES)
     settings = load_settings(config)
     guard = guard_from_settings(settings)
     failed = False

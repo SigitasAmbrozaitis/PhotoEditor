@@ -24,13 +24,14 @@ MODELS_SUBDIR = "models"
 _CHUNK = 1 << 20
 _TIMEOUT_S = 60
 
-# OpenCV Model Zoo (Apache-2.0), pinned to one commit so the URL always serves the same bytes. YOLOX-S float32
+# OpenCV Model Zoo, each file pinned to one commit so its URL always serves the same bytes. YOLOX-S float32
 # was chosen over its int8 version (2026-10-11): under OpenCV 5's dnn the int8 file found no vehicle in 12
 # rally/drift samples where float32 found them at 3-47 % of the width, and it ran 1.8x slower.
-_ZOO = (
-    "https://media.githubusercontent.com/media/opencv/opencv_zoo/"
-    "0b263e423d012606b83d1f81238d11c177da2b9c/models/object_detection_yolox/"
-)
+_ZOO = "https://media.githubusercontent.com/media/opencv/opencv_zoo/"
+_YOLOX = _ZOO + "0b263e423d012606b83d1f81238d11c177da2b9c/models/object_detection_yolox/"
+# YuNet replaces the Haar face cascades OpenCV 5 dropped (2026-10-11). The 2026may file is the Zoo's build
+# with dynamic input sizes, which OpenCV 5's engine needs.
+_YUNET = _ZOO + "26cc381e4d2594bb9f47a26eb8fd96c94a13660d/models/face_detection_yunet/"
 
 
 @dataclass(frozen=True)
@@ -49,16 +50,24 @@ MODEL_FILES: dict[str, ModelFile] = {
         ModelFile(
             name="yolox_s",
             file_name="object_detection_yolox_2022nov.onnx",
-            url=_ZOO + "object_detection_yolox_2022nov.onnx",
+            url=_YOLOX + "object_detection_yolox_2022nov.onnx",
             size=35_858_002,
             sha256="c5c2d13e59ae883e6af3b45daea64af4833a4951c92d116ec270d9ddbe998063",
-            description="YOLOX-S, COCO 80 classes, 640 px input, float32",
+            description="YOLOX-S object detector, COCO 80 classes, 640 px input, float32 (Apache-2.0)",
+        ),
+        ModelFile(
+            name="yunet",
+            file_name="face_detection_yunet_2026may.onnx",
+            url=_YUNET + "face_detection_yunet_2026may.onnx",
+            size=229_738,
+            sha256="ebafce4e3c118d6554634be5c27ab333b4c047a9a8c3faf1d7cf93101c22f0f0",
+            description="YuNet face detector, any input size (MIT)",
         ),
     )
 }
 
-# The model detection uses. ``photoedit models fetch`` without names fetches only this one.
-DEFAULT_MODEL = "yolox_s"
+OBJECT_MODEL = "yolox_s"
+FACE_MODEL = "yunet"
 
 # Yields the body of a URL in chunks. Tests pass a fake one; there is no network in tests.
 Downloader = Callable[[str], Iterator[bytes]]

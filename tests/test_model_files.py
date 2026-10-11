@@ -117,8 +117,8 @@ def test_the_real_downloader_refuses_plain_http() -> None:
 def test_pins_and_identity() -> None:
     for model in MODEL_FILES.values():
         assert model.url.startswith("https://") and model.url.endswith(model.file_name)
-        assert len(model.sha256) == 64 and model.size > 1_000_000
-    assert model_files.DEFAULT_MODEL in MODEL_FILES
+        assert len(model.sha256) == 64 and model.size > 100_000
+    assert {model_files.OBJECT_MODEL, model_files.FACE_MODEL} <= set(MODEL_FILES)
     identity = detector_identity(MODEL_FILES["yolox_s"])
     assert identity.startswith("yolox_s-c5c2d13e59ae-opencv")
     other = dataclasses.replace(MODEL_FILES["yolox_s"], sha256="0" * 64)
@@ -143,7 +143,6 @@ def fake_zoo(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         yield bodies[url.rsplit("/", 1)[1]]
 
     monkeypatch.setattr(model_files, "MODEL_FILES", fakes)
-    monkeypatch.setattr(model_files, "DEFAULT_MODEL", "a")
     monkeypatch.setattr(model_files, "_download", download)
     return calls
 
@@ -159,14 +158,14 @@ def test_cli_fetch_and_list(tmp_path: Path, fake_zoo: list[str]) -> None:
     config = _config(tmp_path)
     listed = runner.invoke(cli.app, ["models", "list", "--config", config])
     assert listed.exit_code == 0, listed.output
-    assert "a (default): test model" in listed.output and "not fetched" in listed.output
+    assert "a: test model" in listed.output and "not fetched" in listed.output
 
-    fetched = runner.invoke(cli.app, ["models", "fetch", "--config", config])
+    fetched = runner.invoke(cli.app, ["models", "fetch", "a", "--config", config])
     assert fetched.exit_code == 0, fetched.output
     assert "downloaded" in fetched.output and fake_zoo == ["https://x/a"]
     assert (tmp_path / "project" / "cache" / "models" / "a" / "a.onnx").is_file()
 
-    again = runner.invoke(cli.app, ["models", "fetch", "--all", "--config", config])
+    again = runner.invoke(cli.app, ["models", "fetch", "--config", config])
     assert again.exit_code == 0, again.output
     assert "present" in again.output and fake_zoo == ["https://x/a", "https://x/b"]
     listed = runner.invoke(cli.app, ["models", "list", "--config", config])
