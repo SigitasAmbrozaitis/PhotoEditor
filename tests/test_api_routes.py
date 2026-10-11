@@ -398,8 +398,12 @@ def test_edit_errors(client: TestClient, photos: Path) -> None:
     body = AdjustmentParams().model_dump(mode="json", by_alias=True)
     body["geometry"]["angle"] = 5
     r = client.put(f"/api/photos/{pid}/edit", json=body)
-    assert r.status_code == 400 and "geometry.angle (Phase 6)" in r.json()["detail"]
+    assert r.status_code == 400 and "blank corners" in r.json()["detail"]
     body["geometry"]["angle"] = 0
+    body["presence"]["clarity"] = 10
+    r = client.put(f"/api/photos/{pid}/edit", json=body)
+    assert r.status_code == 400 and "presence.clarity (Phase 9)" in r.json()["detail"]
+    body["presence"]["clarity"] = 0
     body["tone"]["exposure"] = 9
     assert client.put(f"/api/photos/{pid}/edit", json=body).status_code == 422
     assert (
@@ -413,9 +417,8 @@ def test_engine_info(client: TestClient) -> None:
     from photoedit.models import EngineInfo
 
     info = EngineInfo.model_validate(client.get("/api/engine").json())
-    assert (
-        info.later_phase_parameters["geometry"] == 6 and info.later_phase_parameters["presence.clarity"] == 9
-    )
+    assert info.later_phase_parameters["presence.clarity"] == 9
+    assert "geometry" not in info.later_phase_parameters  # renders since Phase 6a
     assert "-eng" in info.render_identity
 
 

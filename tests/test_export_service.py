@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 from PIL import Image
 
@@ -285,3 +286,32 @@ def test_reveal_only_exported_files(env: Env, monkeypatch: pytest.MonkeyPatch) -
     exported.unlink()
     with pytest.raises(NotFoundError):
         exporter.reveal(exported)
+
+
+def test_exports_work_inside_the_photos_own_geometry(env: Env) -> None:
+    from photoedit.models.adjustments import CropRect, GeometryChange
+
+    # Red left half, blue right half; crop to the blue half and turn it, then export a 5:4 crop of that.
+    two_colors = Image.new("RGB", (320, 200), (220, 30, 30))
+    two_colors.paste((30, 30, 220), (160, 0, 320, 200))
+    two_colors.save(env.photos / "d_halves.jpg", quality=95)
+    env.jobs.wait(env.library.import_folder(env.photos).id, TIMEOUT)
+    pid = next(p.id for p in env.library.list_photos(limit=50).items if p.filename == "d_halves.jpg")
+    env.library.set_geometry(pid, GeometryChange(crop=CropRect(left=0.55, right=1)))
+    env.library.set_geometry(pid, GeometryChange(rotate=90))  # carries the crop along
+    settings = _web(aspect={"ratio": "4:5"}, size={"long_edge": 100})
+    plan = env.exporter().plan([pid], settings, str(env.out))
+    assert (plan.items[0].width, plan.items[0].height) == (100, 80)  # 200 × 144 turned, 5:4 inside it
+    job = env.run(env.exporter().export([pid], settings, str(env.out), None))
+    assert job.status == JobStatus.DONE, job
+    with Image.open(env.out / plan.items[0].output_name) as exported:
+        pixels = np.asarray(exported.convert("RGB")).astype(int)
+        assert exported.size == (100, 80)
+        assert (pixels[..., 2] > 150).all() and (pixels[..., 0] < 90).all()  # only blue: the crop held
+
+    # Straightened: the crop shrinks to fit, and the export has no blank corners.
+    env.library.set_geometry(pid, GeometryChange(angle=8))
+    job = env.run(env.exporter().export([pid], _web(), str(env.out / "straight"), None))
+    assert job.status == JobStatus.DONE, job
+    with Image.open(next((env.out / "straight").iterdir())) as exported:
+        assert int(np.asarray(exported.convert("RGB"))[..., 2].min()) > 150

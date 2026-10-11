@@ -93,7 +93,7 @@ describe('Photo view', () => {
     const { user } = renderApp('/library/p001')
     const details = await panel()
     await user.click(within(details).getByRole('button', { name: 'Crop & geometry' }))
-    expect(await within(details).findByText('Phase 6')).toBeInTheDocument()
+    expect(await within(details).findByText(/with the Crop tool/)).toBeInTheDocument()
     const clarity = details.querySelector('[data-path="presence.clarity"]')!
     expect(within(clarity as HTMLElement).getByText('Phase 9')).toBeInTheDocument()
     expect(within(clarity as HTMLElement).getByRole('slider')).toHaveAttribute('data-disabled')

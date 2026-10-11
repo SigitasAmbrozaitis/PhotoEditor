@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -30,6 +31,8 @@ class Photo(BaseModel):
     focal_length: float | None = Field(default=None, gt=0, description="Millimetres.")
     width: int = Field(ge=1, description="Pixel width after orientation.")
     height: int = Field(ge=1, description="Pixel height after orientation.")
+    edited_width: int = Field(ge=1, description="Pixel width after the edit's geometry (crop, quarter turn).")
+    edited_height: int = Field(ge=1, description="Pixel height after the edit's geometry.")
     rating: int = Field(default=0, ge=0, le=5)
     style_id: str | None = Field(default=None, description="Style assigned to this photo, if any.")
     has_overrides: bool = Field(default=False, description="Per-photo adjustments on top of the style.")
@@ -114,6 +117,26 @@ class PhotoDetail(BaseModel):
     photo: Photo
     edit: PhotoEdit
     as_shot: AsShot | None = Field(default=None, description="None if the camera recorded no white balance.")
+
+
+ZoomLevel = Literal[50, 100]
+TILE_SIZE = 512
+
+
+class ZoomInfo(BaseModel):
+    """The zoom view of a photo at one level: tiles of the edited image (after its geometry)."""
+
+    model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
+
+    level: ZoomLevel = Field(description="Percent of the photo's full size: 50 or 100 (1:1).")
+    state: Literal["decoding", "ready"] = Field(
+        description="100 % needs the full decode (~13 to 25 s the first time); tiles exist once ready."
+    )
+    width: int | None = Field(default=None, ge=1, description="The edited image's width at this level.")
+    height: int | None = Field(default=None, ge=1)
+    tile_size: int = Field(
+        default=TILE_SIZE, description="Tiles are this many pixels square (edge tiles less)."
+    )
 
 
 class EngineInfo(BaseModel):

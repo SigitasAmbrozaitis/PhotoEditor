@@ -17,6 +17,7 @@ from photoedit.core.catalog import Catalog, CatalogPhoto, FolderRecord, photo_id
 from photoedit.core.decode import is_raw, oriented_image, read_raw_info
 from photoedit.core.edits import EditStore, EffectiveEdit
 from photoedit.core.errors import NotFoundError
+from photoedit.core.geometry import apply_change, edited_size, is_identity
 from photoedit.core.jobs import ItemResult, ItemSpec, JobManager
 from photoedit.core.metadata import MetadataError, PhotoMetadata, read_metadata, read_metadata_from_bytes
 from photoedit.core.renderer import Renderer, stored_stats
@@ -37,6 +38,8 @@ from photoedit.models import (
     PhotoSort,
     SortOrder,
 )
+from photoedit.models.adjustments import GeometryChange
+from photoedit.models.photo import ZoomInfo, ZoomLevel
 from photoedit.safety import PathGuard
 
 CURRENT_FOLDER = "current_folder"
@@ -314,6 +317,14 @@ class Library:
         self.record_edit(photo, result)
         return result
 
+    def set_geometry(self, photo_id: str, change: GeometryChange) -> EffectiveEdit:
+        """Apply a geometry change (flips and turns carry the crop along; angle and aspect changes shrink the
+        crop to fit) and save it."""
+        photo = self.photo(photo_id)
+        current = self.edits.effective(photo).adjustments
+        geometry = apply_change(current.geometry, change, photo.width, photo.height)
+        return self.save_edit(photo_id, current.model_copy(update={"geometry": geometry}))
+
     def reset_edit(self, photo_id: str) -> EffectiveEdit:
         """Drop the photo's own tweaks; its style stays (``set_photo_style(id, None)`` removes the style)."""
         photo = self.photo(photo_id)
@@ -324,11 +335,14 @@ class Library:
     def record_edit(self, photo: CatalogPhoto, edit: EffectiveEdit) -> None:
         """Bring the catalog (edit revision, style) and the render cache in line with a changed edit."""
         default = self.edits.default(photo).revision
-        self.catalog.set_edit(photo.id, edit.revision if edit.revision != default else None)
+        geometry = edit.adjustments.geometry
+        size = None if is_identity(geometry) else edited_size(photo.width, photo.height, geometry)
+        self.catalog.set_edit(photo.id, edit.revision if edit.revision != default else None, size)
         if photo.style_id != edit.style_id:
             self.catalog.set_style(photo.id, edit.style_id)
-        # Renders of older edits are dead weight now; keep the current edit and the unedited "before".
-        self.renderer.prune(photo.id, keep={edit.revision, default})
+        # Renders of older edits are dead weight now; keep the current edit and its "before" views.
+        before = self.edits.before(photo, geometry).revision
+        self.renderer.prune(photo.id, keep={edit.revision, default, before})
 
     def image_version(self, photo: CatalogPhoto) -> str:
         """Changes whenever the photo renders differently (new edit, new engine or library version)."""
@@ -349,13 +363,37 @@ class Library:
         self._require_original(photo)
         return self.renderer.thumbnail(photo, edit)
 
-    def preview(self, photo_id: str, long_edge: int, *, before: bool = False) -> bytes:
-        """The photo with its edit (``before`` = unedited) at ``long_edge`` px."""
+    def preview(
+        self, photo_id: str, long_edge: int, *, before: bool = False, uncropped: bool = False
+    ) -> bytes:
+        """The photo with its edit at ``long_edge`` px. ``before`` = unedited colors with the edit's geometry,
+        so before and after line up; ``uncropped`` = the whole straightened frame (the crop tool's view)."""
         photo = self.photo(photo_id)
-        edit = self.edits.default(photo) if before else self.edits.effective(photo)
-        if not self.renderer.preview_path(photo, edit, long_edge).is_file():
+        edit = self.edits.effective(photo)
+        if before:
+            edit = self.edits.before(photo, edit.adjustments.geometry)
+        if not self.renderer.preview_path(photo, edit, long_edge, uncropped=uncropped).is_file():
             self._require_original(photo)
-        return self.renderer.preview(photo, edit, long_edge)
+        return self.renderer.preview(photo, edit, long_edge, uncropped=uncropped)
+
+    def zoom_info(self, photo_id: str, level: ZoomLevel) -> ZoomInfo:
+        """The zoom view at ``level`` (50 or 100 %): starts its decode if needed."""
+        photo = self.photo(photo_id)
+        self._require_original(photo)
+        return self.renderer.zoom_info(photo, self.edits.effective(photo), level)
+
+    def tile(
+        self, photo_id: str, level: ZoomLevel, tx: int, ty: int, *, before: bool = False
+    ) -> bytes | None:
+        """One tile of the zoom view (``before`` = the photo's defaults with the edit's geometry); None while
+        the decode for ``level`` is still running."""
+        photo = self.photo(photo_id)
+        edit = self.edits.effective(photo)
+        if before:
+            edit = self.edits.before(photo, edit.adjustments.geometry)
+        if not self.renderer.tile_path(photo, edit, level, tx, ty).is_file():
+            self._require_original(photo)
+        return self.renderer.tile(photo, edit, level, tx, ty)
 
     def sidecar(self, photo_id: str, long_edge: int) -> bytes:
         """The camera's own JPEG saved next to a RAW (read-only), scaled to ``long_edge``, for comparison."""

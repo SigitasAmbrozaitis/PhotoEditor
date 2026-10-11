@@ -22,7 +22,7 @@ from photoedit.core.scan import SourceKind
 from photoedit.models import Photo, PhotoSort, SortOrder
 from photoedit.safety import PathGuard
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 ID_LENGTH = 16  # hex digits of the SHA-256 used as photo id: 64 bits, collisions are not a practical concern
 
 _SCHEMA = """
@@ -68,7 +68,9 @@ CREATE TABLE photos (
     tone_middle REAL,
     neutral_temperature REAL,
     neutral_tint REAL,
-    exposure_time REAL
+    exposure_time REAL,
+    edited_width INTEGER,
+    edited_height INTEGER
 );
 CREATE INDEX photos_parent ON photos (parent_key);
 CREATE TABLE state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -107,8 +109,21 @@ def _v3_to_v4(db: sqlite3.Connection) -> None:
     )
 
 
+def _v4_to_v5(db: sqlite3.Connection) -> None:
+    # P6a.4: the size after the photo's geometry (crop, quarter turn), so lists can lay out cropped photos
+    # without reading every edit. NULL = the original size, which is right for every earlier edit (geometry
+    # was rejected before Phase 6).
+    for column in ("edited_width INTEGER", "edited_height INTEGER"):
+        db.execute(f"ALTER TABLE photos ADD COLUMN {column}")
+
+
 # Migrations from version N to N + 1, applied in order when an older catalog is opened.
-_MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {1: _v1_to_v2, 2: _v2_to_v3, 3: _v3_to_v4}
+_MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
+    1: _v1_to_v2,
+    2: _v2_to_v3,
+    3: _v3_to_v4,
+    4: _v4_to_v5,
+}
 
 # Measured from the pixels, so they stay valid for the same id across re-imports.
 _MEASURED_COLUMNS = (
@@ -119,6 +134,9 @@ _MEASURED_COLUMNS = (
     "neutral_tint",
     "tone_anchors_identity",
 )
+
+# Kept from the edit, not from the file, so a re-import doesn't forget them.
+_EDIT_COLUMNS = ("has_edits", "edit_revision", "edited_width", "edited_height")
 
 _SORT_SQL = {
     # NULL dates sort last in ascending order; filename breaks ties so the order is stable.
@@ -172,6 +190,9 @@ class CatalogPhoto(BaseModel):
     neutral_tint: float | None = None
     tone_anchors_identity: str | None = None
     exposure_time: float | None = Field(default=None, gt=0, description="Seconds.")
+    # The size after the edit's geometry; None = the original size.
+    edited_width: int | None = Field(default=None, ge=1)
+    edited_height: int | None = Field(default=None, ge=1)
 
     @property
     def camera_ev(self) -> float | None:
@@ -194,6 +215,8 @@ class CatalogPhoto(BaseModel):
             focal_length=self.focal_length,
             width=self.width,
             height=self.height,
+            edited_width=self.edited_width or self.width,
+            edited_height=self.edited_height or self.height,
             rating=self.rating,
             style_id=self.style_id,
             has_overrides=self.has_edits,
@@ -265,7 +288,7 @@ class Catalog:
             f"{name} = excluded.{name}"
             for name in values
             # The id is the content hash, so facts measured from the pixels stay valid for the same id.
-            if name not in ("id", "rating", "style_id", "has_edits", "edit_revision", *_MEASURED_COLUMNS)
+            if name not in ("id", "rating", "style_id", *_EDIT_COLUMNS, *_MEASURED_COLUMNS)
         )
         with self._transaction() as db:
             # Another row may hold this path with older content (the file was edited elsewhere): replace it.
@@ -323,12 +346,15 @@ class Catalog:
         with self._transaction() as db:
             db.execute("UPDATE photos SET style_id = ? WHERE id = ?", (style_id, photo_id))
 
-    def set_edit(self, photo_id: str, revision: str | None) -> None:
-        """Record a photo's current edit revision (None = unedited)."""
+    def set_edit(self, photo_id: str, revision: str | None, size: tuple[int, int] | None = None) -> None:
+        """Record a photo's current edit revision (None = unedited) and its size after the edit's geometry
+        (None = the original size)."""
+        width, height = size if size is not None else (None, None)
         with self._transaction() as db:
             db.execute(
-                "UPDATE photos SET has_edits = ?, edit_revision = ? WHERE id = ?",
-                (int(revision is not None), revision, photo_id),
+                "UPDATE photos SET has_edits = ?, edit_revision = ?, edited_width = ?, edited_height = ?"
+                " WHERE id = ?",
+                (int(revision is not None), revision, width, height, photo_id),
             )
 
     def mark_missing(self, folder: Path, *, recursive: bool, present_ids: set[str]) -> int:
@@ -502,6 +528,8 @@ def _row_values(photo: CatalogPhoto) -> dict[str, Any]:
         "neutral_temperature": photo.neutral_temperature,
         "neutral_tint": photo.neutral_tint,
         "exposure_time": photo.exposure_time,
+        "edited_width": photo.edited_width,
+        "edited_height": photo.edited_height,
     }
 
 

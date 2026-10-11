@@ -1994,6 +1994,16 @@ export interface components {
              */
             height: number;
             /**
+             * Edited Width
+             * @description Pixel width after the edit's geometry (crop, quarter turn).
+             */
+            edited_width: number;
+            /**
+             * Edited Height
+             * @description Pixel height after the edit's geometry.
+             */
+            edited_height: number;
+            /**
              * Rating
              * @default 0
              */

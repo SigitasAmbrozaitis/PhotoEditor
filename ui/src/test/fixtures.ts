@@ -61,6 +61,7 @@ export function neutralAdjustments(): AdjustmentParams {
       crop: { left: 0, top: 0, right: 1, bottom: 1 },
       aspect: null,
       angle: 0,
+      rotate: 0,
       flip_horizontal: false,
       flip_vertical: false,
     },
@@ -73,7 +74,6 @@ export const FOLDER = 'C:/Photos/Test'
 export const engine: EngineInfo = {
   render_identity: 'dec2-libraw0.22.1-eng1',
   later_phase_parameters: {
-    geometry: 6,
     'presence.clarity': 9,
     'presence.texture': 9,
     'presence.dehaze': 9,
@@ -106,6 +106,8 @@ export function makePhoto(i: number, overrides: Partial<Photo> = {}): Photo {
     sidecar_jpeg: `${FOLDER}/DSCF${1000 + i}.JPG`,
     image_version: `v${i}`,
     ...overrides,
+    edited_width: overrides.edited_width ?? overrides.width ?? 6240,
+    edited_height: overrides.edited_height ?? overrides.height ?? 4160,
   }
 }
 

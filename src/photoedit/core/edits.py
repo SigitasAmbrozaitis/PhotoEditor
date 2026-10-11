@@ -21,11 +21,13 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from photoedit.core.catalog import CatalogPhoto
 from photoedit.core.errors import InvalidRequestError, NotFoundError
+from photoedit.core.geometry import check_geometry, is_identity
 from photoedit.core.render.pipeline import check_supported
 from photoedit.core.scan import SourceKind
 from photoedit.core.style_rules import RuleInputs, resolve, rule_parameters
 from photoedit.core.styles import StyleLibrary
 from photoedit.models import AdjustmentParams, GroupReference, RuleResult, Style
+from photoedit.models.adjustments import Geometry
 from photoedit.safety import PathGuard
 
 EDIT_SCHEMA_VERSION = 1
@@ -134,9 +136,23 @@ class EditStore:
             adjustments=source_defaults(photo.kind), overridden=[], style_id=None, revision=revision(None, {})
         )
 
+    def before(self, photo: CatalogPhoto, geometry: Geometry) -> EffectiveEdit:
+        """The "before" view of an edit: the photo's defaults with the edit's geometry, so before and after
+        frame the same picture."""
+        default = self.default(photo)
+        if is_identity(geometry):
+            return default
+        adjustments = default.adjustments.model_copy(update={"geometry": geometry})
+        overrides = differences(default.adjustments, adjustments)
+        return EffectiveEdit(
+            adjustments=adjustments, overridden=[], style_id=None, revision=revision(None, overrides)
+        )
+
     def save(self, photo: CatalogPhoto, adjustments: AdjustmentParams) -> EffectiveEdit:
-        """Store ``adjustments`` as overrides against the styled values. Rejects later-phase parameters."""
+        """Store ``adjustments`` as overrides against the styled values. Rejects later-phase parameters and
+        geometry that doesn't fit the photo."""
         check_supported(adjustments)
+        check_geometry(adjustments.geometry, photo.width, photo.height)
         stored = self.load(photo.id) or PhotoEditFile(photo_id=photo.id)
         styled = self._styled(photo, stored.style_id, stored.group)
         overrides = differences(styled.adjustments, adjustments)

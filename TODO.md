@@ -1248,7 +1248,7 @@ read-only crop overlay toggle and a disabled angle slider.
   size (half/full/2048 base), so every size renders the same framing. Tests with exact values: identity, each
   flip and quarter turn, ±45° on landscape and portrait frames, a crop touching a rotated edge (in) and one pixel
   past it (out), constrain at several angles, and the source map at three decode sizes.
-- [ ] **P6a.4** Pipeline and edits:
+- [x] **P6a.4** Pipeline and edits:
   - `render` takes the geometry. Only the crop's pixels are mapped from the base with one `cv2.warpAffine`
     (cubic, in linear light; area-averaged first when shrinking by more than 2×, so there is no aliasing), then the
     per-pixel stages, the vignette relative to the crop, and sharpening scaled by the crop's full-size width.
@@ -1264,11 +1264,19 @@ read-only crop overlay toggle and a disabled angle slider.
   permutations; a straightened crop has no blank pixels at the corners; strips and full frame are identical; the
   determinism of `warpAffine` (two renders, same bytes); the vignette follows the crop; saving an invalid crop is
   refused with its message.
-- [ ] **P6a.5** Export inside the photo's crop: the export's frame becomes the photo's crop. The aspect crop, the
+  Done: `core/render/warp.py` (`apply_geometry`). Without an angle, flips, turns and the crop are array views
+  (exact); with one, a single cubic `warpAffine` maps the crop at the source's resolution (edges repeated; the crop
+  tool's frame view shows black outside the straightened image), then an area resize. The catalog (schema v5)
+  stores the edited size. "Before" = the photo's defaults with the edit's geometry (`EditStore.before`). The
+  adjustment panel's straighten slider is replaced by a note: geometry goes through the crop tool (P6a.10).
+- [x] **P6a.5** Export inside the photo's crop: the export's frame becomes the photo's crop. The aspect crop, the
   output size and the decode choice are computed inside it (P5.1). The worker warps only that region from the
   decode, so no full rotated copy is made (`WORKER_PEAK_BYTES` re-measured, must not grow by more than 10 %).
   Tests: a cropped photo's Instagram export is 1080×1350 and shows the crop's content; straightened + aspect crop;
   a crop smaller than the output size warns "enlarged"; the half/full decode choice uses the crop's size.
+  Done: the worker maps the export's aspect box into the photo's crop (`sub_crop`) and calls `apply_geometry`
+  once, so unedited photos give the same bytes as before. Peak RAM of one full-size export (DSCF5437, process
+  tree): 1.67 GiB unedited, 1.76 GiB straightened (+5 %), 1.16 GiB turned + 4:5 → `WORKER_PEAK_BYTES` 1.8 GiB.
 - [ ] **P6a.6** Bases for zooming: the half-size decode kept unresized (LRU of 2, ~80 MB each) for 50 %, and the
   full decode (LRU of 1, ~310 MB) for 100 %, decoded in a background thread on the first request. Its status
   (`decoding`, `ready`) is visible, so the UI can show the interim view. Memory measured and documented. Tests with

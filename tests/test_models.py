@@ -147,6 +147,8 @@ def _photo(**overrides: object) -> Photo:
         "file_size": 1,
         "width": 6240,
         "height": 4160,
+        "edited_width": 6240,
+        "edited_height": 4160,
     }
     data.update(overrides)
     return Photo.model_validate(data)

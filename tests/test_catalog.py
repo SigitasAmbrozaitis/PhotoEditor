@@ -274,8 +274,22 @@ def test_v1_catalog_is_migrated(workspace: Path) -> None:
     # v4: measurements are filled lazily; the exposure time is read back from the stored shutter text.
     assert (old.tone_middle, old.neutral_temperature, old.neutral_tint) == (None, None, None)
     assert old.exposure_time == pytest.approx(1 / 500)
+    # v5: no edited size yet = the original size.
+    assert (old.edited_width, old.edited_height) == (None, None)
+    assert (old.to_photo().edited_width, old.to_photo().edited_height) == (60, 40)
     with sqlite3.connect(path) as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 4
+        assert db.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 5
+
+
+def test_edited_size_survives_reimport(catalog: Catalog) -> None:
+    catalog.upsert(_photo(2))
+    catalog.set_edit(photo_id(_sha(2)), "rev1", (300, 200))
+    catalog.upsert(_photo(2))
+    stored = catalog.get(photo_id(_sha(2)))
+    assert stored is not None and (stored.edited_width, stored.edited_height) == (300, 200)
+    catalog.set_edit(photo_id(_sha(2)), None)
+    stored = catalog.get(photo_id(_sha(2)))
+    assert stored is not None and stored.edited_width is None
 
 
 def test_has_edits_flag_survives_reimport(catalog: Catalog) -> None:

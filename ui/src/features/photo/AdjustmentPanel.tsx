@@ -9,7 +9,6 @@ import {
   BASIC_GROUPS,
   DETAIL_GROUPS,
   formatValue,
-  GEOMETRY_FIELDS,
   getPath,
   GRADE_WHEELS,
   gradeFields,
@@ -368,8 +367,8 @@ export function AdjustmentPanel({ detail }: { detail: PhotoDetail }) {
           </Group>
         ))}
         <Group value="geometry" title="Crop & geometry">
-          <p className="pb-1 text-[11px] text-muted">Crop, straighten and flip arrive in Phase 6.</p>
-          {GEOMETRY_FIELDS.map((f) => slider(f))}
+          {/* Geometry changes go through the crop tool: core keeps the crop inside the straightened photo. */}
+          <p className="text-[11px] text-muted">Crop, straighten, rotate and flip with the Crop tool (R).</p>
         </Group>
         <Group value="lens" title="Lens corrections">
           <p className="text-[11px] text-muted">Profile corrections and chromatic aberration arrive in Phase 9.</p>

@@ -4714,6 +4714,18 @@
             "title": "Height",
             "description": "Pixel height after orientation."
           },
+          "edited_width": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Edited Width",
+            "description": "Pixel width after the edit's geometry (crop, quarter turn)."
+          },
+          "edited_height": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Edited Height",
+            "description": "Pixel height after the edit's geometry."
+          },
           "rating": {
             "type": "integer",
             "maximum": 5.0,
@@ -4775,6 +4787,8 @@
           "focal_length",
           "width",
           "height",
+          "edited_width",
+          "edited_height",
           "rating",
           "style_id",
           "has_overrides",

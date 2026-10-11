@@ -71,19 +71,15 @@ def test_raster_neutral_render_reproduces_the_original() -> None:
 
 
 def test_later_phase_parameters_are_rejected_with_their_phase() -> None:
-    edit = params(
-        geometry={"angle": 3}, presence={"clarity": 20, "saturation": 10}, effects={"grain": {"amount": 5}}
-    )
-    assert pipeline.unsupported_parameters(edit) == {
-        "geometry.angle": 6,
-        "presence.clarity": 9,
-        "effects.grain.amount": 9,
-    }
+    edit = params(presence={"clarity": 20, "saturation": 10}, effects={"grain": {"amount": 5}})
+    assert pipeline.unsupported_parameters(edit) == {"presence.clarity": 9, "effects.grain.amount": 9}
     with pytest.raises(
-        UnsupportedParameterError, match=r"geometry\.angle \(Phase 6\).*presence\.clarity \(Phase 9\)"
+        UnsupportedParameterError, match=r"effects\.grain\.amount \(Phase 9\).*presence\.clarity \(Phase 9\)"
     ):
         render(raw_base(), edit, GENERIC, original_width=90)
     assert pipeline.unsupported_parameters(params(presence={"saturation": 10})) == {}
+    # Geometry renders since Phase 6a.
+    assert pipeline.unsupported_parameters(params(geometry={"angle": 3})) == {}
 
 
 def test_render_is_bit_identical_across_runs_and_threads() -> None:
