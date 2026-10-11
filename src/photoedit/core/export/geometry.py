@@ -10,14 +10,13 @@ import math
 from dataclasses import dataclass
 
 from photoedit.core.errors import InvalidRequestError
-from photoedit.core.geometry import parse_ratio
+from photoedit.core.geometry import oriented_ratio, parse_ratio
 from photoedit.models.export import (
     AspectSettings,
     CropAnchor,
     DecodeSize,
     DecodeUsed,
     ExportSettings,
-    Orientation,
     ResizeMode,
     SizeSettings,
 )
@@ -50,21 +49,6 @@ class ExportGeometry:
 
 def _round(value: float) -> int:
     return math.floor(value + 0.5)
-
-
-def _oriented(ratio: float, orientation: Orientation, width: int, height: int) -> float:
-    """Turn the ratio to the wanted orientation: the photo's own for auto (a square photo keeps the ratio)."""
-    if orientation == Orientation.PORTRAIT:
-        want_portrait = True
-    elif orientation == Orientation.LANDSCAPE:
-        want_portrait = False
-    elif width == height:
-        return ratio
-    else:
-        want_portrait = height > width
-    if (ratio > 1 and want_portrait) or (ratio < 1 and not want_portrait):
-        return 1 / ratio
-    return ratio
 
 
 def _fit(width: int, height: int, ratio: float) -> tuple[float, float]:
@@ -119,7 +103,7 @@ def _target_ratio(width: int, height: int, aspect: AspectSettings, size: SizeSet
         raise InvalidRequestError(
             "the aspect crop anchor 'subject' needs subject detection, which arrives in Phase 6; use 'center'"
         )
-    ratio = _oriented(parse_ratio(aspect.ratio), aspect.orientation, width, height)
+    ratio = oriented_ratio(parse_ratio(aspect.ratio), aspect.orientation, width, height)
     if size.mode == ResizeMode.WIDTH_HEIGHT:
         box_w, box_h = _box(size, ratio < 1, ratio > 1)
         if abs(box_w / box_h - ratio) <= _BOX_RATIO_TOLERANCE * ratio:

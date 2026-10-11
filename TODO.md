@@ -1488,7 +1488,7 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   **Cost**: ~6 s per photo the first time (2.3 s to render the default look + ~4.3 s for YOLOX). The render
   pipeline pins OpenCV to one thread for determinism (`stages.py`), so the detector runs single-threaded;
   batches gain by running photos in parallel. Cached afterwards.
-- [ ] **P6b.7** `suggest_crop(photo, geometry, aspect, *, orientation=auto, placement=centered, zoom=1.0)` →
+- [x] **P6b.7** `suggest_crop(photo, geometry, aspect, *, orientation=auto, placement=centered, zoom=1.0)` →
   `CropSuggestion` (crop rectangle in the frame of `geometry`, which may be the crop tool's unsaved draft; its
   angle, turn and flips are kept, the subject used, warnings such as
   "subject is cut off: it is wider than a 4:5 crop allows" or "no subject found: centered"). Pure math on top of
@@ -1497,6 +1497,11 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   subject box plus margin, capped there. Tests: subject in a corner → the crop touches that edge; subject too
   large → a warning, crop centered on it; thirds picks the nearest intersection; zoom 1/1.5/max; rotated photos;
   portrait vs landscape ratio with `orientation`.
+  Done 2026-10-11 (`core/subject/suggest.py` + `Subjects.suggest_crop`). The crop's possible centers form a
+  convex polygon (frame, straightened image, subject + margin are all linear in the center), so the largest
+  size comes from bisection and the center from an exact closest-point search: 0.1 ms straight, ~5 ms
+  straightened. Where the frame's edge is closer than the margin, the crop goes to the edge (a subject at the
+  photo's edge isn't "cut off"). `oriented_ratio` moved from the export code into `core/geometry.py`.
 - [ ] **P6b.8** Export `anchor: subject`: the aspect crop inside the photo's crop is placed by P6b.7's rule
   (centered, zoom 1), with the subject mapped into the edited photo's pixels (`subject_in_frame`, then cut to the
   photo's crop; a subject outside the crop counts as none). With no subject it falls back to center, with a warning in the plan. The built-in Instagram

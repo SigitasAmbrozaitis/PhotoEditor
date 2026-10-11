@@ -18,7 +18,16 @@ from photoedit.core.jobs import JobManager
 from photoedit.core.library import Library
 from photoedit.core.subject.cues import RGB8
 from photoedit.core.subject.service import NO_FACE_MODEL, NO_OBJECT_MODEL, Subjects
-from photoedit.models.subject import SubjectBox, SubjectCandidate, SubjectKind, SubjectSource
+from photoedit.models.adjustments import Geometry
+from photoedit.models.export import Orientation
+from photoedit.models.subject import (
+    CropPlacement,
+    CropSuggestionRequest,
+    SubjectBox,
+    SubjectCandidate,
+    SubjectKind,
+    SubjectSource,
+)
 from photoedit.safety import PathGuard
 
 CAR_BOX = SubjectBox(left=0.6, top=0.4, right=0.8, bottom=0.6)
@@ -133,9 +142,8 @@ def test_missing_models_use_the_cues_and_say_so(library: Library, tmp_path: Path
 
 
 def test_a_missing_file_cant_be_detected(library: Library, tmp_path: Path) -> None:
-    photo = _photo(library, "wide")
-    photo.path.unlink()
-    with pytest.raises(NotFoundError, match=r"wide\.jpg"):
+    photo = _photo(library, "wide").model_copy(update={"path": tmp_path / "photos" / "gone.jpg"})
+    with pytest.raises(NotFoundError, match=r"gone\.jpg"):
         subjects(library, tmp_path, FakeFinder()).subject(photo)
 
 
@@ -145,3 +153,70 @@ def test_detection_input_is_deterministic(library: Library, tmp_path: Path) -> N
     first = service.detection_input(photo)
     assert first.dtype == np.uint8 and first.shape == (200, 400, 3)
     assert np.array_equal(first, service.detection_input(photo))
+
+
+# ---- suggested crops (P6b.7)
+
+
+def test_suggest_crop_frames_the_subject_in_the_drafts_frame(library: Library, tmp_path: Path) -> None:
+    finder = FakeFinder(SubjectCandidate(box=CAR_BOX, kind=SubjectKind.CAR, score=0.9, label="car"))
+    service = subjects(library, tmp_path, finder)
+    photo = _photo(library, "wide")  # 400 × 200, the car at x 0.6-0.8, y 0.4-0.6
+    square = service.suggest_crop(photo, CropSuggestionRequest(aspect="1:1"))
+    assert (square.source, square.kind, square.aspect, square.warnings) == (
+        SubjectSource.DETECTED,
+        SubjectKind.CAR,
+        "1:1",
+        [],
+    )
+    assert square.subject == CAR_BOX and square.crop.top == 0 and square.crop.bottom == 1
+    assert (square.crop.left + square.crop.right) / 2 == pytest.approx(0.7)
+    assert square.crop.right - square.crop.left == pytest.approx(0.5)
+
+    # The draft is turned 90° clockwise: the frame is 200 × 400 and the car is at x 0.4-0.6, y 0.6-0.8.
+    turned = service.suggest_crop(photo, CropSuggestionRequest(aspect="1:1", geometry=Geometry(rotate=90)))
+    assert turned.subject == SubjectBox(left=0.4, top=0.6, right=0.6, bottom=0.8)
+    assert turned.crop.left == 0 and turned.crop.right == 1
+    assert (turned.crop.top + turned.crop.bottom) / 2 == pytest.approx(0.7)
+    assert finder.calls == 1  # the draft geometry never re-detects
+
+
+@pytest.mark.parametrize(
+    ("aspect", "orientation", "shown"),
+    [
+        ("4:5", Orientation.AUTO, "5:4"),  # a landscape frame turns the ratio landscape
+        ("4:5", Orientation.PORTRAIT, "4:5"),
+        ("5:4", Orientation.PORTRAIT, "4:5"),
+        ("16:9", Orientation.LANDSCAPE, "16:9"),
+    ],
+)
+def test_suggest_crop_orientation(
+    library: Library, tmp_path: Path, aspect: str, orientation: Orientation, shown: str
+) -> None:
+    service = subjects(library, tmp_path, FakeFinder())
+    result = service.suggest_crop(
+        _photo(library, "wide"), CropSuggestionRequest(aspect=aspect, orientation=orientation)
+    )
+    assert result.aspect == shown
+
+
+def test_suggest_crop_without_a_subject_centers_and_says_so(library: Library, tmp_path: Path) -> None:
+    service = subjects(library, tmp_path, FakeFinder())
+    result = service.suggest_crop(_photo(library, "wide"), CropSuggestionRequest(aspect="1:1", zoom=2))
+    assert result.source is SubjectSource.NONE and result.warnings == ["no subject found: centered"]
+    assert (result.crop.left, result.crop.right) == pytest.approx((0.375, 0.625))
+    assert result.zoom == 2
+
+
+def test_suggest_crop_reports_capped_zoom_and_uses_the_manual_box(library: Library, tmp_path: Path) -> None:
+    service = subjects(library, tmp_path, FakeFinder())
+    photo = _photo(library, "wide")
+    manual = SubjectBox(left=0.1, top=0.2, right=0.3, bottom=0.8)
+    service.set_manual(photo, manual)
+    result = service.suggest_crop(
+        photo, CropSuggestionRequest(aspect="1:1", zoom=10, placement=CropPlacement.THIRDS)
+    )
+    assert result.source is SubjectSource.MANUAL and result.subject == manual
+    assert result.zoom < 10 and result.warnings == [
+        f"zoom stopped at {result.zoom:.2f}×, where the subject fills the crop"
+    ]

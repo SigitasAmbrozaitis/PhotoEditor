@@ -21,6 +21,7 @@ from photoedit.core.catalog import CatalogPhoto
 from photoedit.core.decode import decode_linear, is_raw
 from photoedit.core.edits import source_defaults
 from photoedit.core.errors import NotFoundError
+from photoedit.core.geometry import check_geometry, oriented_ratio, parse_ratio, subject_in_frame, turned_size
 from photoedit.core.library import Library
 from photoedit.core.metadata import AfMode
 from photoedit.core.render.pipeline import render
@@ -43,7 +44,15 @@ from photoedit.core.subject.model_files import (
     detector_identity,
     verified_model_path,
 )
-from photoedit.models.subject import SubjectBox, SubjectCandidate, SubjectInfo, SubjectSource
+from photoedit.core.subject.suggest import suggest
+from photoedit.models.subject import (
+    CropSuggestion,
+    CropSuggestionRequest,
+    SubjectBox,
+    SubjectCandidate,
+    SubjectInfo,
+    SubjectSource,
+)
 
 # Finds candidates on the detection input; given with the identity of whatever decides its boxes.
 type Finder = Callable[[RGB8], list[SubjectCandidate]]
@@ -105,6 +114,50 @@ class Subjects:
         """Set the subject by hand (upright coordinates), or clear it with None to use the detected one."""
         self._library.edits.set_subject(photo, box)
         return self.subject(photo, detect=box is None)
+
+    def suggest_crop(self, photo: CatalogPhoto, request: CropSuggestionRequest) -> CropSuggestion:
+        """A crop of ``request.aspect`` framing the photo's subject, in the frame of ``request.geometry`` (the
+        crop tool's draft: its flips, turn and angle are kept). Nothing is saved."""
+        geometry = request.geometry
+        check_geometry(geometry, photo.width, photo.height)
+        frame_w, frame_h = turned_size(photo.width, photo.height, geometry.rotate)
+        ratio = oriented_ratio(parse_ratio(request.aspect), request.orientation, frame_w, frame_h)
+        aspect = request.aspect
+        if (ratio > 1) != (parse_ratio(aspect) > 1):
+            width, height = aspect.split(":")
+            aspect = f"{height}:{width}"
+        info = self.subject(photo)
+        framed = (
+            subject_in_frame(info.box, geometry, photo.width, photo.height) if info.box is not None else None
+        )
+        warnings = []
+        if info.box is None:
+            warnings.append("no subject found: centered")
+        elif framed is None:
+            warnings.append("the subject is outside the straightened photo: centered")
+        result = suggest(
+            framed,
+            ratio=ratio,
+            angle=geometry.angle,
+            width=frame_w,
+            height=frame_h,
+            placement=request.placement,
+            zoom=request.zoom,
+        )
+        if result.cut_off is not None:
+            warnings.append(f"the subject is cut off: it is {result.cut_off} than a {aspect} crop allows")
+        if result.zoom < request.zoom - 1e-6 and framed is not None and result.cut_off is None:
+            warnings.append(f"zoom stopped at {result.zoom:.2f}×, where the subject fills the crop")
+        return CropSuggestion(
+            crop=result.crop,
+            aspect=aspect,
+            placement=request.placement,
+            zoom=round(result.zoom, 4),
+            source=info.source if framed is not None else SubjectSource.NONE,
+            kind=info.kind if framed is not None else None,
+            subject=framed,
+            warnings=warnings,
+        )
 
     def cached(self, photo: CatalogPhoto) -> SubjectInfo | None:
         return self._library.catalog.subject(photo.id, self.identity())

@@ -19,6 +19,7 @@ import numpy.typing as npt
 
 from photoedit.core.errors import InvalidRequestError
 from photoedit.models.adjustments import CropRect, Geometry, GeometryChange, QuarterTurn
+from photoedit.models.export import Orientation
 from photoedit.models.subject import MIN_BOX_SIZE, SubjectBox
 
 # The smallest crop (fraction of the frame on each side) that constrain_crop produces; a little above the
@@ -78,6 +79,22 @@ def parse_ratio(ratio: str) -> float:
     if width <= 0 or height <= 0:
         raise InvalidRequestError(f"aspect ratio '{ratio}' must have two positive numbers")
     return width / height
+
+
+def oriented_ratio(ratio: float, orientation: Orientation, width: float, height: float) -> float:
+    """Turn the ratio (width ÷ height) to the wanted orientation: the photo's own for auto (a square photo
+    keeps the ratio)."""
+    if orientation == Orientation.PORTRAIT:
+        want_portrait = True
+    elif orientation == Orientation.LANDSCAPE:
+        want_portrait = False
+    elif width == height:
+        return ratio
+    else:
+        want_portrait = height > width
+    if (ratio > 1 and want_portrait) or (ratio < 1 and not want_portrait):
+        return 1 / ratio
+    return ratio
 
 
 def _rotation(angle: float) -> Matrix:
