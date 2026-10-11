@@ -47,7 +47,7 @@ class ZoomBases:
 
     def request(self, photo: CatalogPhoto, level: ZoomLevel) -> ZoomState:
         """Start decoding ``photo`` for ``level`` unless it is ready or already decoding. Raises the error of
-        a decode that failed since the last request (and forgets it, so the next request tries again)."""
+        a decode that failed since the last request (and forgets it, so the one after tries again)."""
         key = (photo.id, level)
         with self._lock:
             error = self._errors.pop(key, None)
@@ -57,9 +57,7 @@ class ZoomBases:
                 self._bases[level].move_to_end(photo.id)
                 return "ready"
             if key not in self._pending:
-                future = self._executors[level].submit(self._decode, photo, level)
-                self._pending[key] = future
-                future.add_done_callback(lambda done: self._finished(photo.id, level, done))
+                self._pending[key] = self._executors[level].submit(self._run, photo, level)
             return "decoding"
 
     def get(self, photo: CatalogPhoto, level: ZoomLevel, timeout: float | None = None) -> LinearImage:
@@ -70,7 +68,8 @@ class ZoomBases:
             future = self._pending.get((photo.id, level))
         if ready is not None:
             return ready
-        assert future is not None
+        if future is None:  # it finished between the two looks: the next request reports how
+            return self.get(photo, level, timeout)
         return future.result(timeout)
 
     def peek(self, photo: CatalogPhoto, level: ZoomLevel) -> LinearImage | None:
@@ -108,6 +107,25 @@ class ZoomBases:
         for executor in self._executors.values():
             executor.shutdown(wait=False, cancel_futures=True)
 
+    def _run(self, photo: CatalogPhoto, level: ZoomLevel) -> LinearImage:
+        """The decode, recording its outcome before the future completes (so a waiter sees it)."""
+        key = (photo.id, level)
+        try:
+            image = self._decode(photo, level)
+        except BaseException as error:
+            with self._lock:
+                self._errors[key] = error
+                self._pending.pop(key, None)
+            raise
+        with self._lock:
+            bases = self._bases[level]
+            bases[photo.id] = image
+            while len(bases) > _ITEMS[level]:
+                evicted, _ = bases.popitem(last=False)
+                self._derived.pop((evicted, level), None)
+            self._pending.pop(key, None)
+        return image
+
     def _decode(self, photo: CatalogPhoto, level: ZoomLevel) -> LinearImage:
         if level == 100:
             return self._decoder(photo.path, half_size=False)
@@ -117,18 +135,3 @@ class ZoomBases:
         full = self._decoder(photo.path, half_size=False)
         height, width = full.pixels.shape[:2]
         return resize_linear(full, math.ceil(max(width, height) / 2))
-
-    def _finished(self, photo_id: str, level: int, future: Future[LinearImage]) -> None:
-        with self._lock:
-            self._pending.pop((photo_id, level), None)
-            if future.cancelled():
-                return
-            error = future.exception()
-            if error is not None:
-                self._errors[(photo_id, level)] = error
-                return
-            bases = self._bases[level]
-            bases[photo_id] = future.result()
-            while len(bases) > _ITEMS[level]:
-                evicted, _ = bases.popitem(last=False)
-                self._derived.pop((evicted, level), None)

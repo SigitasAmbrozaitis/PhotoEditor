@@ -1277,15 +1277,23 @@ read-only crop overlay toggle and a disabled angle slider.
   Done: the worker maps the export's aspect box into the photo's crop (`sub_crop`) and calls `apply_geometry`
   once, so unedited photos give the same bytes as before. Peak RAM of one full-size export (DSCF5437, process
   tree): 1.67 GiB unedited, 1.76 GiB straightened (+5 %), 1.16 GiB turned + 4:5 → `WORKER_PEAK_BYTES` 1.8 GiB.
-- [ ] **P6a.6** Bases for zooming: the half-size decode kept unresized (LRU of 2, ~80 MB each) for 50 %, and the
+- [x] **P6a.6** Bases for zooming: the half-size decode kept unresized (LRU of 2, ~80 MB each) for 50 %, and the
   full decode (LRU of 1, ~310 MB) for 100 %, decoded in a background thread on the first request. Its status
   (`decoding`, `ready`) is visible, so the UI can show the interim view. Memory measured and documented. Tests with
   a fake decoder: LRU, one decode at a time per photo, status.
-- [ ] **P6a.7** Tile rendering: `render_tile(photo, edit, zoom, tx, ty)` renders a 512 px tile of the edited image
+  Done: `core/zoom.py` (`ZoomBases`): one decode thread per level, so a 50 % decode never waits behind a 100 %
+  one; the decode records its result before its future completes; a failed decode is reported by the next
+  request. Also keeps the geometry-applied image of the photo being viewed. Sizes: 311 MB (full X-T3, float32),
+  78 MB (half); timings go into `docs/geometry.md` (P6a.14).
+- [x] **P6a.7** Tile rendering: `render_tile(photo, edit, zoom, tx, ty)` renders a 512 px tile of the edited image
   (after geometry) at 50 % or 100 % with the exact pipeline. A margin is rendered for sharpening and then cut off,
   and the vignette is relative to the whole crop (`vignette_mask` with an offset). Tiles are cached on disk by edit
   revision under `cache/renders/`, with the same pruning as previews. Tests: tiles stitched together equal a full
   render of the same size (bit-identical, sharpening included); the edge tiles; a new edit revision gives new tiles.
+  Done: `pipeline.render_window` (the per-pixel stages are now `_Pointwise`, shared with `render`) and
+  `Renderer.tile` / `Library.tile` / `Library.zoom_info`. Stitched tiles equal the whole render **within float
+  rounding** (≤ 3e-7: vectorized loops round a row's last elements differently), and their 8-bit pixels are
+  identical. Before-tiles use the photo's defaults with the edit's geometry.
 
 ### API + CLI
 - [ ] **P6a.8** Endpoints:
