@@ -1415,19 +1415,24 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   subject's center on the nearest thirds intersection, which keeps the side the photographer chose). `zoom` > 1
   makes it tighter around the subject. With no subject found it falls back to a center crop and says so.
 
-- [ ] **P6b.0** Re-check this detail against what 6a built, and update it. ⛔ STOP for the user to review it.
+- [x] **P6b.0** Re-check this detail against what 6a built, and update it. ⛔ STOP for the user to review it.
+  Reviewed 2026-10-11: the user said to continue with the phase.
   Updated 2026-10-11: subject boxes in upright coordinates; the manual box in the edit file outside the
   adjustments (no re-render when it changes); detection on the default look from the 2048 px working base;
   `suggest_crop` and its endpoint take the crop tool's draft geometry; `PUT /subject`; the 3×3 grid (P6b.13,
   requested after the 6a test).
 
 ### Dependencies
-- [ ] **P6b.1** Choose the model (the proposal is YOLOX from the OpenCV Model Zoo, Apache-2.0; a smaller variant
+- [x] **P6b.1** Choose the model (the proposal is YOLOX from the OpenCV Model Zoo, Apache-2.0; a smaller variant
   if it detects small cars as well, measured on a few samples). ⛔ **Ask the user before downloading**, showing the
   file name, URL, size and SHA-256. Then `photoedit models fetch`: the pinned model goes into
   `cache/models/<name>`, checked by SHA-256. An existing file with the right hash is left alone. A wrong hash is
   deleted and reported. Downloads go through the path guard (`cache/` is tool-owned). `detector_identity()` = model
   name + hash + OpenCV version. Tests use a fake downloader (no network in tests).
+  Done 2026-10-11: the user OKed YOLOX-S float32 + int8 for a comparison. On 12 rally/drift samples (2048 px,
+  12 tiles + whole frame) float32 found the cars at 3-47 % of the width, while int8 found nothing under OpenCV 5
+  and ran 1.8x slower. **Pinned: YOLOX-S float32** (`yolox_s`, 35.9 MB). One 640 px pass takes 0.23 s at 8
+  threads, and the output is bit-identical at any thread count. `photoedit models list` shows the state.
 
 ### Core
 - [ ] **P6b.2** Models: `SubjectBox` (upright normalized box), `PhotoEditFile.subject: SubjectBox | None`,
