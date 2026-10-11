@@ -1393,9 +1393,21 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
 
 **Design** (confirmed 2026-10-11, approach B):
 - **Subject** = one main box per photo, plus the other candidates found, each with a kind (`car`, `animal`,
-  `person`, `face`, `salient`, `af_point`) and a score. A box the user or the AI sets by hand (`geometry.subject`
-  in the edit) always wins over detection. Detection is cached in the catalog per detector identity, like the tone
-  anchors, so exports stay deterministic.
+  `person`, `face`, `salient`, `af_point`) and a score. A box the user or the AI sets by hand always wins over
+  detection. Detection is cached in the catalog per detector identity, like the tone anchors, so exports stay
+  deterministic.
+- **Subject boxes are in upright photo coordinates** (0..1 of the photo as shot, before any geometry), both
+  detected and manual (updated at P6b.0). So a flip, turn or straighten never has to move them, and detection
+  doesn't depend on the edit. Core maps them into the frame when it needs to: the box's corners through the
+  geometry (a straightened box becomes the bounding box of its turned corners). The crop tool draws them on its
+  upright image, which the browser turns along with the photo.
+- **The manual box lives in the photo's edit file** next to the adjustments (`PhotoEditFile.subject`, like
+  `group`), not in `AdjustmentParams` (updated at P6b.0). It changes no pixels, so setting it doesn't change
+  the edit revision or throw away cached previews and tiles.
+- **Detection input** = the photo's default look (no edit, no geometry), rendered from the 2048 px working base
+  that previews already use, so it's deterministic and costs no extra decode. The detector runs on overlapping
+  640 px tiles of it (a drift car at ~3 % of the width is ~60 px there). The working size is measured in P6b.5
+  (accuracy against time) and may move to the half-size decode (3120 px) if small cars are missed.
 - **Detector**: classical cues + a small pretrained object detector (COCO classes) run by OpenCV's `cv2.dnn` on
   the CPU. It only returns labeled boxes. The model is downloaded once, after the user's OK.
 - **Suggested crop** = the largest crop of the requested ratio that keeps the subject box plus a margin.
@@ -1404,6 +1416,10 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   makes it tighter around the subject. With no subject found it falls back to a center crop and says so.
 
 - [ ] **P6b.0** Re-check this detail against what 6a built, and update it. ⛔ STOP for the user to review it.
+  Updated 2026-10-11: subject boxes in upright coordinates; the manual box in the edit file outside the
+  adjustments (no re-render when it changes); detection on the default look from the 2048 px working base;
+  `suggest_crop` and its endpoint take the crop tool's draft geometry; `PUT /subject`; the 3×3 grid (P6b.13,
+  requested after the 6a test).
 
 ### Dependencies
 - [ ] **P6b.1** Choose the model (the proposal is YOLOX from the OpenCV Model Zoo, Apache-2.0; a smaller variant
@@ -1414,9 +1430,11 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   name + hash + OpenCV version. Tests use a fake downloader (no network in tests).
 
 ### Core
-- [ ] **P6b.2** Model: `geometry.subject: SubjectBox | None` (normalized box in the same frame as the crop),
-  `SubjectInfo`, `CropSuggestion`, `CropPlacement` (`centered` | `thirds`). Tests: validation, round-trip, old
-  edits load.
+- [ ] **P6b.2** Models: `SubjectBox` (upright normalized box), `PhotoEditFile.subject: SubjectBox | None`,
+  `SubjectInfo`, `CropSuggestion`, `CropPlacement` (`centered` | `thirds`). Core: `subject_in_frame(box,
+  geometry, size)` (upright → frame, exact for flips and turns, the bounding box when straightened). Setting or
+  clearing the manual box leaves the edit revision alone. Tests: validation, round-trip, old edit files load, the
+  mapping for each flip and turn and at ±45°.
 - [ ] **P6b.3** AF point: read the Fujifilm maker note at import (FocusPixel 0x1023, AF mode 0x1022, and faces
   detected 0x4100/0x4103 if present) into the catalog, as an upright normalized point, through a catalog migration
   (already-imported photos get it on the next import or on first use). Other cameras get none. Reading never
@@ -1428,7 +1446,7 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   images: a sharp square on a blurred background, a bright blob on noise, deterministic output, and an empty or
   flat image gives no candidates.
 - [ ] **P6b.5** Object detector (`core/subject/detector.py`): the model through `cv2.dnn` on overlapping 640 px
-  tiles of the half-size image plus one whole-frame pass, then merged with class-wise NMS. Threads fixed for
+  tiles of the detection input plus one whole-frame pass, then merged with class-wise NMS. Threads fixed for
   determinism. Classes of interest are mapped to kinds (car/truck/bus → `car`, motorcycle, cat/dog → `animal`,
   person, airplane/bird…). Without the model file, detection uses only the cues and says so. Tests: tiling and NMS
   math on synthetic boxes; with the model present (golden), two runs give identical boxes, and a sample photo with
@@ -1438,10 +1456,11 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   (panning), and closeness to the AF point. Crowds count as one weak "people" region when a vehicle is present.
   Result: `SubjectInfo` (main box, kind, score, source `detected`/`manual`/`af_point`/`none`, candidates,
   detector identity). It is stored in the catalog and recomputed only when the detector identity changes.
-  `Library.subject(photo)` returns the manual box from the edit if one is set. Tests: the scoring rules on
+  `Library.subject(photo)` returns the manual box from the edit file if one is set. Tests: the scoring rules on
   constructed candidate sets (car vs crowd, cat face vs saliency, nothing found → `none`).
-- [ ] **P6b.7** `suggest_crop(photo, aspect, *, orientation=auto, placement=centered, zoom=1.0)` →
-  `CropSuggestion` (crop rectangle in the edit's frame, the current angle kept, the subject used, warnings such as
+- [ ] **P6b.7** `suggest_crop(photo, geometry, aspect, *, orientation=auto, placement=centered, zoom=1.0)` →
+  `CropSuggestion` (crop rectangle in the frame of `geometry`, which may be the crop tool's unsaved draft; its
+  angle, turn and flips are kept, the subject used, warnings such as
   "subject is cut off: it is wider than a 4:5 crop allows" or "no subject found: centered"). Pure math on top of
   `core/geometry.py`: the largest crop of the ratio inside the straightened image containing the subject box plus
   a margin (≥ 5 % of the crop), placed per `placement` and clamped to the frame. `zoom` tightens it toward the
@@ -1449,7 +1468,8 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   large → a warning, crop centered on it; thirds picks the nearest intersection; zoom 1/1.5/max; rotated photos;
   portrait vs landscape ratio with `orientation`.
 - [ ] **P6b.8** Export `anchor: subject`: the aspect crop inside the photo's crop is placed by P6b.7's rule
-  (centered, zoom 1). With no subject it falls back to center, with a warning in the plan. The built-in Instagram
+  (centered, zoom 1), with the subject mapped into the edited photo's pixels (`subject_in_frame`, then cut to the
+  photo's crop; a subject outside the crop counts as none). With no subject it falls back to center, with a warning in the plan. The built-in Instagram
   presets switch to `subject`. The export plan shows each photo's subject source. Missing detections are computed
   when the plan is made, in parallel, and cached. Tests: the plan and the files for a synthetic photo with a known
   off-center subject; the fallback warning; determinism.
@@ -1465,9 +1485,9 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   their causes and the options (e.g. a larger model, tuned scoring, manual or AI subjects for that kind of shot).
 
 ### API + CLI
-- [ ] **P6b.10** Endpoints: `GET /api/photos/{id}/subject` (detect if needed) → `SubjectInfo` (the manual box goes
-  through the edit); `POST /api/photos/{id}/suggest-crop` (`aspect`, `orientation`, `placement`, `zoom`) →
-  `CropSuggestion` (nothing saved); `POST /api/jobs` `detect_subjects` (a selection, in the background); the export
+- [ ] **P6b.10** Endpoints: `GET /api/photos/{id}/subject` (detect if needed) → `SubjectInfo`;
+  `PUT /api/photos/{id}/subject` (`{box}` or `{box: null}` = use detected); `POST /api/photos/{id}/suggest-crop`
+  (`geometry` = the draft, `aspect`, `orientation`, `placement`, `zoom`) → `CropSuggestion` (nothing saved); `POST /api/jobs` `detect_subjects` (a selection, in the background); the export
   plan's subject column. Regenerate `openapi.json` + `schema.d.ts`. Tests for every endpoint.
 - [ ] **P6b.11** CLI: `photoedit subject detect [PHOTO…|--folder DIR] | show PHOTO | eval`, `photoedit crop suggest
   PHOTO --aspect 4:5 [--orientation …] [--placement thirds] [--zoom 1.2] [--apply]`, `photoedit models fetch`
