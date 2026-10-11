@@ -10,6 +10,8 @@ import type {
   ExportPlan,
   ExportPreset,
   ExportRequest,
+  Geometry,
+  GeometryChange,
   ImportRequest,
   Job,
   JobRequest,
@@ -31,6 +33,8 @@ import type {
   StyleUpdate,
   StyleUpdateFromPhoto,
   StyleVersionInfo,
+  ZoomInfo,
+  ZoomLevel,
 } from './types'
 
 export interface PhotoQuery {
@@ -169,6 +173,23 @@ export function useSaveEdit(photoId: string) {
     mutationFn: (params: AdjustmentParams) =>
       api.put<PhotoDetail>(`/api/photos/${encodeURIComponent(photoId)}/edit`, params),
     onSuccess: (detail) => storeDetail(client, detail),
+  })
+}
+
+/** The geometry a change would give from `geometry` (the crop tool's draft); core constrains it, nothing is saved. */
+export function previewGeometry(photoId: string, geometry: Geometry, change: Partial<GeometryChange>): Promise<Geometry> {
+  return api.post<Geometry>(`/api/photos/${encodeURIComponent(photoId)}/geometry/preview`, { geometry, change })
+}
+
+export const ZOOM_POLL_MS = 500
+
+/** The zoom view at `level` (null = not zoomed). Asking starts the decode; polls until it is ready. */
+export function useZoomInfo(photoId: string, level: ZoomLevel | null, version: string) {
+  return useQuery({
+    queryKey: ['zoom', photoId, level, version],
+    queryFn: () => api.get<ZoomInfo>(`/api/photos/${encodeURIComponent(photoId)}/zoom/${level}`),
+    enabled: level !== null,
+    refetchInterval: (query) => (query.state.data?.state === 'decoding' ? ZOOM_POLL_MS : false),
   })
 }
 

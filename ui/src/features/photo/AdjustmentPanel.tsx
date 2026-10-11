@@ -1,6 +1,6 @@
 import { Accordion, Slider, Tabs } from 'radix-ui'
 import { ChevronDown, Redo2, RotateCcw, Undo2 } from 'lucide-react'
-import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { useEngine } from '../../api/queries'
 import type { AdjustmentParams, PhotoDetail } from '../../api/types'
 import { Button, Tooltip } from '../../components/ui'
@@ -218,9 +218,19 @@ function Group({
   )
 }
 
-/** The adjustments of the open photo: every slider edits and saves automatically. */
-export function AdjustmentPanel({ detail }: { detail: PhotoDetail }) {
+/** The adjustments of the open photo: every slider edits and saves automatically. `sessionRef` gets the edit
+ * session, so other tools (the crop tool) save through it and share its undo history. */
+export function AdjustmentPanel({
+  detail,
+  sessionRef,
+}: {
+  detail: PhotoDetail
+  sessionRef?: RefObject<EditSession | null>
+}) {
   const session = useEditSession(detail)
+  useEffect(() => {
+    if (sessionRef) sessionRef.current = session
+  })
   const engine = useEngine()
   const defaults = detail.edit.defaults
   const ctx: SliderContext = {

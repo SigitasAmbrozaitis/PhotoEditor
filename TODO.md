@@ -1311,20 +1311,33 @@ read-only crop overlay toggle and a disabled angle slider.
   [--flip-h] [--flip-v]`, `photoedit crop show PHOTO`, `photoedit crop reset PHOTO`. Tests with `CliRunner`.
 
 ### UI
-- [ ] **P6a.10** Crop tool (the "Crop" button, key `R` as in Lightroom): the whole straightened photo with an
+- [x] **P6a.10** Crop tool (the "Crop" button, key `R` as in Lightroom): the whole straightened photo with an
   editable rectangle (drag corners and edges, drag inside to move, rule-of-thirds grid while dragging). Aspect
   menu: free, original, 1:1, 4:5, 5:4, 2:3, 3:2, 16:9, 9:16, plus "swap orientation". Straighten slider with a
   number field. Rotate left/right, flip horizontal/vertical, Reset. Enter or Done applies, Esc cancels. Dragging
   uses the same "inside the straightened image" rule for the feel of it. The server stays the authority: a
   rejected crop shows its message and the last valid crop returns. Undo/redo cover crop changes like slider
   changes. The "Phase 6" note on the angle slider goes away.
-- [ ] **P6a.11** Zoom view: Fit / 50 % / 100 % buttons. `Z` or a click toggles Fit ↔ 100 % at the clicked point.
+  Done: `CropTool.tsx` + `cropMath.ts`. The tool edits a draft: turns, flips, the angle and the aspect go to a new
+  dry-run endpoint `POST /api/photos/{id}/geometry/preview` (core constrains, nothing is saved; latest-wins while
+  the straighten slider moves). It shows the photo as shot (`preview?upright=true`, which replaced the planned
+  `uncropped`) and turns, flips and straightens it on screen with CSS, so the slider is instant. Done checks the
+  crop with core once more, then saves through the photo's edit session (one undo step). The panel's angle slider
+  became a note pointing to the crop tool. Esc in the crop tool cancels it (it no longer leaves the photo).
+- [x] **P6a.11** Zoom view: Fit / 50 % / 100 % buttons. `Z` or a click toggles Fit ↔ 100 % at the clicked point.
   Drag to pan (space + drag while the crop tool is open). Tiles load for the visible area only. At 100 %, while the
   full decode runs, the 50 % tiles are shown enlarged with "Loading full size…". A small navigator shows where the
   view is. Works in After/Before/Split.
-- [ ] **P6a.12** UI tests: Vitest for the crop tool (drag, aspect lock, straighten → constrain call, rejected crop,
+  Done: `ZoomView.tsx` + `zoomMath.ts`; Fit / 50% / 100% buttons in the header (disabled for the camera JPEG and
+  while cropping); `Z` toggles Fit ↔ 100 % at the center, a click on the photo zooms in there, a click without
+  dragging (or Esc) goes back. The navigator is the thumbnail with the view outlined. The pan offset is rounded to
+  whole pixels so tiles meet without seams.
+- [x] **P6a.12** UI tests: Vitest for the crop tool (drag, aspect lock, straighten → constrain call, rejected crop,
   undo) and the zoom view (tile URLs for a viewport, the interim state). Playwright: crop a photo to 4:5 and check
   the thumbnail turns 4:5; straighten by 5°; zoom to 100 % and pan. Screenshots of the crop tool and the zoom view.
+  Done: Vitest 112 (`cropMath`, `zoomMath`, `CropZoom.test.tsx`: core calls, a corner drag, a refused crop, Esc,
+  undo, 100 % tiles, the interim 50 % view, before tiles). Playwright 7 (new: crop 4:5 + 5° → the 4:5 thumbnail;
+  100 % tiles and panning; screenshots 18-crop-tool, 19-zoom-100).
 
 ### Tests + docs
 - [ ] **P6a.13** Golden: synthetic geometry references (committed: a test chart with a crop, a straighten, flips

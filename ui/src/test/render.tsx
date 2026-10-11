@@ -5,7 +5,17 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { vi } from 'vitest'
 import { AppRoutes, Providers } from '../App'
-import type { ExportPreset, ExportRequest, Job, JobRequest, PresetUpdate, Style, StyleUpdate } from '../api/types'
+import type {
+  ExportPreset,
+  ExportRequest,
+  Geometry,
+  GeometryChange,
+  Job,
+  JobRequest,
+  PresetUpdate,
+  Style,
+  StyleUpdate,
+} from '../api/types'
 import * as fx from './fixtures'
 
 export interface ApiCall {
@@ -71,6 +81,32 @@ export function defaultHandlers(): Record<string, Handler> {
       return photo ? fx.photoDetail(photo) : new Response(JSON.stringify({ detail: 'not found' }), { status: 404 })
     },
     'GET /api/engine': () => fx.engine,
+    // Like core's apply_change, simplified: an angle shrinks the crop to the middle 80 %; an explicit crop that
+    // reaches a straightened photo's corners is refused.
+    'POST /api/photos/:id/geometry/preview': ({ body }) => {
+      const { geometry, change } = body as { geometry: Geometry; change: Partial<GeometryChange> }
+      if (change.reset) return fx.neutralAdjustments().geometry
+      const next: Geometry = { ...geometry }
+      for (const key of ['flip_horizontal', 'flip_vertical', 'rotate', 'angle', 'aspect'] as const) {
+        if (key in change) (next as Record<string, unknown>)[key] = change[key]
+      }
+      if ('angle' in change && change.angle) next.crop = { left: 0.1, top: 0.1, right: 0.9, bottom: 0.9 }
+      if (change.crop) {
+        const c = change.crop
+        if (next.angle && (c.left === 0 || c.top === 0 || c.right === 1 || c.bottom === 1)) {
+          return Response.json({ detail: 'the crop reaches outside the photo (blank corners)' }, { status: 400 })
+        }
+        next.crop = c
+      }
+      return next
+    },
+    'GET /api/photos/:id/zoom/:level': ({ path }) => ({
+      level: Number(path.split('/').at(-1)),
+      state: 'ready',
+      width: path.endsWith('/100') ? 1200 : 600,
+      height: path.endsWith('/100') ? 800 : 400,
+      tile_size: 512,
+    }),
     'PUT /api/photos/:id/edit': ({ path, body }) => {
       const photo = fx.photos.find((p) => path.includes(`/${p.id}/`))!
       const detail = fx.photoDetail(photo)

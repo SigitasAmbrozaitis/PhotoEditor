@@ -134,13 +134,15 @@ describe('Photo view', () => {
     await waitFor(() => expect(lastSaved(calls)?.tone_curve.rgb.at(-1)).toEqual({ x: 1, y: 0.95 }))
   })
 
-  it('toggles the crop overlay', async () => {
+  it('opens and closes the crop tool', async () => {
     mockApi()
     const { user } = renderApp('/library/p004')
     await screen.findByRole('heading', { name: 'DSCF1004.RAF' })
-    expect(screen.queryByTestId('crop-overlay')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('crop-tool')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Crop' }))
-    expect(screen.getByTestId('crop-overlay')).toBeInTheDocument()
+    expect(screen.getByTestId('crop-tool')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Cancel/ }))
+    expect(screen.queryByTestId('crop-tool')).not.toBeInTheDocument()
   })
 
   it('shows EXIF info in the Info tab', async () => {
