@@ -1461,12 +1461,18 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   like YOLOX). It runs on the 2048 px detection input (~90 ms; spectators' faces are ~30 px there). Cat faces
   have no cue of their own: YOLOX's `cat` box covers cats. Sharpness needs a region ≥ 8× the photo's median
   energy as well as 2 robust deviations above it, so an evenly sharp photo has no sharp region.
-- [ ] **P6b.5** Object detector (`core/subject/detector.py`): the model through `cv2.dnn` on overlapping 640 px
+- [x] **P6b.5** Object detector (`core/subject/detector.py`): the model through `cv2.dnn` on overlapping 640 px
   tiles of the detection input plus one whole-frame pass, then merged with class-wise NMS. Threads fixed for
   determinism. Classes of interest are mapped to kinds (car/truck/bus → `car`, motorcycle, cat/dog → `animal`,
   person, airplane/bird…). Without the model file, detection uses only the cues and says so. Tests: tiling and NMS
   math on synthetic boxes; with the model present (golden), two runs give identical boxes, and a sample photo with
   a car finds it. Time per photo measured.
+  Done 2026-10-11: ~2.0 s per photo (12 tiles + the whole frame at 2048 px, OpenCV's default threads). The
+  output is bit-identical at any thread count, so threads are not pinned: `cv2.setNumThreads` is global and
+  would slow the renders. Duplicates merge per **kind** (one vehicle called both car and truck), and a box lying
+  ≥ 70 % inside a better box of the same kind is a part (a tile that sees only a cat's head) and is dropped. It
+  finds the 5 %-wide rally car, the drift cars and the black cat (0.92). The cues-only fallback without the
+  model is part of P6b.6, where cues and detector are combined.
 - [ ] **P6b.6** Choosing the main subject (`core/subject/choose.py`): score every candidate by kind priority
   (vehicle/animal > face > person > salient), size (not tiny, not the whole frame), sharpness inside the box
   (panning), and closeness to the AF point. Crowds count as one weak "people" region when a vehicle is present.
