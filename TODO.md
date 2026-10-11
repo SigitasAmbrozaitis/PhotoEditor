@@ -1296,7 +1296,7 @@ read-only crop overlay toggle and a disabled angle slider.
   identical. Before-tiles use the photo's defaults with the edit's geometry.
 
 ### API + CLI
-- [ ] **P6a.8** Endpoints:
+- [x] **P6a.8** Endpoints:
   - `POST /api/photos/{id}/geometry` (angle/rotate/aspect/flip changes, applied through `constrain_crop`, saved) →
     the new edit. A plain `PUT` of the edit still works and is validated (P6a.4).
   - `GET /api/photos/{id}/preview?uncropped=true`, `GET /api/photos/{id}/tiles/{zoom}/{tx}/{ty}`,
@@ -1304,7 +1304,10 @@ read-only crop overlay toggle and a disabled angle slider.
   - `Photo.edited_width/edited_height`.
   Regenerate `openapi.json` + `schema.d.ts`. Tests for every endpoint, including invalid geometry → 400 with the
   message.
-- [ ] **P6a.9** CLI: `photoedit crop set PHOTO [--crop L,T,R,B] [--aspect 4:5] [--angle …] [--rotate …]
+  Done: the zoom routes are `GET /api/photos/{id}/zoom/{level}` (`ZoomInfo`; starts the decode) and
+  `GET /api/photos/{id}/zoom/{level}/tiles/{tx}/{ty}` (`?before=`; 202 while still decoding). `ZoomLevel` is an
+  int enum (50, 100) so the path converts.
+- [x] **P6a.9** CLI: `photoedit crop set PHOTO [--crop L,T,R,B] [--aspect 4:5] [--angle …] [--rotate …]
   [--flip-h] [--flip-v]`, `photoedit crop show PHOTO`, `photoedit crop reset PHOTO`. Tests with `CliRunner`.
 
 ### UI

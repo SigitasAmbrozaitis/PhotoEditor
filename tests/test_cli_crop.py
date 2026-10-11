@@ -36,9 +36,8 @@ def test_show_set_and_reset(cfg: Path) -> None:
     assert shown.exit_code == 0, shown.output
     assert _geometry(shown.output)["size"] == "400×200 px"
 
-    turned = runner.invoke(
-        cli.app, ["crop", "set", "wide", "--rotate", "90", "--aspect", "1:1", "--flip-h", "--config", str(cfg)]
-    )
+    args = ["crop", "set", "wide", "--rotate", "90", "--aspect", "1:1", "--flip-h", "--config", str(cfg)]
+    turned = runner.invoke(cli.app, args)
     assert turned.exit_code == 0, turned.output
     geometry = _geometry(turned.output)
     assert geometry["rotate"] == 90 and geometry["aspect"] == "1:1" and geometry["flip_horizontal"] is True
