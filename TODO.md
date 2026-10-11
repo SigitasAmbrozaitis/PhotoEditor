@@ -1473,13 +1473,21 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   ≥ 70 % inside a better box of the same kind is a part (a tile that sees only a cat's head) and is dropped. It
   finds the 5 %-wide rally car, the drift cars and the black cat (0.92). The cues-only fallback without the
   model is part of P6b.6, where cues and detector are combined.
-- [ ] **P6b.6** Choosing the main subject (`core/subject/choose.py`): score every candidate by kind priority
+- [x] **P6b.6** Choosing the main subject (`core/subject/choose.py`): score every candidate by kind priority
   (vehicle/animal > face > person > salient), size (not tiny, not the whole frame), sharpness inside the box
   (panning), and closeness to the AF point. Crowds count as one weak "people" region when a vehicle is present.
   Result: `SubjectInfo` (main box, kind, score, source `detected`/`manual`/`af_point`/`none`, candidates,
   detector identity). It is stored in the catalog and recomputed only when the detector identity changes.
   `Library.subject(photo)` returns the manual box from the edit file if one is set. Tests: the scoring rules on
   constructed candidate sets (car vs crowd, cat face vs saliency, nothing found → `none`).
+  Done 2026-10-11. The subject lives in `core/subject/service.py` (`Subjects.subject(photo)`, wired as
+  `services.subjects`) rather than on `Library`, so the library doesn't grow detection code. Detections are
+  stored in a new catalog table (schema 7), keyed by an identity made of both models, OpenCV, the render engine
+  and `CHOOSER_VERSION`. Vehicles of the same kind that are close and nearly as good merge into one subject
+  (a tandem drift). With no candidate good enough, the focus point stands in as a square box (`af_point`).
+  **Cost**: ~6 s per photo the first time (2.3 s to render the default look + ~4.3 s for YOLOX). The render
+  pipeline pins OpenCV to one thread for determinism (`stages.py`), so the detector runs single-threaded;
+  batches gain by running photos in parallel. Cached afterwards.
 - [ ] **P6b.7** `suggest_crop(photo, geometry, aspect, *, orientation=auto, placement=centered, zoom=1.0)` →
   `CropSuggestion` (crop rectangle in the frame of `geometry`, which may be the crop tool's unsaved draft; its
   angle, turn and flips are kept, the subject used, warnings such as

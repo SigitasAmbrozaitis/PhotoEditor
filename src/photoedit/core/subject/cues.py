@@ -55,27 +55,36 @@ def luminance(image: RGB8) -> Gray:
     return gray
 
 
-def sharp_regions(image: RGB8) -> list[SubjectCandidate]:
-    """Regions much sharper than the rest of the photo, best first."""
+def relative_sharpness(image: RGB8) -> npt.NDArray[np.float64] | None:
+    """Local sharpness relative to the photo: 0 at its median, 1 at the threshold of a sharp region. None for
+    a photo without structure (flat, or evenly textured with no spread)."""
     gray = luminance(image)
     if float(gray.std()) < _FLAT:
-        return []
-    long_edge = max(gray.shape)
+        return None
     laplacian = cv2.Laplacian(gray, cv2.CV_32F, ksize=3)
-    energy = cv2.GaussianBlur(laplacian * laplacian, (0, 0), _SHARP_SIGMA * long_edge)
+    energy = cv2.GaussianBlur(laplacian * laplacian, (0, 0), _SHARP_SIGMA * max(gray.shape))
     log_energy = np.log(energy.astype(np.float64) + 1e-10)
     median = float(np.median(log_energy))
     spread = 1.4826 * float(np.median(np.abs(log_energy - median)))
     if spread < 1e-6:
-        return []
-    excess = log_energy - median
+        return None
     threshold = max(_SHARP_Z * spread, float(np.log(_SHARP_MIN_RATIO)))
-    size = max(3, round(_SHARP_CLOSE * long_edge) | 1)
+    ratio: npt.NDArray[np.float64] = (log_energy - median) / threshold
+    return ratio
+
+
+def sharp_regions(image: RGB8, sharpness: npt.NDArray[np.float64] | None = None) -> list[SubjectCandidate]:
+    """Regions much sharper than the rest of the photo, best first. ``sharpness`` is ``relative_sharpness``
+    of ``image`` when the caller already has it."""
+    ratio = relative_sharpness(image) if sharpness is None else sharpness
+    if ratio is None:
+        return []
+    size = max(3, round(_SHARP_CLOSE * max(ratio.shape)) | 1)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size))
-    closed = cv2.morphologyEx((excess > threshold).astype(np.uint8), cv2.MORPH_CLOSE, kernel)
+    closed = cv2.morphologyEx((ratio > 1).astype(np.uint8), cv2.MORPH_CLOSE, kernel)
     mask = np.asarray(closed, dtype=np.uint8)
     # Score: how far above the median the region is on average (three times the threshold or more = 1).
-    strength: npt.NDArray[np.float64] = np.clip(excess / (3 * threshold), 0, 1)
+    strength: npt.NDArray[np.float64] = np.clip(ratio / 3, 0, 1)
     return _regions(mask, strength, "sharp")
 
 

@@ -20,9 +20,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from photoedit.core.metadata import AfMode, camera_ev, parse_shutter
 from photoedit.core.scan import SourceKind
 from photoedit.models import Photo, PhotoSort, SortOrder
+from photoedit.models.subject import SubjectInfo
 from photoedit.safety import PathGuard
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 ID_LENGTH = 16  # hex digits of the SHA-256 used as photo id: 64 bits, collisions are not a practical concern
 
 _SCHEMA = """
@@ -77,6 +78,11 @@ CREATE TABLE photos (
 );
 CREATE INDEX photos_parent ON photos (parent_key);
 CREATE TABLE state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE subjects (
+    photo_id TEXT PRIMARY KEY,
+    identity TEXT NOT NULL,
+    info TEXT NOT NULL
+);
 """
 
 
@@ -127,6 +133,14 @@ def _v5_to_v6(db: sqlite3.Connection) -> None:
         db.execute(f"ALTER TABLE photos ADD COLUMN {column}")
 
 
+def _v6_to_v7(db: sqlite3.Connection) -> None:
+    # P6b.6: each photo's detected subject (SubjectInfo JSON), with the identity of the detection that found
+    # it.
+    db.execute(
+        "CREATE TABLE subjects (photo_id TEXT PRIMARY KEY, identity TEXT NOT NULL, info TEXT NOT NULL)"
+    )
+
+
 # Migrations from version N to N + 1, applied in order when an older catalog is opened.
 _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     1: _v1_to_v2,
@@ -134,6 +148,7 @@ _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     3: _v3_to_v4,
     4: _v4_to_v5,
     5: _v5_to_v6,
+    6: _v6_to_v7,
 }
 
 # Measured from the pixels, so they stay valid for the same id across re-imports.
@@ -348,6 +363,19 @@ class Catalog:
         with self._transaction() as db:
             db.execute(
                 "UPDATE photos SET af_x = ?, af_y = ?, af_mode = ? WHERE id = ?", (x, y, mode.value, photo_id)
+            )
+
+    def subject(self, photo_id: str, identity: str) -> SubjectInfo | None:
+        """The detected subject stored for ``photo_id``, if it was found by detection ``identity``."""
+        row = self._one("SELECT info FROM subjects WHERE photo_id = ? AND identity = ?", (photo_id, identity))
+        return SubjectInfo.model_validate_json(row["info"]) if row else None
+
+    def set_subject(self, photo_id: str, identity: str, info: SubjectInfo) -> None:
+        with self._transaction() as db:
+            db.execute(
+                "INSERT INTO subjects (photo_id, identity, info) VALUES (?, ?, ?) ON CONFLICT(photo_id) DO "
+                "UPDATE SET identity = excluded.identity, info = excluded.info",
+                (photo_id, identity, info.model_dump_json()),
             )
 
     def photo_ids_with_style(self, style_id: str) -> list[str]:

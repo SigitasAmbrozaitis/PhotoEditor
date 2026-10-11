@@ -11,6 +11,7 @@ from photoedit.core.jobs import JobManager
 from photoedit.core.library import Library
 from photoedit.core.styles import StyleLibrary
 from photoedit.core.styling import Styling
+from photoedit.core.subject.service import Subjects
 from photoedit.safety import PathGuard, guard_from_settings
 
 CATALOG_FILE = "catalog.sqlite"
@@ -33,6 +34,7 @@ class Services:
             styles=self.styles,
         )
         self.styling = Styling(self.library, self.styles, self.jobs, self.guard)
+        self.subjects = Subjects(self.library, settings.cache_dir)
         self.presets = PresetLibrary(settings.presets_dir, self.guard)
         self.exporter = Exporter(
             self.library, self.jobs, self.guard, settings, executor_factory=export_executor
