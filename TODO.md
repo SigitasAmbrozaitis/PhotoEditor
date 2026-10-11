@@ -1440,11 +1440,17 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   geometry, size)` (upright → frame, exact for flips and turns, the bounding box when straightened). Setting or
   clearing the manual box leaves the edit revision alone. Tests: validation, round-trip, old edit files load, the
   mapping for each flip and turn and at ±45°.
-- [ ] **P6b.3** AF point: read the Fujifilm maker note at import (FocusPixel 0x1023, AF mode 0x1022, and faces
+- [x] **P6b.3** AF point: read the Fujifilm maker note at import (FocusPixel 0x1023, AF mode 0x1022, and faces
   detected 0x4100/0x4103 if present) into the catalog, as an upright normalized point, through a catalog migration
   (already-imported photos get it on the next import or on first use). Other cameras get none. Reading never
   unpacks the RAW. Tests with synthetic maker-note bytes (including truncated and wrong-header ones) and the
   orientation mapping. Golden: the values for 3 sample files.
+  Done 2026-10-11: FocusPixel is in pixels of the JPEG that carries the note, as stored (the camera JPEG at
+  6240×4160 and the RAW's embedded 4416×2944 give the same normalized point). Checked by eye: single points
+  land on the person and on the cat's face. Catalog schema 6 (`af_x`, `af_y`, `af_mode`); photos imported
+  before get it on their next (unchanged) import or from `Library.with_af_point` on first use. Camera face
+  positions (0x4103) are **not read**: no sample has any (0x4100 = 0 in all), so their coordinate space can't
+  be checked. The Haar faces of P6b.4 cover faces.
 - [ ] **P6b.4** Classical cues (`core/subject/cues.py`, on a ~1024 px render of the photo): a sharpness map (local
   Laplacian energy relative to the photo's own spread), spectral-residual saliency, and Haar detectors for human
   faces and cat faces (bundled with OpenCV). Each one returns candidate boxes with a score. Tests on synthetic

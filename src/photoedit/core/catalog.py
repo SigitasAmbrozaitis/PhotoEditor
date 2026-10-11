@@ -17,12 +17,12 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from photoedit.core.metadata import camera_ev, parse_shutter
+from photoedit.core.metadata import AfMode, camera_ev, parse_shutter
 from photoedit.core.scan import SourceKind
 from photoedit.models import Photo, PhotoSort, SortOrder
 from photoedit.safety import PathGuard
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 ID_LENGTH = 16  # hex digits of the SHA-256 used as photo id: 64 bits, collisions are not a practical concern
 
 _SCHEMA = """
@@ -70,7 +70,10 @@ CREATE TABLE photos (
     neutral_tint REAL,
     exposure_time REAL,
     edited_width INTEGER,
-    edited_height INTEGER
+    edited_height INTEGER,
+    af_x REAL,
+    af_y REAL,
+    af_mode TEXT
 );
 CREATE INDEX photos_parent ON photos (parent_key);
 CREATE TABLE state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -117,12 +120,20 @@ def _v4_to_v5(db: sqlite3.Connection) -> None:
         db.execute(f"ALTER TABLE photos ADD COLUMN {column}")
 
 
+def _v5_to_v6(db: sqlite3.Connection) -> None:
+    # P6b.3: the camera's focus point (upright, normalized) and AF mode. NULL af_mode = not read yet: it is
+    # filled on the next import or when the photo's subject is first needed.
+    for column in ("af_x REAL", "af_y REAL", "af_mode TEXT"):
+        db.execute(f"ALTER TABLE photos ADD COLUMN {column}")
+
+
 # Migrations from version N to N + 1, applied in order when an older catalog is opened.
 _MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     1: _v1_to_v2,
     2: _v2_to_v3,
     3: _v3_to_v4,
     4: _v4_to_v5,
+    5: _v5_to_v6,
 }
 
 # Measured from the pixels, so they stay valid for the same id across re-imports.
@@ -193,6 +204,14 @@ class CatalogPhoto(BaseModel):
     # The size after the edit's geometry; None = the original size.
     edited_width: int | None = Field(default=None, ge=1)
     edited_height: int | None = Field(default=None, ge=1)
+    # The camera's focus point, normalized to the upright photo; af_mode None = not read from the file yet.
+    af_x: float | None = Field(default=None, ge=0, le=1)
+    af_y: float | None = Field(default=None, ge=0, le=1)
+    af_mode: AfMode | None = None
+
+    @property
+    def af_point(self) -> tuple[float, float] | None:
+        return (self.af_x, self.af_y) if self.af_x is not None and self.af_y is not None else None
 
     @property
     def camera_ev(self) -> float | None:
@@ -322,6 +341,13 @@ class Catalog:
                     identity,
                     photo_id,
                 ),
+            )
+
+    def set_af_point(self, photo_id: str, point: tuple[float, float] | None, mode: AfMode) -> None:
+        x, y = point if point is not None else (None, None)
+        with self._transaction() as db:
+            db.execute(
+                "UPDATE photos SET af_x = ?, af_y = ?, af_mode = ? WHERE id = ?", (x, y, mode.value, photo_id)
             )
 
     def photo_ids_with_style(self, style_id: str) -> list[str]:
@@ -530,6 +556,9 @@ def _row_values(photo: CatalogPhoto) -> dict[str, Any]:
         "exposure_time": photo.exposure_time,
         "edited_width": photo.edited_width,
         "edited_height": photo.edited_height,
+        "af_x": photo.af_x,
+        "af_y": photo.af_y,
+        "af_mode": photo.af_mode.value if photo.af_mode is not None else None,
     }
 
 

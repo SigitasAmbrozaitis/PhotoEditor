@@ -11,9 +11,11 @@ from PIL import Image
 from PIL.TiffImagePlugin import IFDRational
 
 from photoedit.core.metadata import (
+    AfMode,
     MetadataError,
     camera_ev,
     format_shutter,
+    orient_point,
     parse_shutter,
     read_metadata,
     read_metadata_from_bytes,
@@ -151,6 +153,8 @@ def test_missing_exif_gives_empty_fields() -> None:
         "focal_length": None,
         "film_simulation": None,
         "dynamic_range": None,
+        "af_point": None,
+        "af_mode": AfMode.NONE,
     }
     assert (meta.width, meta.height, meta.orientation, meta.rating) == (10, 20, 1, 0)
 
@@ -224,11 +228,15 @@ def test_not_an_image_raises(tmp_path: Path) -> None:
 # ----------------------------------------------------------------- Fujifilm maker notes
 
 
-def fuji_maker_note(tags: dict[int, int]) -> bytes:
+def fuji_maker_note(tags: dict[int, int], pairs: dict[int, tuple[int, int]] | None = None) -> bytes:
+    """A Fujifilm maker note with one SHORT per tag in ``tags`` and two SHORTs per tag in ``pairs``."""
     import struct
 
-    entries = b"".join(struct.pack("<HHII", tag, 3, 1, value) for tag, value in sorted(tags.items()))
-    return b"FUJIFILM" + struct.pack("<I", 12) + struct.pack("<H", len(tags)) + entries + b"\0\0\0\0"
+    entries = {tag: struct.pack("<HHII", tag, 3, 1, value) for tag, value in tags.items()}
+    for tag, (a, b) in (pairs or {}).items():
+        entries[tag] = struct.pack("<HHIHH", tag, 3, 2, a, b)
+    body = b"".join(entries[tag] for tag in sorted(entries))
+    return b"FUJIFILM" + struct.pack("<I", 12) + struct.pack("<H", len(entries)) + body + b"\0\0\0\0"
 
 
 @pytest.mark.parametrize(
@@ -263,3 +271,98 @@ def test_real_xt3_maker_note(sample_raw: Path) -> None:
     assert jpeg is not None
     meta = read_metadata_from_bytes(jpeg)
     assert (meta.film_simulation, meta.dynamic_range) == ("Provia", 100)
+
+
+# ----------------------------------------------------------------- focus point (P6b.3)
+
+FOCUS = {0x1021: 0, 0x1022: 1}  # AF, single point
+
+
+@pytest.mark.parametrize(
+    ("orientation", "expected"),
+    [
+        (1, (0.25, 0.75)),
+        (2, (0.75, 0.75)),
+        (3, (0.75, 0.25)),
+        (4, (0.25, 0.25)),
+        (5, (0.75, 0.25)),
+        (6, (0.25, 0.25)),  # turned 90° clockwise for display
+        (7, (0.25, 0.75)),
+        (8, (0.75, 0.75)),  # turned 90° counter-clockwise (how the X-T3 tags portrait shots)
+    ],
+)
+def test_focus_point_is_upright_and_normalized(orientation: int, expected: tuple[float, float]) -> None:
+    # Pixel (100, 300) of a stored 400 × 400 JPEG = (0.25, 0.75).
+    note = fuji_maker_note(FOCUS, {0x1023: (100, 300)})
+    meta = read_metadata_from_bytes(
+        _jpeg(size=(400, 400), ifd0={**FUJI_IFD0, 0x0112: orientation}, exif_ifd={0x927C: note})
+    )
+    assert meta.af_point == pytest.approx(expected)
+    assert meta.af_mode is AfMode.SINGLE
+    assert orient_point(0.25, 0.75, orientation) == pytest.approx(expected)
+
+
+def test_focus_point_follows_the_stored_size_not_the_upright_one() -> None:
+    note = fuji_maker_note(FOCUS, {0x1023: (300, 50)})
+    meta = read_metadata_from_bytes(
+        _jpeg(size=(600, 400), ifd0={**FUJI_IFD0, 0x0112: 8}, exif_ifd={0x927C: note})
+    )
+    assert (meta.width, meta.height) == (400, 600)
+    assert meta.af_point == pytest.approx((0.125, 0.5))
+
+
+@pytest.mark.parametrize(
+    ("tags", "mode"),
+    [
+        ({0x1021: 0, 0x1022: 256}, AfMode.ZONE),
+        ({0x1021: 0, 0x1022: 512}, AfMode.WIDE),
+        ({0x1021: 1, 0x1022: 0}, AfMode.MANUAL),
+        ({}, AfMode.UNKNOWN),
+    ],
+)
+def test_af_modes(tags: dict[int, int], mode: AfMode) -> None:
+    note = fuji_maker_note(tags, {0x1023: (10, 10)})
+    assert read_metadata_from_bytes(_jpeg(ifd0=FUJI_IFD0, exif_ifd={0x927C: note})).af_mode is mode
+
+
+@pytest.mark.parametrize(
+    "note",
+    [
+        fuji_maker_note(FOCUS),  # no focus pixel
+        fuji_maker_note(FOCUS, {0x1023: (61, 10)}),  # outside the 60 × 40 image
+        fuji_maker_note(FOCUS, {0x1023: (30, 20)})[:-12],  # cut off in the middle of the entries
+        b"FUJIFILX" + fuji_maker_note(FOCUS, {0x1023: (30, 20)})[8:],  # wrong header
+    ],
+)
+def test_missing_or_broken_focus_point(note: bytes) -> None:
+    meta = read_metadata_from_bytes(_jpeg(ifd0=FUJI_IFD0, exif_ifd={0x927C: note}))
+    assert (meta.af_point, meta.af_mode) == (None, AfMode.NONE)
+
+
+@pytest.mark.golden
+def test_real_focus_points(sample_photos_dir: Path, style_sample_dirs: dict[str, Path]) -> None:
+    """The RAW's embedded JPEG gives the camera JPEG's upright point. Checked by eye on the photos: DSCF5437's
+    single point is on the person, DSCF6283's on the orange cat's face; DSCF5553 was focused by hand."""
+    from photoedit.core.decode import embedded_jpeg
+
+    folders = {"2026-08-11": sample_photos_dir, **style_sample_dirs}
+    expected = {
+        ("2026-08-11", "DSCF5437"): ((0.500, 0.605), AfMode.SINGLE),
+        ("2026-08-11", "DSCF5553"): ((0.395, 0.570), AfMode.MANUAL),
+        ("2026-08-17", "DSCF6283"): ((0.500, 0.500), AfMode.SINGLE),
+    }
+    checked = 0
+    for (folder, name), (point, mode) in expected.items():
+        raw = folders[folder] / f"{name}.RAF" if folder in folders else None
+        if raw is None or not raw.is_file():
+            continue
+        jpeg = embedded_jpeg(raw)
+        assert jpeg is not None
+        from_raw = read_metadata_from_bytes(jpeg)
+        from_jpeg = read_metadata(raw.with_suffix(".JPG"))
+        assert from_raw.af_point == pytest.approx(from_jpeg.af_point, abs=1e-3)
+        assert from_raw.af_point == pytest.approx(point, abs=1e-3)
+        assert from_raw.af_mode is from_jpeg.af_mode is mode
+        checked += 1
+    if not checked:
+        pytest.skip("the sample photos used here are missing")

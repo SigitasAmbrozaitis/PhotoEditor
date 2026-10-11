@@ -16,6 +16,7 @@ from photoedit.core.catalog import (
     FolderRecord,
     photo_id,
 )
+from photoedit.core.metadata import AfMode
 from photoedit.core.scan import SourceKind
 from photoedit.models import PhotoSort, SortOrder
 from photoedit.safety import PathGuard, WriteNotAllowedError
@@ -277,8 +278,22 @@ def test_v1_catalog_is_migrated(workspace: Path) -> None:
     # v5: no edited size yet = the original size.
     assert (old.edited_width, old.edited_height) == (None, None)
     assert (old.to_photo().edited_width, old.to_photo().edited_height) == (60, 40)
+    # v6: the focus point is not read yet.
+    assert (old.af_point, old.af_mode) == (None, None)
     with sqlite3.connect(path) as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 5
+        assert db.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 6
+
+
+def test_af_point_is_stored_and_refreshed_by_reimport(catalog: Catalog) -> None:
+    catalog.upsert(_photo(3, af_x=0.25, af_y=0.75, af_mode=AfMode.ZONE))
+    stored = catalog.get(photo_id(_sha(3)))
+    assert stored is not None and (stored.af_point, stored.af_mode) == ((0.25, 0.75), AfMode.ZONE)
+    catalog.set_af_point(photo_id(_sha(3)), None, AfMode.NONE)
+    stored = catalog.get(photo_id(_sha(3)))
+    assert stored is not None and (stored.af_point, stored.af_mode) == (None, AfMode.NONE)
+    catalog.upsert(_photo(3, af_x=0.5, af_y=0.5, af_mode=AfMode.SINGLE))  # the file's value wins
+    stored = catalog.get(photo_id(_sha(3)))
+    assert stored is not None and (stored.af_point, stored.af_mode) == ((0.5, 0.5), AfMode.SINGLE)
 
 
 def test_edited_size_survives_reimport(catalog: Catalog) -> None:
