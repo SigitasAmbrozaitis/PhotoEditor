@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     # Folders of varied real photos for developing and testing styles (P4.1). Always read-only.
     style_sample_dirs: list[Path] = Field(default_factory=list)
 
+    # Export (Phase 5). Copyright and creator are written into exported files when the preset leaves them
+    # empty; {year} in the copyright becomes the photo's capture year.
+    export_copyright: str | None = Field(default=None, max_length=200)
+    export_creator: str | None = Field(default=None, max_length=200)
+    # Worker processes for exports. None = automatic (see core.export.service.auto_workers).
+    export_workers: int | None = Field(default=None, ge=1, le=32)
+
     # Local web server.
     host: str = "127.0.0.1"
     port: int = Field(default=8765, ge=1, le=65535)

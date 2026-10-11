@@ -6,10 +6,11 @@ PhotoEditor is a non-destructive RAW photo editor meant to replace Lightroom for
 cropping, zooming and centering. An **AI agent** (Claude Code, through MCP) drives it. You describe the look you want, the AI
 applies it, and the tool's code enforces the rules. A small web UI lets you browse, compare and approve.
 
-> **Status: early development (Phase 4, styles).** Photos render through a deterministic pipeline with live sliders,
-> per-photo edits and a camera profile fitted to the X-T3 camera JPEGs (see docs/default-look.md). Styles are real:
-> made by hand from an edited photo, applied to many photos, adapted to each one by rules (see docs/styles.md).
-> Export is still simulated (Phase 5).
+> **Status: early development (Phase 5, export).** Photos render through a deterministic pipeline with live
+> sliders, per-photo edits and a camera profile fitted to the X-T3 camera JPEGs (see docs/default-look.md). Styles
+> are real: made by hand from an edited photo, applied to many photos, adapted to each one by rules (see
+> docs/styles.md). Export writes real files: presets, sizes and crops, color spaces with ICC profiles, output
+> sharpening, metadata and names (see docs/export.md).
 > See [PLAN.md](PLAN.md) for the full plan and [TODO.md](TODO.md) for progress.
 
 ---
@@ -124,6 +125,15 @@ it on its Styles page: every photo using it follows. Each style keeps a **test s
 side by side, bring one back) and before/after samples. Your own tweaks on a photo stay on top of its style. See
 [docs/styles.md](docs/styles.md) for the format, the rules and how to iterate on a style.
 
+**Export.** **Export…** (Library selection or Photo view) or **Apply style…** with export: pick a preset
+(Instagram, print, web, or your own), a destination folder (**Browse…**; photo folders are refused, because
+originals are read-only), and check the plan table (file names, pixel sizes, collisions, warnings) before
+exporting. The job page lists every file with its size and a **Show in folder** button. On the **Export presets**
+page, **Duplicate** a built-in preset to make an editable copy (saved in `export-presets/`). Copyright text goes
+into `config.local.toml` (`export_copyright = "© {year} Your Name"`). Exports run in parallel worker processes;
+RAWs are decoded at half size when that's enough for the output (Instagram, web), which is much faster. See
+[docs/export.md](docs/export.md).
+
 An unedited RAW renders through a **camera profile** fitted to that camera's own JPEGs (FUJIFILM X-T3 · Provia
 ships with the tool; other cameras get a neutral generic profile). See [docs/default-look.md](docs/default-look.md).
 
@@ -167,6 +177,18 @@ Also `style show | check | remove | samples | report | history | diff | revert` 
 sheet goes to `output/contact-sheets/`, one row per photo labeled with what the rules did there; `--version N`
 adds a column with an older version.
 
+Export from the command line (`--dry-run` only prints the plan; `--set` changes one setting of the preset):
+
+```bash
+uv run photoedit export --folder "C:\Users\you\Pictures\2026\2026-08-17" --preset web-full --dest "C:\Users\you\Pictures\Exports\web" --dry-run
+```
+```bash
+uv run photoedit export DSCF5437 --preset instagram-portrait --dest output\exports --set file.jpeg_quality=95
+```
+
+Presets: `photoedit preset list | show ID | duplicate ID --name "My preset" | delete ID | check`.
+`photoedit benchmark --export full|instagram` times real exports per worker count.
+
 For UI development with hot reload (backend plus Vite dev server on http://localhost:5173):
 
 ```bash
@@ -190,7 +212,8 @@ test compares against `output/golden/` (run `photoedit golden update` once); the
 (`uv run python scripts/update_golden.py` and `photoedit golden update`).
 
 End-to-end smoke test in a real browser (uses your installed Google Chrome with a temporary profile; build the UI
-first). It runs on synthetic photos written to `output/e2e/` and never touches your real catalog or styles. Screenshots of
+first). It runs on synthetic photos written to `output/e2e/` (exports go to `output/e2e/exports`) and never touches
+your real catalog, styles or presets. Screenshots of
 every screen are saved to `output/screenshots/`:
 
 ```bash
@@ -211,7 +234,7 @@ tests/             Python tests
 scripts/           dev helpers (dev.cmd, e2e_setup.py for e2e test photos, update_golden.py)
 docs/              benchmark results, the default look (camera profile), tone sliders, styles
 styles/            saved styles: style.json + README + history (sample images stay local)
-export-presets/    export settings presets (from Phase 5)
+export-presets/    your own export presets (one JSON file each; the built-in ones are in code)
 workspace/         local catalog (catalog.sqlite) and per-photo edits (git-ignored)
 cache/             previews and thumbnails (git-ignored)
 output/            development test exports (git-ignored)

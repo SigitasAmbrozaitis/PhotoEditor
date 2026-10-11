@@ -26,6 +26,7 @@ from photoedit.models.adjustments import (
     Vignette,
     WhiteBalance,
 )
+from photoedit.models.export import ColorSpace
 
 type F32 = npt.NDArray[np.float32]
 
@@ -95,15 +96,30 @@ def to_display_linear(encoded: F32) -> F32:
     return color.srgb_decode(np.clip(encoded, 0, 1))
 
 
-def output_srgb(display_linear: F32) -> F32:
-    """Display-linear Rec.2020 → sRGB-encoded 0..1.
+# Per output space: the matrix from display-linear Rec.2020, the space's luminance weights, and its gamma
+# (None = the sRGB transfer curve, which Display P3 shares).
+_OUTPUT_SPACES: dict[ColorSpace, tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], float | None]] = {
+    ColorSpace.SRGB: (color.SRGB_FROM_REC2020, color.XYZ_FROM_SRGB[1], None),
+    ColorSpace.DISPLAY_P3: (color.DISPLAY_P3_FROM_REC2020, color.XYZ_FROM_DISPLAY_P3[1], None),
+    ColorSpace.ADOBE_RGB: (color.ADOBE_RGB_FROM_REC2020, color.XYZ_FROM_ADOBE_RGB[1], color.ADOBE_RGB_GAMMA),
+}
 
-    Colors outside sRGB are pulled toward their own luminance until they fit (instead of clipping each
+
+def output_encode(display_linear: F32, space: ColorSpace) -> F32:
+    """Display-linear Rec.2020 → ``space``-encoded 0..1.
+
+    Colors outside the space are pulled toward their own luminance until they fit (instead of clipping each
     channel, which shifts hues), then values above 1 are clipped.
     """
-    srgb = color.apply_matrix(display_linear, color.SRGB_FROM_REC2020)
-    srgb = desaturate_into_gamut(srgb, color.XYZ_FROM_SRGB[1])
-    return color.srgb_encode(np.clip(srgb, 0, 1))
+    matrix, luma, gamma = _OUTPUT_SPACES[space]
+    rgb = color.apply_matrix(display_linear, matrix)
+    rgb = np.clip(desaturate_into_gamut(rgb, luma), 0, 1)
+    return color.srgb_encode(rgb) if gamma is None else color.gamma_encode(rgb, gamma)
+
+
+def output_srgb(display_linear: F32) -> F32:
+    """Display-linear Rec.2020 → sRGB-encoded 0..1 (previews, thumbnails)."""
+    return output_encode(display_linear, ColorSpace.SRGB)
 
 
 def desaturate_into_gamut(rgb: F32, luma_weights: npt.NDArray[np.float64]) -> F32:

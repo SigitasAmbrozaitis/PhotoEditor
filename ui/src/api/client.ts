@@ -40,6 +40,7 @@ async function request<T>(method: string, path: string, body?: unknown, signal?:
     }
     throw new ApiError(response.status, detail)
   }
+  if (response.status === 204) return undefined as T
   return (await response.json()) as T
 }
 

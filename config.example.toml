@@ -12,6 +12,12 @@ sample_photos_dir = "C:/Users/ambro/Pictures/2026/2026-08-11"
 #     "C:/Users/ambro/Pictures/2026/2026-08-16",  # rally (XF70-300)
 # ]
 
+# Export: written into exported files when a preset leaves them empty ({year} = the photo's capture year).
+# export_copyright = "© {year} Sigitas Ambrozaitis"
+# export_creator = "Sigitas Ambrozaitis"
+# Worker processes for exports (default: automatic, from the cores and memory of this machine).
+# export_workers = 6
+
 # Tool-owned folders (defaults shown).
 # workspace_dir = "workspace"
 # styles_dir = "styles"

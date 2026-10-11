@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import itertools
 import threading
+from collections import deque
 from collections.abc import Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -34,6 +35,10 @@ class ItemResult:
     photo_id: str | None = None
     output_path: str | None = None
     message: str | None = None
+    output_bytes: int | None = None
+    output_width: int | None = None
+    output_height: int | None = None
+    warnings: tuple[str, ...] = ()
 
 
 type ItemWork = Callable[[int], ItemResult | None]
@@ -67,6 +72,9 @@ class JobManager:
         self._jobs: dict[str, _State] = {}
         self._lock = threading.Lock()
         self._seq = itertools.count(1)
+        # Jobs of a named queue run one after another (e.g. exports, which use every core).
+        self._waiting: dict[str, deque[tuple[_State, Callable[[], None]]]] = {}
+        self._busy: set[str] = set()
 
     def submit(
         self,
@@ -81,8 +89,15 @@ class JobManager:
         preset_id: str | None = None,
         destination: str | None = None,
         folder: str | None = None,
+        queue: str | None = None,
+        cleanup: Callable[[], None] | None = None,
     ) -> Job:
-        """Queue a job. ``work(i)`` processes item i; ``finish()`` runs last and returns a summary."""
+        """Queue a job. ``work(i)`` processes item i; ``finish()`` runs last and returns a summary.
+
+        Jobs with the same ``queue`` name run one at a time, in submission order; the others wait as QUEUED
+        without holding a worker thread. ``cleanup()`` always runs when the job ends, also when it was
+        cancelled or failed (``finish`` doesn't run then).
+        """
         state = _State(
             id=f"j{next(self._seq):04d}",
             kind=kind,
@@ -94,9 +109,20 @@ class JobManager:
             destination=destination,
             folder=folder,
         )
+
+        def start() -> None:
+            self._pool.submit(self._run, state, work, max(1, parallel), finish, queue, cleanup)
+
         with self._lock:
             self._jobs[state.id] = state
-        self._pool.submit(self._run, state, work, max(1, parallel), finish)
+            wait = queue is not None and queue in self._busy
+            if wait:
+                assert queue is not None
+                self._waiting.setdefault(queue, deque()).append((state, start))
+            elif queue is not None:
+                self._busy.add(queue)
+        if not wait:
+            start()
         return self.get(state.id)
 
     def list(self) -> list[Job]:
@@ -138,7 +164,52 @@ class JobManager:
         except KeyError:
             raise JobNotFoundError(f"job '{job_id}' not found") from None
 
-    def _run(self, state: _State, work: ItemWork, parallel: int, finish: Finisher | None) -> None:
+    def _run(
+        self,
+        state: _State,
+        work: ItemWork,
+        parallel: int,
+        finish: Finisher | None,
+        queue: str | None = None,
+        cleanup: Callable[[], None] | None = None,
+    ) -> None:
+        try:
+            self._run_job(state, work, parallel, finish, cleanup)
+        finally:
+            if queue is not None:
+                self._next(queue)
+
+    def _next(self, queue: str) -> None:
+        with self._lock:
+            waiting = self._waiting.get(queue)
+            entry = waiting.popleft() if waiting else None
+            if entry is None:
+                self._busy.discard(queue)
+        if entry is not None:
+            state, start = entry
+            try:
+                start()
+            except RuntimeError:  # shutting down: the pool takes no new work
+                self._cancel_waiting(state)
+                self._next(queue)
+
+    def _cancel_waiting(self, state: _State) -> None:
+        with self._lock:
+            state.cancel.set()
+            for index in range(len(state.items)):
+                self._set_item(state, index, status=JobStatus.CANCELLED)
+        self._finish(state)
+
+    def _run_job(
+        self,
+        state: _State,
+        work: ItemWork,
+        parallel: int,
+        finish: Finisher | None,
+        cleanup: Callable[[], None] | None,
+    ) -> None:
+        summary: str | None = None
+        error: str | None = None
         try:
             with self._lock:
                 if not state.cancel.is_set():
@@ -154,9 +225,14 @@ class JobManager:
                     for future in futures:
                         future.result()
             summary = finish() if finish is not None and not state.cancel.is_set() else None
-            self._finish(state, summary=summary)
         except Exception as exc:  # a bug in finish() or the manager itself: fail the job, keep the server up
-            self._finish(state, error=f"{type(exc).__name__}: {exc}")
+            summary, error = None, f"{type(exc).__name__}: {exc}"
+        if cleanup is not None:
+            try:
+                cleanup()
+            except Exception as exc:
+                error = error or f"cleanup failed: {type(exc).__name__}: {exc}"
+        self._finish(state, summary=summary, error=error)
 
     def _run_item(self, state: _State, work: ItemWork, index: int) -> None:
         with self._lock:
@@ -179,6 +255,10 @@ class JobManager:
                 photo_id=result.photo_id or item.photo_id,
                 output_path=result.output_path,
                 message=result.message,
+                output_bytes=result.output_bytes,
+                output_width=result.output_width,
+                output_height=result.output_height,
+                warnings=list(result.warnings),
             )
 
     def _set_item(self, state: _State, index: int, **changes: object) -> None:

@@ -1,4 +1,4 @@
-import { ArrowLeft, Camera, ChevronLeft, ChevronRight, Columns2, Crop, Eye, EyeOff } from 'lucide-react'
+import { ArrowLeft, Camera, ChevronLeft, ChevronRight, Columns2, Crop, Download, Eye, EyeOff } from 'lucide-react'
 import { Tabs } from 'radix-ui'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
@@ -8,6 +8,7 @@ import type { Photo } from '../../api/types'
 import { Button, ErrorState, Loading, Stars } from '../../components/ui'
 import { cn } from '../../lib/cn'
 import { useSelection } from '../../state/selection'
+import { ExportDialog } from '../export/ExportDialog'
 import { AdjustmentPanel } from './AdjustmentPanel'
 import { PhotoViewer, type ViewMode } from './PhotoViewer'
 
@@ -90,6 +91,7 @@ export function PhotoPage() {
   const styles = useStyles()
   const [mode, setMode] = useState<ViewMode>('after')
   const [showCrop, setShowCrop] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   const photos = useMemo(() => list.data?.items ?? [], [list.data])
   const index = photos.findIndex((p) => p.id === photoId)
@@ -170,6 +172,10 @@ export function PhotoPage() {
         <Button size="sm" aria-pressed={showCrop} variant={showCrop ? 'primary' : 'secondary'} onClick={() => setShowCrop((v) => !v)}>
           <Crop className="size-3.5" aria-hidden /> Crop
         </Button>
+        <Button size="sm" onClick={() => setExporting(true)}>
+          <Download className="size-3.5" aria-hidden /> Export…
+        </Button>
+        {exporting && <ExportDialog open onOpenChange={setExporting} photoIds={[photo.id]} />}
       </div>
 
       <div className="flex min-h-0 flex-1">

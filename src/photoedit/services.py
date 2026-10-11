@@ -5,19 +5,19 @@ from __future__ import annotations
 from photoedit.config import Settings
 from photoedit.core.cache import ImageCache
 from photoedit.core.catalog import Catalog
+from photoedit.core.export.presets import PresetLibrary
+from photoedit.core.export.service import ExecutorFactory, Exporter
 from photoedit.core.jobs import JobManager
 from photoedit.core.library import Library
 from photoedit.core.styles import StyleLibrary
 from photoedit.core.styling import Styling
-from photoedit.mock import MockBackend
-from photoedit.mock.backend import SECONDS_PER_ITEM
 from photoedit.safety import PathGuard, guard_from_settings
 
 CATALOG_FILE = "catalog.sqlite"
 
 
 class Services:
-    def __init__(self, settings: Settings, *, mock_seconds_per_item: float = SECONDS_PER_ITEM) -> None:
+    def __init__(self, settings: Settings, *, export_executor: ExecutorFactory | None = None) -> None:
         self.settings = settings
         self.guard: PathGuard = guard_from_settings(settings)
         self.jobs = JobManager()
@@ -33,8 +33,9 @@ class Services:
             styles=self.styles,
         )
         self.styling = Styling(self.library, self.styles, self.jobs, self.guard)
-        self.mock = MockBackend(
-            self.jobs, lambda pid: self.library.photo(pid).to_photo(), seconds_per_item=mock_seconds_per_item
+        self.presets = PresetLibrary(settings.presets_dir, self.guard)
+        self.exporter = Exporter(
+            self.library, self.jobs, self.guard, settings, executor_factory=export_executor
         )
 
     def close(self) -> None:

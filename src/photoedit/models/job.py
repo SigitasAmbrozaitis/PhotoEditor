@@ -35,6 +35,10 @@ class JobItem(BaseModel):
     status: JobStatus
     message: str | None = None
     output_path: str | None = None
+    output_bytes: int | None = Field(default=None, ge=0, description="Size of the written file (exports).")
+    output_width: int | None = Field(default=None, ge=1)
+    output_height: int | None = Field(default=None, ge=1)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class Job(BaseModel):

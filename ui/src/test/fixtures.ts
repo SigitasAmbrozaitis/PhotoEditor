@@ -4,7 +4,9 @@ import type {
   ConsistencyReport,
   DirListing,
   EngineInfo,
+  ExportPlan,
   ExportPreset,
+  ExportRequest,
   Job,
   LibraryFolder,
   LibraryInfo,
@@ -266,8 +268,10 @@ export const presets: ExportPreset[] = [
     description: '1080×1350 feed format.',
     target: 'instagram',
     builtin: true,
+    version: 1,
+    error: null,
     settings: {
-      file: { format: 'jpeg', jpeg_quality: 92, max_file_size_kb: null, bit_depth: 8, tiff_compression: 'lzw' },
+      file: { format: 'jpeg', jpeg_quality: 92, max_file_size_kb: null, bit_depth: 8, tiff_compression: 'lzw', decode: 'auto' },
       color_space: 'srgb',
       size: {
         mode: 'width_height',
@@ -280,9 +284,9 @@ export const presets: ExportPreset[] = [
         dont_enlarge: false,
         ppi: 72,
       },
-      aspect: { ratio: '4:5', orientation: 'portrait', anchor: 'subject' },
+      aspect: { ratio: '4:5', orientation: 'portrait', anchor: 'center' },
       sharpening: { target: 'screen', amount: 'standard' },
-      metadata: { policy: 'copyright_only', strip_gps: true, copyright: null, keywords: [] },
+      metadata: { policy: 'copyright_only', strip_gps: true, copyright: null, creator: null, keywords: [] },
       naming: { template: '{original}_ig', on_collision: 'suffix' },
       destination: null,
     },
@@ -293,8 +297,10 @@ export const presets: ExportPreset[] = [
     description: 'Long edge 2048 px.',
     target: 'web',
     builtin: true,
+    version: 1,
+    error: null,
     settings: {
-      file: { format: 'jpeg', jpeg_quality: 85, max_file_size_kb: null, bit_depth: 8, tiff_compression: 'lzw' },
+      file: { format: 'jpeg', jpeg_quality: 85, max_file_size_kb: null, bit_depth: 8, tiff_compression: 'lzw', decode: 'auto' },
       color_space: 'srgb',
       size: {
         mode: 'long_edge',
@@ -307,14 +313,38 @@ export const presets: ExportPreset[] = [
         dont_enlarge: true,
         ppi: 72,
       },
-      aspect: { ratio: null, orientation: 'auto', anchor: 'subject' },
+      aspect: { ratio: null, orientation: 'auto', anchor: 'center' },
       sharpening: { target: 'screen', amount: 'standard' },
-      metadata: { policy: 'copyright_only', strip_gps: true, copyright: null, keywords: [] },
+      metadata: { policy: 'copyright_only', strip_gps: true, copyright: null, creator: null, keywords: [] },
       naming: { template: '{original}_web', on_collision: 'suffix' },
       destination: null,
     },
   },
 ]
+
+/** A plausible dry-run plan for an export request (the fake backend's answer). */
+export function exportPlan(request: ExportRequest): ExportPlan {
+  const size = request.settings.size
+  const width = size?.width ?? size?.long_edge ?? 6240
+  const height = size?.height ?? Math.round((width * 2) / 3)
+  return {
+    destination: request.destination,
+    warnings: [],
+    items: request.photo_ids.map((id) => ({
+      photo_id: id,
+      filename: `${photos.find((p) => p.id === id)?.filename ?? id}`,
+      output_name: `${(photos.find((p) => p.id === id)?.filename ?? id).replace(/\.[^.]+$/, '')}.jpg`,
+      width,
+      height,
+      decode: width <= 3000 ? 'half' : 'full',
+      collision: 'new',
+      warnings: [],
+    })),
+  }
+}
+
+/** Export result fields of a job item that tests don't care about. */
+export const noOutput = { output_bytes: null, output_width: null, output_height: null, warnings: [] }
 
 export function makeJob(overrides: Partial<Job> = {}): Job {
   return {
@@ -334,8 +364,8 @@ export function makeJob(overrides: Partial<Job> = {}): Job {
     folder: null,
     summary: null,
     items: [
-      { photo_id: 'p001', filename: 'DSCF1001.RAF', status: 'done', message: null, output_path: 'C:/Exports/ig/DSCF1001.jpg' },
-      { photo_id: 'p002', filename: 'DSCF1002.RAF', status: 'done', message: null, output_path: 'C:/Exports/ig/DSCF1002.jpg' },
+      { photo_id: 'p001', filename: 'DSCF1001.RAF', status: 'done', message: null, output_path: 'C:/Exports/ig/DSCF1001.jpg', ...noOutput },
+      { photo_id: 'p002', filename: 'DSCF1002.RAF', status: 'done', message: null, output_path: 'C:/Exports/ig/DSCF1002.jpg', ...noOutput },
     ],
     ...overrides,
   }
@@ -353,7 +383,7 @@ export function makeImportJob(overrides: Partial<Job> = {}): Job {
     total: 67,
     completed: 67,
     summary: '67 photos: 67 new; 1 other file skipped',
-    items: [{ photo_id: 'p001', filename: 'DSCF1001.RAF', status: 'done', message: 'new', output_path: null }],
+    items: [{ photo_id: 'p001', filename: 'DSCF1001.RAF', status: 'done', message: 'new', output_path: null, ...noOutput }],
     ...overrides,
   })
 }

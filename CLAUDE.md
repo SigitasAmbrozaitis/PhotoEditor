@@ -77,8 +77,8 @@ src/photoedit/
   safety.py     PathGuard: write-boundary enforcement
   models/       Pydantic data models = the API contract (photos, adjustments, styles, export, jobs)
   api/          FastAPI app + routes (thin); serves ui/dist
-  core/         all real logic (library, edits, render, styles, export); core/presets.py = built-in presets
-  mock/         Phase 1 fake backend (replaced piece by piece from Phase 2)
+  core/         all real logic (library, edits, render, styles, export); core/presets.py = built-in presets,
+                core/export/ = geometry, color, sharpening, encoders, metadata, names, worker, service, presets
   mcp/          MCP server for Claude (Phase 7)
 tests/          pytest; mirrors src/
 ui/             React + TypeScript web UI (src/features/<screen>/, src/api/ generated types + query hooks,

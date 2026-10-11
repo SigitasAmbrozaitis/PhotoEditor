@@ -3,7 +3,8 @@ import { defineConfig } from '@playwright/test'
 // End-to-end smoke test against the real backend serving the built UI (run `npm run build` first).
 // Uses the installed Google Chrome (fresh temporary profile), so no Playwright browser download is needed.
 // scripts/e2e_setup.py first writes synthetic photos to output/e2e/; the server's workspace, cache and suggested
-// folder and styles point there, so the test never sees the real catalog, styles or photos.
+// folder, styles and presets point there, so the test never sees the real catalog, styles, presets or photos.
+// Exports go to output/e2e/exports.
 const PORT = 8767
 const E2E = 'output/e2e' // relative to the project root, like every PHOTOEDIT_* path
 
@@ -30,6 +31,8 @@ export default defineConfig({
       PHOTOEDIT_WORKSPACE_DIR: `${E2E}/workspace`,
       PHOTOEDIT_CACHE_DIR: `${E2E}/cache`,
       PHOTOEDIT_STYLES_DIR: `${E2E}/styles`,
+      PHOTOEDIT_PRESETS_DIR: `${E2E}/export-presets`,
+      PHOTOEDIT_EXPORT_WORKERS: '2', // real worker processes, as in normal use
       PHOTOEDIT_SAMPLE_PHOTOS_DIR: `${E2E}/photos`,
     },
   },

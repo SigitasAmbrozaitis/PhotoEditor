@@ -79,6 +79,20 @@ class PathGuard:
         if normalized not in self._writable:
             self._writable.append(normalized)
 
+    def revoke(self, root: Path) -> None:
+        """Remove a writable root registered with ``allow_writes_to`` (e.g. after an export finished)."""
+        normalized = _normalize(root)
+        if normalized in self._writable:
+            self._writable.remove(normalized)
+
+    def protected_root_of(self, path: Path) -> Path | None:
+        """The protected folder ``path`` lies in, if any (None also for a path that can't be resolved)."""
+        try:
+            target = _normalize(path)
+        except WriteNotAllowedError:
+            return None
+        return next((root for root in self._protected if _is_within(target, root)), None)
+
     def protect(self, root: Path) -> None:
         """Mark a folder (e.g. a source photo folder) as never writable."""
         normalized = _normalize(root)

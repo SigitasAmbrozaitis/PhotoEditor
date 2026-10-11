@@ -27,6 +27,7 @@ from photoedit.models import (
     StyleSummary,
     StyleView,
 )
+from photoedit.models.export import DestinationCheck, ExportPlan
 from photoedit.models.fs import DirListing
 from photoedit.models.style import StyleCreate
 from photoedit.services import Services
@@ -44,13 +45,16 @@ def photos(tmp_path: Path) -> Path:
 @pytest.fixture
 def settings_with_photos(tmp_path: Path, photos: Path) -> Settings:
     return load_settings(
-        tmp_path / "missing.toml", project_root=tmp_path / "project", sample_photos_dir=photos
+        tmp_path / "missing.toml",
+        project_root=tmp_path / "project",
+        sample_photos_dir=photos,
+        export_workers=1,  # renders in-process: no worker processes to start in tests
     )
 
 
 @pytest.fixture
 def client(settings_with_photos: Settings) -> Iterator[TestClient]:
-    services = Services(settings_with_photos, mock_seconds_per_item=0)
+    services = Services(settings_with_photos)
     with TestClient(create_app(settings_with_photos, services=services)) as test_client:
         yield test_client
 
@@ -196,7 +200,7 @@ def test_fs_dirs_roots_and_errors(client: TestClient, tmp_path: Path) -> None:
     assert client.get("/api/fs/dirs", params={"path": "relative"}).status_code == 400
 
 
-# ----------------------------------------------------------------- styles + presets (mock)
+# ----------------------------------------------------------------- styles + presets
 
 
 def _services(client: TestClient) -> Services:
@@ -223,46 +227,102 @@ def test_styles(client: TestClient) -> None:
 
 def test_presets(client: TestClient) -> None:
     presets = TypeAdapter(list[ExportPreset]).validate_python(client.get("/api/export-presets").json())
-    assert len(presets) == 10
+    assert len(presets) == 10 and all(p.builtin for p in presets)
     one = ExportPreset.model_validate(client.get("/api/export-presets/instagram-portrait").json())
     assert one.settings.size.height == 1350
     assert client.get("/api/export-presets/nope").status_code == 404
 
 
-# ----------------------------------------------------------------- jobs
+def test_custom_presets(client: TestClient) -> None:
+    r = client.post("/api/export-presets/instagram-portrait/duplicate", json={"name": "My IG"})
+    assert r.status_code == 201, r.text
+    mine = ExportPreset.model_validate(r.json())
+    assert (mine.id, mine.builtin, mine.version) == ("my-ig", False, 1)
+    settings = mine.settings.model_dump(mode="json")
+    settings["file"]["jpeg_quality"] = 95
+    r = client.put(f"/api/export-presets/{mine.id}", json={"expected_version": 1, "settings": settings})
+    assert r.status_code == 200 and r.json()["settings"]["file"]["jpeg_quality"] == 95
+    assert (
+        client.put(f"/api/export-presets/{mine.id}", json={"expected_version": 1, "name": "x"}).status_code
+        == 409
+    )
+    assert (
+        client.put("/api/export-presets/web-full", json={"expected_version": 1, "name": "x"}).status_code
+        == 400
+    )
+    assert client.delete("/api/export-presets/web-full").status_code == 400
+    created = client.post("/api/export-presets", json={"name": "Blank"})
+    assert created.status_code == 201 and created.json()["id"] == "blank"
+    assert client.post("/api/export-presets/web-full/duplicate").json()["id"] == "web-full-size-copy"
+    assert client.delete(f"/api/export-presets/{mine.id}").status_code == 204
+    assert client.get(f"/api/export-presets/{mine.id}").status_code == 404
 
 
-def test_apply_and_export_job_on_real_photos(client: TestClient, photos: Path) -> None:
+# ----------------------------------------------------------------- export + jobs
+
+
+def _export_body(ids: list[str], destination: Path, **settings: object) -> dict[str, object]:
+    return {
+        "kind": "export",
+        "photo_ids": ids,
+        "preset_id": "web-full",
+        "settings": {"size": {"mode": "long_edge", "long_edge": 100}, **settings},
+        "destination": str(destination),
+    }
+
+
+def test_export_plan_and_job(client: TestClient, photos: Path, tmp_path: Path) -> None:
+    _import(client, photos)
+    ids = _photo_ids(client)
+    out = tmp_path / "exports"
+    plan = ExportPlan.model_validate(client.post("/api/export/plan", json=_export_body(ids, out)).json())
+    assert [i.output_name for i in plan.items] == ["b.jpg", "a.jpg", "c.jpg"]  # by capture time, undated last
+    assert not out.exists()
+    r = client.post("/api/jobs", json=_export_body(ids, out))
+    assert r.status_code == 201, r.text
+    job = _wait(client, Job.model_validate(r.json()).id)
+    assert job.status == "done" and job.summary == f"3 exported → {out}"
+    assert sorted(p.name for p in out.iterdir()) == ["a.jpg", "b.jpg", "c.jpg"]
+    assert all(i.output_bytes and i.output_width == 100 for i in job.items if i.filename != "c.jpg")
+    assert client.get("/api/export/destinations").json() == [str(out)]
+
+
+def test_export_refusals(client: TestClient, photos: Path) -> None:
+    _import(client, photos)
+    ids = _photo_ids(client)
+    r = client.post("/api/jobs", json=_export_body(ids, photos / "out"))
+    assert r.status_code == 400 and "inside the photo folder" in r.json()["detail"]
+    r = client.post(
+        "/api/export/plan", json=_export_body(ids, photos, aspect={"ratio": "4:5", "anchor": "subject"})
+    )
+    assert r.status_code == 400
+    check = DestinationCheck.model_validate(
+        client.post("/api/export/destination-check", json={"path": str(photos)}).json()
+    )
+    assert not check.ok and "photo folder" in (check.reason or "")
+    assert not (photos / "out").exists()
+
+
+def test_apply_and_export_job_on_real_photos(client: TestClient, photos: Path, tmp_path: Path) -> None:
     _import(client, photos)
     ids = _photo_ids(client)[:2]
     sid = _make_style(client)
-    preset = client.get("/api/export-presets/instagram-portrait").json()
-    r = client.post(
-        "/api/jobs",
-        json={
-            "kind": "apply_and_export",
-            "photo_ids": ids,
-            "style_id": sid,
-            "even_out": False,
-            "preset_id": "instagram-portrait",
-            "settings": preset["settings"],
-            "destination": "C:/Users/ambro/Pictures/Exports",
-        },
-    )
+    out = tmp_path / "exports"
+    body = {**_export_body(ids, out), "kind": "apply_and_export", "style_id": sid, "even_out": False}
+    r = client.post("/api/jobs", json=body)
     assert r.status_code == 201, r.text
     applied = _wait(client, Job.model_validate(r.json()).id)
     assert applied.kind == "apply_style" and applied.status == "done" and applied.style_id == sid
-    # The style is applied for real (edit files); the export after it is still simulated (Phase 5).
     for pid in ids:
         assert PhotoDetail.model_validate(client.get(f"/api/photos/{pid}").json()).edit.style_id == sid
     listed = TypeAdapter(list[Job]).validate_python(client.get("/api/jobs").json())
     export = _wait(client, next(j for j in listed if j.kind == "export").id)
-    assert [i.output_path for i in export.items] == [
-        "C:/Users/ambro/Pictures/Exports/a.jpg",
-        "C:/Users/ambro/Pictures/Exports/b.jpg",
-    ]
+    assert export.status == "done" and len(list(out.iterdir())) == 2
     unknown = {"kind": "apply_style", "photo_ids": ids, "style_id": "nope", "even_out": False}
     assert client.post("/api/jobs", json=unknown).status_code == 404
+    # A refused destination fails before the style is applied.
+    refused = {**body, "destination": str(tmp_path / "project" / "workspace")}
+    assert client.post("/api/jobs", json=refused).status_code == 400
 
 
 def test_cancel_job_endpoint(client: TestClient, photos: Path) -> None:

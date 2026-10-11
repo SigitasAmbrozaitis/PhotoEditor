@@ -4,9 +4,12 @@ import { useEffect, useRef } from 'react'
 import { api } from './client'
 import type {
   AdjustmentParams,
+  DestinationCheck,
   DirListing,
   EngineInfo,
+  ExportPlan,
   ExportPreset,
+  ExportRequest,
   ImportRequest,
   Job,
   JobRequest,
@@ -15,6 +18,8 @@ import type {
   PhotoDetail,
   PhotoPage,
   PhotoSort,
+  PresetCreate,
+  PresetUpdate,
   SortOrder,
   ConsistencyReport,
   Style,
@@ -49,6 +54,9 @@ export const queryKeys = {
   styleHistory: (id: string) => ['style', id, 'history'] as const,
   styleDiff: (id: string, a: number, b: number) => ['style', id, 'diff', a, b] as const,
   presets: ['presets'] as const,
+  destinations: ['export', 'destinations'] as const,
+  destinationCheck: (path: string) => ['export', 'destination-check', path] as const,
+  exportPlan: (request: ExportRequest | null) => ['export', 'plan', request] as const,
   jobs: ['jobs'] as const,
   job: (id: string) => ['job', id] as const,
 }
@@ -309,6 +317,75 @@ export function usePresets() {
   return useQuery({ queryKey: queryKeys.presets, queryFn: () => api.get<ExportPreset[]>('/api/export-presets') })
 }
 
+function usePresetMutation<V>(fn: (vars: V) => Promise<ExportPreset>) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: (preset) => {
+      // In the list at once, so a dialog can select the new preset before the list is fetched again.
+      client.setQueryData<ExportPreset[]>(queryKeys.presets, (list) =>
+        list ? [...list.filter((p) => p.id !== preset.id), preset] : list,
+      )
+      void client.invalidateQueries({ queryKey: queryKeys.presets })
+    },
+  })
+}
+
+export function useCreatePreset() {
+  return usePresetMutation((request: PresetCreate) => api.post<ExportPreset>('/api/export-presets', request))
+}
+
+export function useUpdatePreset(id: string) {
+  return usePresetMutation((update: PresetUpdate) =>
+    api.put<ExportPreset>(`/api/export-presets/${encodeURIComponent(id)}`, update),
+  )
+}
+
+export function useDuplicatePreset() {
+  return usePresetMutation(({ id, name }: { id: string; name?: string }) =>
+    api.post<ExportPreset>(`/api/export-presets/${encodeURIComponent(id)}/duplicate`, name ? { name } : {}),
+  )
+}
+
+export function useDeletePreset() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/api/export-presets/${encodeURIComponent(id)}`),
+    onSuccess: () => void client.invalidateQueries({ queryKey: queryKeys.presets }),
+  })
+}
+
+/** Recently used export folders, newest first. */
+export function useExportDestinations() {
+  return useQuery({ queryKey: queryKeys.destinations, queryFn: () => api.get<string[]>('/api/export/destinations') })
+}
+
+/** Whether a folder can take exports (`path` should be debounced by the caller). */
+export function useDestinationCheck(path: string) {
+  return useQuery({
+    queryKey: queryKeys.destinationCheck(path),
+    queryFn: () => api.post<DestinationCheck>('/api/export/destination-check', { path }),
+    enabled: path.trim() !== '',
+    staleTime: 0,
+  })
+}
+
+/** What an export would write (a dry run); `null` = nothing to plan yet. */
+export function useExportPlan(request: ExportRequest | null) {
+  return useQuery({
+    queryKey: queryKeys.exportPlan(request),
+    queryFn: () => api.post<ExportPlan>('/api/export/plan', request),
+    enabled: request !== null,
+    staleTime: 0,
+    retry: false,
+  })
+}
+
+/** Ask the backend to show an exported file in Explorer. */
+export function useRevealFile() {
+  return useMutation({ mutationFn: (path: string) => api.post<void>('/api/export/reveal', { path }) })
+}
+
 export function useJobs() {
   return useQuery({
     queryKey: queryKeys.jobs,
@@ -333,6 +410,7 @@ export function useCreateJob() {
     onSuccess: (job) => {
       client.setQueryData(queryKeys.job(job.id), job)
       void client.invalidateQueries({ queryKey: queryKeys.jobs })
+      void client.invalidateQueries({ queryKey: queryKeys.destinations })
     },
   })
 }

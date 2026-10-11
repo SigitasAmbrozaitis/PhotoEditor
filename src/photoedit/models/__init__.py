@@ -5,7 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 from photoedit.models.adjustments import AdjustmentGroup, AdjustmentParams
-from photoedit.models.export import ExportPreset, ExportSettings
+from photoedit.models.export import ExportPlan, ExportPlanItem, ExportPreset, ExportSettings
 from photoedit.models.job import (
     ApplyAndExportRequest,
     ApplyStyleRequest,
@@ -70,6 +70,8 @@ __all__ = [
     "AsShot",
     "ConsistencyReport",
     "EngineInfo",
+    "ExportPlan",
+    "ExportPlanItem",
     "ExportPreset",
     "ExportRequest",
     "ExportSettings",

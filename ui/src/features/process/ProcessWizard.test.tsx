@@ -1,7 +1,8 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import type { ApplyAndExportRequest, ApplyStyleRequest } from '../../api/types'
-import { mockApi, renderApp } from '../../test/render'
+import { library } from '../../test/fixtures'
+import { mockApi, renderApp, type ApiCall } from '../../test/render'
 
 async function openWizard(selection: string[]) {
   const calls = mockApi()
@@ -24,6 +25,9 @@ describe('Apply & export wizard (full use loop)', () => {
     expect(await dialog.findByRole('combobox', { name: 'Export preset' })).toHaveValue('instagram-portrait')
     expect(dialog.getByRole('button', { name: 'Next' })).toBeDisabled()
     await user.type(dialog.getByRole('textbox', { name: 'Destination folder' }), 'C:/Exports/ig')
+    // The destination is checked and the export planned before Next is allowed.
+    expect(await dialog.findByRole('table', { name: 'Export plan' })).toBeInTheDocument()
+    await waitFor(() => expect(dialog.getByRole('button', { name: 'Next' })).toBeEnabled())
     await user.click(dialog.getByRole('button', { name: 'Next' }))
 
     // Review.
@@ -32,8 +36,9 @@ describe('Apply & export wizard (full use loop)', () => {
     expect(dialog.getByText(/→ C:\/Exports\/ig/)).toBeInTheDocument()
     await user.click(dialog.getByRole('button', { name: 'Apply & export' }))
 
-    await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true))
-    const body = calls.find((c) => c.method === 'POST')!.body as ApplyAndExportRequest
+    const isJob = (c: ApiCall) => c.method === 'POST' && c.path === '/api/jobs'
+    await waitFor(() => expect(calls.some(isJob)).toBe(true))
+    const body = calls.find(isJob)!.body as ApplyAndExportRequest
     expect(body).toMatchObject({
       kind: 'apply_and_export',
       photo_ids: ['p001', 'p002', 'p003'],
@@ -59,13 +64,12 @@ describe('Apply & export wizard (full use loop)', () => {
     expect(body).toEqual({ kind: 'apply_style', photo_ids: ['p001', 'p002'], style_id: 'warm-film', even_out: false })
   })
 
-  it('can even the photos out as a group, and says export is simulated', async () => {
+  it('can even the photos out as a group', async () => {
     const { user, calls, dialog } = await openWizard(['p001', 'p002', 'p003'])
     await user.click(await dialog.findByRole('radio', { name: /Warm Film/ }))
     expect(dialog.getByText(/series shot in the same light with changing settings/)).toBeInTheDocument()
     await user.click(dialog.getByRole('switch', { name: 'Even out these photos' }))
     await user.click(dialog.getByRole('button', { name: 'Next' }))
-    expect(dialog.getByText(/Exporting is simulated until Phase 5/)).toBeInTheDocument()
     await user.click(dialog.getByRole('switch', { name: 'Export after applying the style' }))
     await user.click(dialog.getByRole('button', { name: 'Next' }))
     expect(dialog.getByText(/evened out as a group/)).toBeInTheDocument()
@@ -80,5 +84,16 @@ describe('Apply & export wizard (full use loop)', () => {
     await user.click(dialog.getByRole('button', { name: 'Next' }))
     await user.click(dialog.getByRole('button', { name: 'Back' }))
     expect(dialog.getByRole('radio', { name: /Warm Film/ })).toHaveAttribute('aria-checked', 'true')
+  })
+})
+
+describe('Apply & export wizard: destination', () => {
+  it('refuses a photo folder as the destination', async () => {
+    const { user, dialog } = await openWizard(['p001', 'p002'])
+    await user.click(await dialog.findByRole('radio', { name: /Warm Film/ }))
+    await user.click(dialog.getByRole('button', { name: 'Next' }))
+    await user.type(await dialog.findByRole('textbox', { name: 'Destination folder' }), `${library.folder}/out`)
+    expect(await dialog.findByRole('alert')).toHaveTextContent('inside the photo folder')
+    expect(dialog.getByRole('button', { name: 'Next' })).toBeDisabled()
   })
 })

@@ -510,7 +510,8 @@ export interface paths {
         /** List Presets */
         get: operations["list_presets_api_export_presets_get"];
         put?: never;
-        post?: never;
+        /** Create Preset */
+        post: operations["create_preset_api_export_presets_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -526,8 +527,104 @@ export interface paths {
         };
         /** Preset */
         get: operations["preset_api_export_presets__preset_id__get"];
+        /** Update Preset */
+        put: operations["update_preset_api_export_presets__preset_id__put"];
+        post?: never;
+        /** Delete Preset */
+        delete: operations["delete_preset_api_export_presets__preset_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export-presets/{preset_id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Duplicate Preset */
+        post: operations["duplicate_preset_api_export_presets__preset_id__duplicate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Plan
+         * @description What an export would write: names, sizes, collisions and warnings. Nothing is written.
+         */
+        post: operations["export_plan_api_export_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export/destinations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Destinations
+         * @description Recently used export folders, newest first.
+         */
+        get: operations["export_destinations_api_export_destinations_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export/destination-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Destination Check */
+        post: operations["destination_check_api_export_destination_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reveal Export
+         * @description Show an exported file in Explorer. Only files exported in this session can be shown.
+         */
+        post: operations["reveal_export_api_export_reveal_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -546,7 +643,7 @@ export interface paths {
         put?: never;
         /**
          * Create Job
-         * @description Apply a style (real), export (simulated until Phase 5), or apply then export.
+         * @description Apply a style, export, or apply then export.
          */
         post: operations["create_job_api_jobs_post"];
         delete?: never;
@@ -704,8 +801,8 @@ export interface components {
              */
             orientation: components["schemas"]["Orientation"];
             /**
-             * @description What the aspect crop is centered on.
-             * @default subject
+             * @description What the aspect crop is centered on. 'subject' needs subject detection (Phase 6).
+             * @default center
              */
             anchor: components["schemas"]["CropAnchor"];
         };
@@ -722,8 +819,8 @@ export interface components {
              */
             orientation: components["schemas"]["Orientation"];
             /**
-             * @description What the aspect crop is centered on.
-             * @default subject
+             * @description What the aspect crop is centered on. 'subject' needs subject detection (Phase 6).
+             * @default center
              */
             anchor: components["schemas"]["CropAnchor"];
         };
@@ -732,6 +829,11 @@ export interface components {
          * @enum {string}
          */
         CollisionPolicy: "suffix" | "overwrite" | "skip";
+        /**
+         * CollisionStatus
+         * @enum {string}
+         */
+        CollisionStatus: "new" | "renamed" | "overwrite" | "skip";
         /** ColorGrading */
         "ColorGrading-Input": {
             shadows?: components["schemas"]["GradeWheel-Input"];
@@ -856,6 +958,41 @@ export interface components {
              */
             y: number;
         };
+        /**
+         * DecodeSize
+         * @enum {string}
+         */
+        DecodeSize: "auto" | "full";
+        /**
+         * DecodeUsed
+         * @enum {string}
+         */
+        DecodeUsed: "half" | "full";
+        /**
+         * DestinationCheck
+         * @description Whether a folder can take exports (checked as the user types it).
+         */
+        DestinationCheck: {
+            /** Path */
+            path: string;
+            /** Exists */
+            exists: boolean;
+            /**
+             * Ok
+             * @description True when an export may write there (the folder is created if needed).
+             */
+            ok: boolean;
+            /**
+             * Reason
+             * @description Why it can't be used, when ok is false.
+             */
+            reason: string | null;
+        };
+        /** DestinationCheckRequest */
+        DestinationCheckRequest: {
+            /** Path */
+            path: string;
+        };
         /** Detail */
         "Detail-Input": {
             sharpening?: components["schemas"]["Sharpening-Input"];
@@ -923,6 +1060,48 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /**
+         * ExportPlan
+         * @description What an export would write (a dry run: nothing is written).
+         */
+        ExportPlan: {
+            /**
+             * Destination
+             * @description The destination folder, absolute.
+             */
+            destination: string;
+            /** Items */
+            items: components["schemas"]["ExportPlanItem"][];
+            /**
+             * Warnings
+             * @description Warnings about the whole export.
+             */
+            warnings: string[];
+        };
+        /** ExportPlanItem */
+        ExportPlanItem: {
+            /** Photo Id */
+            photo_id: string;
+            /**
+             * Filename
+             * @description The original's file name.
+             */
+            filename: string;
+            /**
+             * Output Name
+             * @description File name in the destination.
+             */
+            output_name: string;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /** @description How the original is decoded for this export. */
+            decode: components["schemas"]["DecodeUsed"];
+            collision: components["schemas"]["CollisionStatus"];
+            /** Warnings */
+            warnings: string[];
+        };
         /** ExportPreset */
         ExportPreset: {
             /** Id */
@@ -943,6 +1122,17 @@ export interface components {
              */
             builtin: boolean;
             settings: components["schemas"]["ExportSettings-Output"];
+            /**
+             * Version
+             * @description +1 on every saved change (for conflict checks).
+             * @default 1
+             */
+            version: number;
+            /**
+             * Error
+             * @description Set when the preset's file can't be read; it can only be deleted then.
+             */
+            error: string | null;
         };
         /** ExportRequest */
         ExportRequest: {
@@ -1133,6 +1323,11 @@ export interface components {
             bit_depth: number;
             /** @default lzw */
             tiff_compression: components["schemas"]["TiffCompression"];
+            /**
+             * @description auto = decode a RAW at half size when that still covers the output size; full = always full size.
+             * @default auto
+             */
+            decode: components["schemas"]["DecodeSize"];
         };
         /** FileSettings */
         "FileSettings-Output": {
@@ -1156,6 +1351,11 @@ export interface components {
             bit_depth: number;
             /** @default lzw */
             tiff_compression: components["schemas"]["TiffCompression"];
+            /**
+             * @description auto = decode a RAW at half size when that still covers the output size; full = always full size.
+             * @default auto
+             */
+            decode: components["schemas"]["DecodeSize"];
         };
         /** Geometry */
         "Geometry-Input": {
@@ -1475,6 +1675,17 @@ export interface components {
             message: string | null;
             /** Output Path */
             output_path: string | null;
+            /**
+             * Output Bytes
+             * @description Size of the written file (exports).
+             */
+            output_bytes: number | null;
+            /** Output Width */
+            output_width: number | null;
+            /** Output Height */
+            output_height: number | null;
+            /** Warnings */
+            warnings: string[];
         };
         /**
          * JobKind
@@ -1560,11 +1771,20 @@ export interface components {
             policy: components["schemas"]["MetadataPolicy"];
             /**
              * Strip Gps
+             * @description Only matters for policy 'all'; the others never write GPS.
              * @default true
              */
             strip_gps: boolean;
-            /** Copyright */
+            /**
+             * Copyright
+             * @description Copyright notice; {year} = the photo's capture year. None = the configured default.
+             */
             copyright?: string | null;
+            /**
+             * Creator
+             * @description None = the configured default.
+             */
+            creator?: string | null;
             /** Keywords */
             keywords?: string[];
         };
@@ -1574,11 +1794,20 @@ export interface components {
             policy: components["schemas"]["MetadataPolicy"];
             /**
              * Strip Gps
+             * @description Only matters for policy 'all'; the others never write GPS.
              * @default true
              */
             strip_gps: boolean;
-            /** Copyright */
+            /**
+             * Copyright
+             * @description Copyright notice; {year} = the photo's capture year. None = the configured default.
+             */
             copyright: string | null;
+            /**
+             * Creator
+             * @description None = the configured default.
+             */
+            creator: string | null;
             /** Keywords */
             keywords: string[];
         };
@@ -1586,7 +1815,7 @@ export interface components {
         "NamingSettings-Input": {
             /**
              * Template
-             * @description Tokens: {original} {date} {time} {seq} {seq:03} {style} {preset}.
+             * @description Tokens: {original} {date} {time} {seq} {seq:03} {style} {preset} {camera}. The extension comes from the file format.
              * @default {original}
              */
             template: string;
@@ -1597,7 +1826,7 @@ export interface components {
         "NamingSettings-Output": {
             /**
              * Template
-             * @description Tokens: {original} {date} {time} {seq} {seq:03} {style} {preset}.
+             * @description Tokens: {original} {date} {time} {seq} {seq:03} {style} {preset} {camera}. The extension comes from the file format.
              * @default {original}
              */
             template: string;
@@ -1915,6 +2144,44 @@ export interface components {
              */
             dehaze: number;
         };
+        /** PresetCreate */
+        PresetCreate: {
+            /** Name */
+            name: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** @default custom */
+            target: components["schemas"]["ExportTarget"];
+            settings?: components["schemas"]["ExportSettings-Input"];
+        };
+        /** PresetDuplicate */
+        PresetDuplicate: {
+            /**
+             * Name
+             * @description Default: '<name> copy'.
+             */
+            name?: string | null;
+        };
+        /**
+         * PresetUpdate
+         * @description Fields left out stay as they are.
+         */
+        PresetUpdate: {
+            /**
+             * Expected Version
+             * @description The version the change was made on.
+             */
+            expected_version: number;
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            target?: components["schemas"]["ExportTarget"] | null;
+            settings?: components["schemas"]["ExportSettings-Input"] | null;
+        };
         /** ReportPhoto */
         ReportPhoto: {
             /** Photo Id */
@@ -1941,6 +2208,14 @@ export interface components {
          * @enum {string}
          */
         ResizeMode: "original" | "long_edge" | "short_edge" | "width_height" | "megapixels" | "percentage";
+        /** RevealRequest */
+        RevealRequest: {
+            /**
+             * Path
+             * @description A file exported in this session.
+             */
+            path: string;
+        };
         /** RuleChange */
         RuleChange: {
             /** Type */
@@ -3799,6 +4074,39 @@ export interface operations {
             };
         };
     };
+    create_preset_api_export_presets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PresetCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportPreset"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     preset_api_export_presets__preset_id__get: {
         parameters: {
             query?: never;
@@ -3818,6 +4126,222 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ExportPreset"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_preset_api_export_presets__preset_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                preset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PresetUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportPreset"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_preset_api_export_presets__preset_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                preset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    duplicate_preset_api_export_presets__preset_id__duplicate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                preset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PresetDuplicate"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportPreset"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_plan_api_export_plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportPlan"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_destinations_api_export_destinations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+        };
+    };
+    destination_check_api_export_destination_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DestinationCheckRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DestinationCheck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reveal_export_api_export_reveal_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevealRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

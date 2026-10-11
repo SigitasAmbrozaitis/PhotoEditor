@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from collections.abc import Iterator
 
 import pytest
@@ -157,3 +158,65 @@ def test_list_is_newest_first_and_unknown_ids_raise(manager: JobManager) -> None
         manager.get("j9999")
     with pytest.raises(JobNotFoundError):
         manager.cancel("j9999")
+
+
+def test_jobs_in_one_queue_run_one_at_a_time() -> None:
+    manager = JobManager(max_jobs=4)
+    running = 0
+    peak = 0
+    lock = threading.Lock()
+    order: list[str] = []
+
+    def make(name: str):  # type: ignore[no-untyped-def]
+        def work(index: int) -> None:
+            nonlocal running, peak
+            with lock:
+                running += 1
+                peak = max(peak, running)
+                order.append(name)
+            time.sleep(0.05)
+            with lock:
+                running -= 1
+
+        return work
+
+    jobs = [manager.submit(JobKind.EXPORT, n, [ItemSpec("a")], make(n), queue="export") for n in "abc"]
+    assert manager.get(jobs[1].id).status == JobStatus.QUEUED
+    for job in jobs:
+        assert manager.wait(job.id, timeout=5).status == JobStatus.DONE
+    assert peak == 1 and order == ["a", "b", "c"]
+    manager.shutdown()
+
+
+def test_cancelled_queued_job_finishes_as_cancelled() -> None:
+    manager = JobManager(max_jobs=2)
+    gate = threading.Event()
+
+    def blocked(index: int) -> None:
+        gate.wait(5)
+
+    first = manager.submit(JobKind.EXPORT, "first", [ItemSpec("a")], blocked, queue="export")
+    second = manager.submit(JobKind.EXPORT, "second", [ItemSpec("b")], lambda i: None, queue="export")
+    manager.cancel(second.id)
+    gate.set()
+    assert manager.wait(first.id, timeout=5).status == JobStatus.DONE
+    assert manager.wait(second.id, timeout=5).status == JobStatus.CANCELLED
+    manager.shutdown()
+
+
+def test_cleanup_runs_also_when_cancelled() -> None:
+    manager = JobManager(max_jobs=1)
+    cleaned: list[str] = []
+    gate = threading.Event()
+
+    def blocked(index: int) -> None:
+        gate.wait(5)
+
+    job = manager.submit(
+        JobKind.EXPORT, "x", [ItemSpec("a"), ItemSpec("b")], blocked, cleanup=lambda: cleaned.append("x")
+    )
+    manager.cancel(job.id)
+    gate.set()
+    assert manager.wait(job.id, timeout=5).status == JobStatus.CANCELLED
+    assert cleaned == ["x"]
+    manager.shutdown()
