@@ -10,7 +10,7 @@ import copy
 from collections.abc import Iterable, Mapping
 from enum import StrEnum
 from itertools import pairwise
-from typing import Annotated, Any, Self
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -164,7 +164,12 @@ class Effects(_Group):
 
 
 class CropRect(_Group):
-    """Crop rectangle in normalized image coordinates (0..1), applied after rotation."""
+    """Crop rectangle in normalized coordinates (0..1) of the frame after flips and the quarter turn.
+
+    The straighten angle turns the image inside that frame, so the rectangle stays put while the angle
+    changes. It must lie inside the straightened image (no blank corners); that needs the photo's size, so
+    core checks it when an edit is saved.
+    """
 
     left: float = Field(default=0, ge=0, le=1)
     top: float = Field(default=0, ge=0, le=1)
@@ -180,16 +185,29 @@ class CropRect(_Group):
         return self
 
 
+QuarterTurn = Literal[0, 90, 180, 270]
+
+
 class Geometry(_Group):
+    """Per-photo framing, applied in this order: flips → quarter turn → straighten → crop."""
+
     crop: CropRect = Field(default_factory=CropRect)
     aspect: str | None = Field(
         default=None,
         pattern=r"^\d+(\.\d+)?:\d+(\.\d+)?$",
-        description="Locked aspect ratio such as '4:5'. None = free.",
+        description="Locked crop aspect ratio, width:height of the crop as shown (e.g. '4:5'). None = free.",
     )
-    angle: float = Field(default=0, ge=-45, le=45, description="Straighten / rotate angle in degrees.")
-    flip_horizontal: bool = False
-    flip_vertical: bool = False
+    angle: float = Field(
+        default=0,
+        ge=-45,
+        le=45,
+        description="Straighten angle in degrees, clockwise positive, around the center of the frame.",
+    )
+    rotate: QuarterTurn = Field(
+        default=0, description="Quarter turn clockwise in degrees (0, 90, 180, 270), after the flips."
+    )
+    flip_horizontal: bool = Field(default=False, description="Mirror left-right (before the quarter turn).")
+    flip_vertical: bool = Field(default=False, description="Mirror top-bottom (before the quarter turn).")
 
 
 class Lens(_Group):

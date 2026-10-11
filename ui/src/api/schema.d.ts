@@ -895,7 +895,11 @@ export interface components {
         CropAnchor: "subject" | "center";
         /**
          * CropRect
-         * @description Crop rectangle in normalized image coordinates (0..1), applied after rotation.
+         * @description Crop rectangle in normalized coordinates (0..1) of the frame after flips and the quarter turn.
+         *
+         *     The straighten angle turns the image inside that frame, so the rectangle stays put while the angle
+         *     changes. It must lie inside the straightened image (no blank corners); that needs the photo's size, so
+         *     core checks it when an edit is saved.
          */
         "CropRect-Input": {
             /**
@@ -921,7 +925,11 @@ export interface components {
         };
         /**
          * CropRect
-         * @description Crop rectangle in normalized image coordinates (0..1), applied after rotation.
+         * @description Crop rectangle in normalized coordinates (0..1) of the frame after flips and the quarter turn.
+         *
+         *     The straighten angle turns the image inside that frame, so the rectangle stays put while the angle
+         *     changes. It must lie inside the straightened image (no blank corners); that needs the photo's size, so
+         *     core checks it when an edit is saved.
          */
         "CropRect-Output": {
             /**
@@ -1357,52 +1365,76 @@ export interface components {
              */
             decode: components["schemas"]["DecodeSize"];
         };
-        /** Geometry */
+        /**
+         * Geometry
+         * @description Per-photo framing, applied in this order: flips → quarter turn → straighten → crop.
+         */
         "Geometry-Input": {
             crop?: components["schemas"]["CropRect-Input"];
             /**
              * Aspect
-             * @description Locked aspect ratio such as '4:5'. None = free.
+             * @description Locked crop aspect ratio, width:height of the crop as shown (e.g. '4:5'). None = free.
              */
             aspect?: string | null;
             /**
              * Angle
-             * @description Straighten / rotate angle in degrees.
+             * @description Straighten angle in degrees, clockwise positive, around the center of the frame.
              * @default 0
              */
             angle: number;
             /**
+             * Rotate
+             * @description Quarter turn clockwise in degrees (0, 90, 180, 270), after the flips.
+             * @default 0
+             * @enum {integer}
+             */
+            rotate: 0 | 90 | 180 | 270;
+            /**
              * Flip Horizontal
+             * @description Mirror left-right (before the quarter turn).
              * @default false
              */
             flip_horizontal: boolean;
             /**
              * Flip Vertical
+             * @description Mirror top-bottom (before the quarter turn).
              * @default false
              */
             flip_vertical: boolean;
         };
-        /** Geometry */
+        /**
+         * Geometry
+         * @description Per-photo framing, applied in this order: flips → quarter turn → straighten → crop.
+         */
         "Geometry-Output": {
             crop: components["schemas"]["CropRect-Output"];
             /**
              * Aspect
-             * @description Locked aspect ratio such as '4:5'. None = free.
+             * @description Locked crop aspect ratio, width:height of the crop as shown (e.g. '4:5'). None = free.
              */
             aspect: string | null;
             /**
              * Angle
-             * @description Straighten / rotate angle in degrees.
+             * @description Straighten angle in degrees, clockwise positive, around the center of the frame.
              * @default 0
              */
             angle: number;
             /**
+             * Rotate
+             * @description Quarter turn clockwise in degrees (0, 90, 180, 270), after the flips.
+             * @default 0
+             * @enum {integer}
+             */
+            rotate: 0 | 90 | 180 | 270;
+            /**
              * Flip Horizontal
+             * @description Mirror left-right (before the quarter turn).
              * @default false
              */
             flip_horizontal: boolean;
             /**
              * Flip Vertical
+             * @description Mirror top-bottom (before the quarter turn).
              * @default false
              */
             flip_vertical: boolean;
