@@ -1435,7 +1435,7 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   threads, and the output is bit-identical at any thread count. `photoedit models list` shows the state.
 
 ### Core
-- [ ] **P6b.2** Models: `SubjectBox` (upright normalized box), `PhotoEditFile.subject: SubjectBox | None`,
+- [x] **P6b.2** Models: `SubjectBox` (upright normalized box), `PhotoEditFile.subject: SubjectBox | None`,
   `SubjectInfo`, `CropSuggestion`, `CropPlacement` (`centered` | `thirds`). Core: `subject_in_frame(box,
   geometry, size)` (upright → frame, exact for flips and turns, the bounding box when straightened). Setting or
   clearing the manual box leaves the edit revision alone. Tests: validation, round-trip, old edit files load, the

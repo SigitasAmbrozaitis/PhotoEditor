@@ -19,6 +19,7 @@ import numpy.typing as npt
 
 from photoedit.core.errors import InvalidRequestError
 from photoedit.models.adjustments import CropRect, Geometry, GeometryChange, QuarterTurn
+from photoedit.models.subject import MIN_BOX_SIZE, SubjectBox
 
 # The smallest crop (fraction of the frame on each side) that constrain_crop produces; a little above the
 # model's 1 % minimum, so float rounding never takes a constrained crop below it.
@@ -322,3 +323,48 @@ def source_map(
     to_pixels = np.array([[1, 0, -0.5], [0, 1, -0.5], [0, 0, 1]])
     out: Matrix = to_pixels @ unflip @ unturn @ unstraighten @ to_frame
     return out
+
+
+def upright_to_frame(geometry: Geometry, width: float, height: float) -> Matrix:
+    """3×3 affine map from upright normalized coordinates (0..1) to frame pixel coordinates.
+
+    ``width`` × ``height`` is the upright photo (any size). The inverse of ``source_map``'s chain, without
+    the crop: flips, then the quarter turn, then the straighten rotation around the frame's center.
+    """
+    flip = np.diag([-1.0 if geometry.flip_horizontal else 1.0, -1.0 if geometry.flip_vertical else 1.0, 1.0])
+    flip[0, 2] = width if geometry.flip_horizontal else 0
+    flip[1, 2] = height if geometry.flip_vertical else 0
+    turn = {
+        0: np.eye(3),
+        90: np.array([[0, -1, height], [1, 0, 0], [0, 0, 1]]),
+        180: np.array([[-1, 0, width], [0, -1, height], [0, 0, 1]]),
+        270: np.array([[0, 1, 0], [-1, 0, width], [0, 0, 1]]),
+    }[geometry.rotate]
+    frame_w, frame_h = turned_size(width, height, geometry.rotate)
+    straighten = np.eye(3)
+    straighten[:2, :2] = _rotation(geometry.angle)
+    center = np.array([[1, 0, frame_w / 2], [0, 1, frame_h / 2], [0, 0, 1]])
+    uncenter = np.array([[1, 0, -frame_w / 2], [0, 1, -frame_h / 2], [0, 0, 1]])
+    scale = np.diag([width, height, 1.0])
+    out: Matrix = center @ straighten @ uncenter @ turn @ flip @ scale
+    return out
+
+
+def subject_in_frame(box: SubjectBox, geometry: Geometry, width: float, height: float) -> SubjectBox | None:
+    """``box`` (upright, normalized) as a box normalized to the frame of ``geometry``.
+
+    Exact for flips and quarter turns. When straightened, it is the bounding box of the box's turned corners,
+    cut to the frame. None when (almost) nothing of it is left inside the frame.
+    """
+    frame_w, frame_h = turned_size(width, height, geometry.rotate)
+    corners = np.array(
+        [[box.left, box.right, box.right, box.left], [box.top, box.top, box.bottom, box.bottom], [1, 1, 1, 1]]
+    )
+    mapped = upright_to_frame(geometry, width, height) @ corners
+    left = max(0.0, float(mapped[0].min()) / frame_w)
+    right = min(1.0, float(mapped[0].max()) / frame_w)
+    top = max(0.0, float(mapped[1].min()) / frame_h)
+    bottom = min(1.0, float(mapped[1].max()) / frame_h)
+    if right - left < MIN_BOX_SIZE or bottom - top < MIN_BOX_SIZE:
+        return None
+    return SubjectBox(left=left, top=top, right=right, bottom=bottom)

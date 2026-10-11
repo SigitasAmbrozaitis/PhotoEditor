@@ -28,6 +28,7 @@ from photoedit.core.style_rules import RuleInputs, resolve, rule_parameters
 from photoedit.core.styles import StyleLibrary
 from photoedit.models import AdjustmentParams, GroupReference, RuleResult, Style
 from photoedit.models.adjustments import Geometry
+from photoedit.models.subject import SubjectBox
 from photoedit.safety import PathGuard
 
 EDIT_SCHEMA_VERSION = 1
@@ -47,6 +48,9 @@ class PhotoEditFile(BaseModel):
     style_id: str | None = None
     overrides: dict[str, Any] = Field(default_factory=dict)
     group: GroupReference | None = None
+    # The main subject set by hand (upright coordinates). It frames crops but changes no pixels, so it is kept
+    # out of the overrides and the revision.
+    subject: SubjectBox | None = None
 
 
 class EffectiveEdit(BaseModel):
@@ -160,7 +164,7 @@ class EditStore:
         return self.effective(photo)
 
     def reset_overrides(self, photo: CatalogPhoto) -> EffectiveEdit:
-        """Drop the per-photo tweaks; the style (and its group) stays."""
+        """Drop the per-photo tweaks; the style (and its group) and a manual subject stay."""
         stored = self.load(photo.id) or PhotoEditFile(photo_id=photo.id)
         self._store(stored.model_copy(update={"overrides": {}}))
         return self.effective(photo)
@@ -180,7 +184,9 @@ class EditStore:
             style = self._library().get(style_id)  # NotFoundError for an unknown style
             replaced = rule_parameters(style)
             kept = {n: v for n, v in kept.items() if n not in replaced}
-        new = PhotoEditFile(photo_id=photo.id, style_id=style_id, group=group if style_id else None)
+        new = PhotoEditFile(
+            photo_id=photo.id, style_id=style_id, group=group if style_id else None, subject=stored.subject
+        )
         styled = self._styled(photo, new.style_id, new.group)
         if styled.style_error is not None:
             raise InvalidRequestError(styled.style_error)
@@ -207,8 +213,18 @@ class EditStore:
             group=group,
         )
 
+    def subject(self, photo_id: str) -> SubjectBox | None:
+        """The subject box set by hand, if any."""
+        stored = self.load(photo_id)
+        return stored.subject if stored is not None else None
+
+    def set_subject(self, photo: CatalogPhoto, box: SubjectBox | None) -> None:
+        """Set the photo's subject by hand (None = use the detected one). The revision stays the same."""
+        stored = self.load(photo.id) or PhotoEditFile(photo_id=photo.id)
+        self._store(stored.model_copy(update={"subject": box}))
+
     def reset(self, photo_id: str) -> None:
-        """Forget the photo's edit entirely (style, group and tweaks)."""
+        """Forget the photo's edit entirely (style, group, tweaks and subject)."""
         path = self.path(photo_id)
         if path.exists():
             self._guard.assert_writable(path)
@@ -217,11 +233,12 @@ class EditStore:
     # ---- internals
 
     def _store(self, record: PhotoEditFile) -> None:
-        if not record.overrides and record.style_id is None:
+        if not record.overrides and record.style_id is None and record.subject is None:
             self.reset(record.photo_id)
         else:
-            # No group: leave the key out, so files look as they did before groups existed.
-            data = record.model_dump_json(indent=2, exclude={"group"} if record.group is None else None)
+            # Leave out keys that are unset, so files look as they did before groups and subjects existed.
+            unset = {name for name in ("group", "subject") if getattr(record, name) is None}
+            data = record.model_dump_json(indent=2, exclude=unset or None)
             self._guard.write_atomic(self.path(record.photo_id), data.encode("utf-8"))
 
     def _library(self) -> StyleLibrary:
