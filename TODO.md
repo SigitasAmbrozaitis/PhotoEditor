@@ -1340,9 +1340,15 @@ read-only crop overlay toggle and a disabled angle slider.
   100 % tiles and panning; screenshots 18-crop-tool, 19-zoom-100).
 
 ### Tests + docs
-- [ ] **P6a.13** Golden: synthetic geometry references (committed: a test chart with a crop, a straighten, flips
+- [x] **P6a.13** Golden: synthetic geometry references (committed: a test chart with a crop, a straighten, flips
   and quarter turns). Real (local, `@pytest.mark.golden`): `DSCF5437.RAF` cropped and straightened, as a preview
   and as an export at the same framing; the sample folders' hashes are unchanged.
+  Done: two committed references `synthetic-*-framed.png` (the busy edit with a flip, a quarter turn, 7° and a
+  4:5 crop); the earlier references are unchanged byte for byte. `tests/test_geometry_golden.py` (local): a
+  turned, straightened 4:5 edit of DSCF5437 renders identically twice, and its preview and export frame the
+  same picture (blurred ΔE2000 0.3-0.4; a 2 px shift gives ~2.5). Found on the way: the two differ in fine
+  detail (ΔE mean ~1.5 unstraightened, ~3 straightened) because the preview resamples the 2048 px working base
+  and the export its own decode; framing is identical.
 - [ ] **P6a.14** `docs/geometry.md` (frames and order, the no-blank-corners rule and `constrain_crop`, export
   inside the crop, the zoom view and its memory/time) and README (crop tool, CLI).
 - [ ] **P6a.15** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e).
