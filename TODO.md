@@ -1354,7 +1354,9 @@ read-only crop overlay toggle and a disabled angle slider.
   Done: `docs/geometry.md` (with the zoom timings measured on DSCF5437: half decode 0.4 s, full decode 12.5 s,
   a tile 0.15 s, the straighten warp 0.65 s at 100 %), README (crop and zoom, CLI), `docs/export.md` (exports
   work inside the photo's crop; ~1.8 GiB per worker), CLAUDE.md layout.
-- [ ] **P6a.15** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e).
+- [x] **P6a.15** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e).
+  Done 2026-10-11: pytest 818 passed (incl. golden, 6.6 min), ruff, format, mypy clean; Vitest 112 passed,
+  oxlint clean, build OK; Playwright 7 passed.
 
 ### 🧑 Human test: Phase 6a
 0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`.
