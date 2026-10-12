@@ -1034,6 +1034,10 @@ def subject_eval(
         Path | None,
         typer.Option(help="Labeled boxes (default: tests/data/subject-labels.json in the project)."),
     ] = None,
+    results: Annotated[
+        Path | None,
+        typer.Option(help="Also write what was found per photo as JSON (for the golden test), into output/."),
+    ] = None,
     config: ConfigOption = None,
 ) -> None:
     """Compare detection with hand-labeled subjects: hit rate and 4:5 crops per folder, plus a contact sheet.
@@ -1042,7 +1046,7 @@ def subject_eval(
     its targets.
     """
     from photoedit.core.library import CURRENT_FOLDER
-    from photoedit.core.subject.evaluate import contact_sheet, load_labels, report, scores
+    from photoedit.core.subject.evaluate import contact_sheet, load_labels, report, results_json, scores
 
     settings = load_settings(config)
     labels_path = labels or settings.project_root / "tests" / "data" / "subject-labels.json"
@@ -1080,14 +1084,18 @@ def subject_eval(
         typer.echo(f"Detecting subjects in {len(photos)} photos (stored ones are reused)...")
         from photoedit.core.subject.evaluate import evaluate
 
-        results = evaluate(chosen, photos, services.subjects.detected)
-        typer.echo(report(results))
+        found = evaluate(chosen, photos, services.subjects.detected)
+        typer.echo(report(found))
         sheet = settings.output_dir / "contact-sheets" / "subject-eval.jpg"
-        services.guard.write_atomic(sheet, contact_sheet(results, services.cache.thumbnail))
+        services.guard.write_atomic(sheet, contact_sheet(found, services.cache.thumbnail))
         typer.echo(f"Contact sheet: {sheet}")
+        if results is not None:
+            data = json.dumps(results_json(found, services.subjects.identity()), indent=1) + "\n"
+            written = services.guard.write_atomic(results.resolve(), data.encode("utf-8"))
+            typer.echo(f"Results: {written}")
     finally:
         services.close()
-    if not all(s.passed for s in scores(results)):
+    if not all(s.passed for s in scores(found)):
         raise typer.Exit(1)
 
 

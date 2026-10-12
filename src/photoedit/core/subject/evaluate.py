@@ -152,6 +152,23 @@ def evaluate(
     return results
 
 
+def results_json(results: Sequence[PhotoResult], identity: str) -> dict[str, object]:
+    """What detection found per labeled photo, to compare later runs against (determinism)."""
+
+    def found(info: SubjectInfo) -> dict[str, object]:
+        box = info.box
+        return {
+            "source": info.source.value,
+            "kind": info.kind.value if info.kind else None,
+            "box": [round(v, 6) for v in (box.left, box.top, box.right, box.bottom)] if box else None,
+        }
+
+    return {
+        "identity": identity,
+        "photos": {f"{r.label.folder}/{r.label.file}": found(r.info) for r in results},
+    }
+
+
 def scores(results: Sequence[PhotoResult]) -> list[FolderScore]:
     folders = sorted({r.label.folder for r in results})
     return [
