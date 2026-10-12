@@ -368,6 +368,14 @@ Not an option: LibRaw's multithreaded decode (breaks deterministic rendering).
 
 ---
 
+### 7.2 Open idea: subjects that need a human look (user request 2026-10-12, to discuss)
+
+The subject evaluation shows each detection's score, and the user liked seeing it. Idea: flag photos whose
+subject is uncertain (a low score, only the focus point, or nothing found) for **manual review** rather than
+trusting the automatic crop. For example, a "review subject" marker in the Library and the export plan, and a
+filter to go through them with the crop tool's Set subject. How it should be used is to be discussed with the
+user; nothing is built for it yet.
+
 ## 8. Workflow rules for building it (AI rules)
 
 - Each phase: plan section → `TODO.md` checklist → implement → unit tests → **human test script** (exact steps + expected
