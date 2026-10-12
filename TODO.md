@@ -1582,6 +1582,28 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
 
 ### ⛔ STOP: user approves Phase 6b
 
+## Phase 6c: Pre-export review (outline, added 2026-10-12)
+
+Goal (user's words): "most photos are handled by the tool, but where the tool is unable to take an accurate
+decision, the decision is left for the user." Bulk flow: select photos → style → export settings → **Prepare**
+→ review → export. Decisions in PLAN.md §0 (2026-10-12).
+
+- [ ] **P6c.0** Detail this phase into items. ⛔ STOP for the user to review it.
+- [ ] Prepare step (on the export plan): each photo's style, subject, crop in the **export's ratio and
+  orientation**, automatic zoom on small subjects (capped where the export would start to upscale), output
+  size, and a styled preview of the final framing.
+- [ ] Review rules, each giving a reason: uncertain subject (score below the threshold, only the focus point,
+  nothing found), ambiguous (two candidates close in score), subject cut off by the crop, zoom at the quality
+  limit, no clear subject (centered or on the focus point, and asked). **Thresholds are settings** the user can
+  tune (start strict).
+- [ ] Review screen: Ready and Check groups; per photo the reason, the final framing, other candidates as
+  one-click choices, a zoom slider (the crop tool's flow plus zoom), and Set subject. A chosen subject is saved
+  to the photo's edit; the zoom belongs to this export.
+- [ ] Approvals: each Check photo is approved by hand. Buttons **Export Approved** and **Force Export All**
+  (exports the rest with the tool's suggestions); a single **Export All** when everything is approved.
+- [ ] Tests, docs, full check.
+- 🧑 Human test (bulk rally/drift/cat export through the review) + ⛔ STOP.
+
 ## Phase 7: MCP server (outline)
 - [ ] **P7.0** Detail this phase. ⛔ STOP for review.
 - [ ] MCP server exposing the core API (PLAN 4.4), including `render_preview` returning images.

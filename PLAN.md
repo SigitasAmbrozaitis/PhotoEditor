@@ -46,6 +46,7 @@
 | Zoom view (Phase 6a) | Fit / 50 % (half-size decode) / 100 % (full decode, ~13–25 s the first time per photo; the 50 % view is shown enlarged meanwhile). **Wait accepted**; speed-ups stay with §7.1 | 2026-10-11 |
 | Subject detection (Phase 6b) | **Classical cues** (AF point from the Fujifilm maker note, sharpness, saliency, and faces by OpenCV's YuNet face detector: OpenCV 5 dropped the Haar cascades, decided 2026-10-11) **+ a small pretrained object detector** (COCO classes) run locally on the CPU by OpenCV `cv2.dnn` (**YOLOX-S float32** from the OpenCV Model Zoo, Apache-2.0, chosen 2026-10-11). Only labeled boxes, not a generative model. Downloaded once by `photoedit models fetch` into `cache/models/` (pinned SHA-256), **after the user OKs the exact file**. Cached in the catalog per detector identity. A manual subject box (in the edit file, outside the adjustments; upright photo coordinates) wins | 2026-10-11 |
 | Suggested crops (Phase 6b) | Largest crop of the ratio keeping the subject + margin; placement **selectable: centered (default) or thirds**; `zoom` tightens | 2026-10-11 |
+| Pre-export review (Phase 6c, user request 2026-10-12) | Bulk flow: select → style → export settings → **Prepare** (subjects, crops in the **export's own ratio and orientation**, automatic zoom, styled previews of the final framing) → each photo is **Ready** or **Check** (uncertain or ambiguous subject, subject cut off, zoom at the quality limit, no clear subject) → fix in place (other candidates in one click, zoom slider, Set subject) → **Export Approved** / **Force Export All** (one **Export All** when everything is approved). A chosen subject is saved to the photo's edit; the zoom belongs to that export. **Confidence threshold and the other review rules are settings the user can tune**; start strict, loosen with use. The tool doesn't guess on photos without a clear subject: it centers (or follows the focus point) and asks | 2026-10-12 |
 | Grid overlay (Phase 6b, user request after the 6a test) | **3×3 rule-of-thirds grid on demand**: a Grid toggle (key G) in the crop tool and the Photo view, remembered per browser; display only (not part of the edit). Pairs with the `thirds` placement of suggested crops | 2026-10-11 |
 
 **Target machine**: i7-12700H (14 cores / 20 threads), 16 GB RAM, RTX 3060 Laptop (6 GB), Windows 11.
@@ -314,6 +315,7 @@ Try these in order. Each is a self-contained addition, so we can switch to one w
 | 5 | **Export** | Presets, resize, color space + ICC, output sharpening, metadata, naming, aspect crop | Export dialog is live; job progress | Instagram preset → 1080×1350, sRGB tagged, EXIF as configured; print preset → correct PPI/size |
 | 6a | **Geometry, crop tool & zoom view** | Crop/rotate/straighten/flip in the pipeline, `constrain_crop`, export inside the photo's crop, 50 %/100 % tiles | Crop tool in the Photo view; zoom view (where sharpening can be judged) | Crop + straighten show everywhere and in exports; sharpening is visible at 1:1 |
 | 6b | **Subject detection & suggested crops** | Subject detection (cues + local object detector), `suggest_crop` (centered/thirds), export `subject` anchor, evaluation set | Suggest crop + subject overlay/manual box; export plan shows subjects | Auto 4:5 crop keeps rally/drift cars and cats well framed |
+| 6c | **Pre-export review** (added 2026-10-12) | Prepare step on the export plan: automatic subject zoom capped at the output's resolution, review rules with tunable thresholds (settings), approvals per photo | Review screen: Ready / Check groups with reasons, final-framing previews, one-click alternative subjects, zoom slider, Set subject; Export Approved / Force Export All | Prepare 30 rally/drift/cat photos → the doubtful ones are in Check with a reason; fixing them takes a click or two; the exported files match the previews |
 | 7 | **MCP server (agentic workflow)** | Exposes the core API to Claude Code | UI auto-refreshes when the AI changes something | In Claude Code: "apply style X to folder Y and export for Instagram to Z" works end to end |
 | 8 | **AI style creation**. ⛔ **STOP at the start and ask the user for style samples** | Analysis tools, parameter fitting from pairs (developed and tested first on the camera JPEG + RAF pairs), README + samples generation, fallbacks F1–F3, F5 | "Create style" flow; A/B variant picker (F1) | Give sample photos → style created, saved, and its samples look like the references |
 | 9 | **Polish** | Parallel batch tuning, caching, clarity/texture/dehaze, noise reduction, lens corrections, more formats | UI refinements from your feedback | 100 RAFs export in acceptable time; extra sliders behave |
@@ -372,9 +374,8 @@ Not an option: LibRaw's multithreaded decode (breaks deterministic rendering).
 
 The subject evaluation shows each detection's score, and the user liked seeing it. Idea: flag photos whose
 subject is uncertain (a low score, only the focus point, or nothing found) for **manual review** rather than
-trusting the automatic crop. For example, a "review subject" marker in the Library and the export plan, and a
-filter to go through them with the crop tool's Set subject. How it should be used is to be discussed with the
-user; nothing is built for it yet.
+trusting the automatic crop. **Discussed 2026-10-12: it becomes Phase 6c, the pre-export review** (see the
+decision in §0 and TODO.md). Still open: a "needs review" marker in the Library outside of exports.
 
 ## 8. Workflow rules for building it (AI rules)
 
