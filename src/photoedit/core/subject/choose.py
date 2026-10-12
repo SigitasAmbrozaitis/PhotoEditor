@@ -2,8 +2,10 @@
 
 Every candidate gets a total score: what the detector or cue says × how likely its kind is to be the subject
 × a size factor (not a speck, not the whole frame) × how sharp it is compared to the photo (a panned car is
-sharp on a blurred background) × a bonus when the camera focused on it. The best total wins if it is high
-enough. Otherwise the camera's focus point stands in, and failing that there is no subject (crops center).
+sharp on a blurred background) × a bonus when the camera focused on it. The best recognized candidate (a
+vehicle, animal, face or person) wins if its total is high enough. Sharpness and saliency alone never make a
+subject: on a sunset or an empty track they only guess (user decision 2026-10-12). Without a recognized
+subject the camera's focus point stands in, and failing that there is none (crops center).
 
 The rules are plain arithmetic on the candidates, so the same candidates always give the same subject. Bump
 ``CHOOSER_VERSION`` when they change, so cached results are recomputed.
@@ -16,7 +18,7 @@ from collections.abc import Callable, Sequence
 from photoedit.core.metadata import AfMode
 from photoedit.models.subject import SubjectBox, SubjectCandidate, SubjectInfo, SubjectKind, SubjectSource
 
-CHOOSER_VERSION = 1
+CHOOSER_VERSION = 2
 
 VEHICLES = frozenset({SubjectKind.CAR, SubjectKind.MOTORCYCLE, SubjectKind.AIRCRAFT})
 PRIORITY: dict[SubjectKind, float] = {
@@ -29,6 +31,8 @@ PRIORITY: dict[SubjectKind, float] = {
     SubjectKind.SALIENT: 0.35,
     SubjectKind.AF_POINT: 0.3,
 }
+# Cues that find something without knowing what it is: they rank candidates but never become the subject.
+UNRECOGNIZED = frozenset({SubjectKind.SALIENT, SubjectKind.AF_POINT})
 # People and faces next to a vehicle are the crowd, the marshals or the driver: weak, one region at most.
 CROWD = 0.3
 # The camera focusing inside a box multiplies its total by 1 + this (zone and wide modes report the zone's
@@ -115,8 +119,9 @@ def choose(
     # Best first; ties by kind priority and position, so the order depends only on the candidates.
     scored.sort(key=lambda c: (-c.score, -PRIORITY[c.kind], c.box.left, c.box.top))
     common = {"candidates": scored, "detector": detector, "notes": list(notes)}
-    if scored and scored[0].score >= MIN_MAIN:
-        best = scored[0]
+    recognized = [c for c in scored if c.kind not in UNRECOGNIZED]
+    if recognized and recognized[0].score >= MIN_MAIN:
+        best = recognized[0]
         box = _grouped(best, scored) if best.kind in VEHICLES else best.box
         return SubjectInfo(source=SubjectSource.DETECTED, box=box, kind=best.kind, score=best.score, **common)
     if af_point is not None and af_mode is not AfMode.NONE:

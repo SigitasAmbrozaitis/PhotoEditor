@@ -338,6 +338,9 @@ class ExportPlanItem(BaseModel):
         "'subject' anchor.",
     )
     subject_kind: SubjectKind | None = None
+    subject_score: float | None = Field(
+        default=None, ge=0, le=1, description="How sure detection is of the subject (none when set by hand)."
+    )
 
 
 class ExportPlan(BaseModel):

@@ -131,4 +131,5 @@ def test_detect_subjects_job_and_the_plan(client: TestClient, finder: Finder, tm
     )
     assert plan.status_code == 200, plan.text
     assert {(i["subject"], i["subject_kind"]) for i in plan.json()["items"]} == {("detected", "car")}
+    assert all(0 < i["subject_score"] <= 1 for i in plan.json()["items"])
     assert finder.calls == len(ids)  # the plan reused the stored detections

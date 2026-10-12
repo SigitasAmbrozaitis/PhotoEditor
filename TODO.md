@@ -1513,7 +1513,7 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   Plan items carry `subject` (source) and `subject_kind`, plus warnings ("no subject found: centered", "the
   subject is outside the photo's crop: centered", "the subject is cut off: …"). Subject models split:
   `models/crop.py` now holds the suggestion models, so `models/export.py` can use the subject enums.
-- [ ] **P6b.9** Evaluation set + report: hand-labeled main-subject boxes for ~40 photos across the four sample
+- [x] **P6b.9** Evaluation set + report: hand-labeled main-subject boxes for ~40 photos across the four sample
   folders (rally, drift, both cats, orange cat + sunsets), including hard ones: tiny drift cars, the black cat,
   the helicopter, and sunsets with no subject. Claude labels them from previews, and the user checks the labels on
   a contact sheet. Labels go in `tests/data/subject-labels.json` (file names + boxes, committed; the photos stay
@@ -1529,7 +1529,11 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   orange cat + sunsets **33/33 % (missed)**. The four TV-tower sunsets are labeled "no subject", and saliency
   moves their crops. Measured option, not committed: saliency never the main subject on its own → rally
   100/100 %, sunsets 83/83 % (one miss: DSCF6288, the crop follows the camera's focus point on the tower).
-  Waiting for the user: label check + which option.
+  **Decided 2026-10-12** (user): sharpness and saliency alone never make the subject (`CHOOSER_VERSION` 2);
+  a photo without a recognized subject is centered or follows the focus point. Final: drift 92/92 %, both cats
+  83/92 %, rally 100/100 %, orange cat + sunsets 83/83 % (one miss in 6 photos, DSCF6288 framed on the focus
+  point at the tower). The user accepted it as good enough. Flagging uncertain photos for review is Phase 6c.
+  The export plan also carries each subject's score (`subject_score`) for 6c.
 
 ### API + CLI
 - [x] **P6b.10** Endpoints: `GET /api/photos/{id}/subject` (detect if needed) → `SubjectInfo`;

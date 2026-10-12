@@ -6,6 +6,7 @@ No models are fetched here, so detection uses the cues and says so.
 from __future__ import annotations
 
 import json
+import struct
 from pathlib import Path
 
 import numpy as np
@@ -23,10 +24,15 @@ runner = CliRunner()
 def cfg(tmp_path: Path) -> Path:
     photos = tmp_path / "photos"
     write_jpeg(photos / "wide.jpg", (120, 90, 60), size=(400, 200))
-    # A bright square on a dark, softly noisy field: the saliency cue finds it.
+    # A bright square on a dark, softly noisy field: the saliency cue finds it, but only the camera's focus
+    # point on it (Fujifilm maker note) makes it the subject.
     pixels = np.random.default_rng(0).normal(30, 3, (200, 400, 3)).clip(0, 255).astype(np.uint8)
     pixels[80:120, 320:360] = 240
-    Image.fromarray(pixels).save(photos / "spot.jpg", quality=95)
+    entries = struct.pack("<HHII", 0x1022, 3, 1, 1) + struct.pack("<HHIHH", 0x1023, 3, 2, 340, 100)
+    exif = Image.Exif()
+    exif[0x010F] = "FUJIFILM"
+    exif.get_ifd(0x8769)[0x927C] = b"FUJIFILM" + struct.pack("<IH", 12, 2) + entries + b"\0\0\0\0"
+    Image.fromarray(pixels).save(photos / "spot.jpg", quality=95, exif=exif.tobytes())
     config = tmp_path / "c.toml"
     config.write_text(f'project_root = "{(tmp_path / "project").as_posix()}"\n', encoding="utf-8")
     assert runner.invoke(cli.app, ["import", str(photos), "--config", str(config)]).exit_code == 0
@@ -40,8 +46,9 @@ def test_detect_and_show(cfg: Path) -> None:
     shown = runner.invoke(cli.app, ["subject", "show", "spot", "--config", str(cfg)])
     assert shown.exit_code == 0, shown.output
     info = json.loads(shown.output)
-    assert info["source"] == "detected" and info["kind"] == "salient"
-    assert 0.75 <= (info["box"]["left"] + info["box"]["right"]) / 2 <= 0.9
+    assert info["source"] == "af_point" and info["kind"] == "af_point"
+    assert (info["box"]["left"] + info["box"]["right"]) / 2 == pytest.approx(0.85, abs=0.01)
+    assert info["candidates"][0]["kind"] == "salient"  # found, but not enough to be the subject alone
 
 
 def test_crop_suggest_and_apply(cfg: Path) -> None:

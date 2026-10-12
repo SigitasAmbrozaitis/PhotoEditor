@@ -1304,6 +1304,11 @@ export interface components {
             /** @description Where the subject the aspect crop frames came from ('none' = centered). Only with the 'subject' anchor. */
             subject: components["schemas"]["SubjectSource"] | null;
             subject_kind: components["schemas"]["SubjectKind"] | null;
+            /**
+             * Subject Score
+             * @description How sure detection is of the subject (none when set by hand).
+             */
+            subject_score: number | null;
         };
         /** ExportPreset */
         ExportPreset: {

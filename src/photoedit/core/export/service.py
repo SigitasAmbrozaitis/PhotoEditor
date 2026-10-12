@@ -86,6 +86,7 @@ class _Item:
     error: str | None = None
     subject: SubjectSource | None = None
     subject_kind: SubjectKind | None = None
+    subject_score: float | None = None
 
 
 @dataclass(frozen=True)
@@ -93,6 +94,7 @@ class _Framed:
     box: SubjectBox | None = None
     source: SubjectSource | None = None
     kind: SubjectKind | None = None
+    score: float | None = None
     note: str | None = None
 
 
@@ -117,6 +119,7 @@ class _Prepared:
                     warnings=[*i.warnings, *([i.error] if i.error else [])],
                     subject=i.subject,
                     subject_kind=i.subject_kind,
+                    subject_score=i.subject_score,
                 )
                 for i in self.items
             ],
@@ -378,6 +381,7 @@ class Exporter:
                     error,
                     subject=frame.source,
                     subject_kind=frame.kind,
+                    subject_score=frame.score,
                 )
             )
         return _Prepared(dest, settings, items)
@@ -414,7 +418,7 @@ class Exporter:
             return _Framed(
                 source=SubjectSource.NONE, note="the subject is outside the photo's crop: centered"
             )
-        return _Framed(box=box, source=info.source, kind=info.kind)
+        return _Framed(box=box, source=info.source, kind=info.kind, score=info.score)
 
     def _copyright(self, settings: ExportSettings, photo: CatalogPhoto) -> tuple[str | None, str | None]:
         text = settings.metadata.copyright or self._settings.export_copyright

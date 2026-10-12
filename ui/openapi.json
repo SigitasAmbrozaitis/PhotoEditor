@@ -3443,6 +3443,20 @@
                 "type": "null"
               }
             ]
+          },
+          "subject_score": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Score",
+            "description": "How sure detection is of the subject (none when set by hand)."
           }
         },
         "additionalProperties": false,
@@ -3457,7 +3471,8 @@
           "collision",
           "warnings",
           "subject",
-          "subject_kind"
+          "subject_kind",
+          "subject_score"
         ],
         "title": "ExportPlanItem"
       },

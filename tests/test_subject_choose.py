@@ -118,3 +118,15 @@ def test_af_box_is_square_and_inside() -> None:
 def test_same_candidates_same_choice() -> None:
     candidates = [cand(CAR, 0.6, box(0.1 * i, 0.4, 0.1 * i + 0.05, 0.45)) for i in range(8)]
     assert choose(candidates) == choose(list(reversed(candidates)))
+
+
+def test_saliency_and_sharpness_alone_never_make_a_subject() -> None:
+    sun = cand(SALIENT, 1.0, box(0.4, 0.5, 0.6, 0.7), "saliency")
+    assert sun.score * 0.35 >= MIN_MAIN  # strong enough by score, but it doesn't know what it found
+    info = choose([sun, cand(SALIENT, 0.9, box(0.1, 0.1, 0.3, 0.3), "sharp")])
+    assert info.source is SubjectSource.NONE and info.candidates[0].label == "saliency"
+    focused = choose([sun], af_point=(0.5, 0.6), af_mode=AfMode.SINGLE)
+    assert focused.source is SubjectSource.AF_POINT
+    # A recognized subject still wins, even if it scores lower than the cue.
+    car = cand(CAR, 0.5, box(0.7, 0.4, 0.8, 0.45))
+    assert choose([sun, car]).box == car.box
