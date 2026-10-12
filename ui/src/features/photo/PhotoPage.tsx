@@ -1,4 +1,4 @@
-import { ArrowLeft, Camera, ChevronLeft, ChevronRight, Columns2, Crop, Download, Eye, EyeOff } from 'lucide-react'
+import { ArrowLeft, Camera, ChevronLeft, ChevronRight, Columns2, Crop, Download, Eye, EyeOff, Grid3x3 } from 'lucide-react'
 import { Tabs } from 'radix-ui'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
@@ -6,6 +6,7 @@ import { imageUrls } from '../../api/client'
 import { usePhotoDetail, usePhotos, useStyles } from '../../api/queries'
 import type { Geometry, Photo, ZoomLevel } from '../../api/types'
 import { Button, ErrorState, Loading, Stars } from '../../components/ui'
+import { useGrid } from '../../hooks/useGrid'
 import { cn } from '../../lib/cn'
 import { useSelection } from '../../state/selection'
 import { ExportDialog } from '../export/ExportDialog'
@@ -126,6 +127,8 @@ export function PhotoPage() {
   const next = index >= 0 && index < photos.length - 1 ? photos[index + 1] : undefined
   const styleName = styles.data?.find((s) => s.id === detail.data?.photo.style_id)?.name
   const canZoom = mode !== 'camera' && !cropping
+  // The crop tool handles G itself while it is open.
+  const [grid, toggleGrid] = useGrid({ key: !cropping })
 
   useEffect(() => {
     // Keep the shown photo selected so "Apply style…" / "Export…" act on it. Runs only when the photo changes.
@@ -237,6 +240,15 @@ export function PhotoPage() {
         >
           <Crop className="size-3.5" aria-hidden /> Crop
         </Button>
+        <Button
+          size="sm"
+          variant={grid ? 'primary' : 'secondary'}
+          aria-pressed={grid}
+          title="3×3 grid to compose by (G)"
+          onClick={toggleGrid}
+        >
+          <Grid3x3 className="size-3.5" aria-hidden /> Grid
+        </Button>
         <Button size="sm" onClick={() => setExporting(true)}>
           <Download className="size-3.5" aria-hidden /> Export…
         </Button>
@@ -267,7 +279,12 @@ export function PhotoPage() {
                 onExit={() => setZoom({ ...zoom, level: 'fit' })}
               />
             ) : (
-              <PhotoViewer photo={photo} mode={mode} onZoomAt={(point) => setZoom({ level: 100, focus: point })} />
+              <PhotoViewer
+                photo={photo}
+                mode={mode}
+                grid={grid}
+                onZoomAt={(point) => setZoom({ level: 100, focus: point })}
+              />
             )}
           </div>
           <Filmstrip photos={photos} currentId={photo.id} />

@@ -227,6 +227,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photos/{photo_id}/subject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Photo Subject
+         * @description The photo's main subject: the box set by hand, else the detected one (detected now if needed, which
+         *     takes a few seconds the first time).
+         */
+        get: operations["photo_subject_api_photos__photo_id__subject_get"];
+        /**
+         * Set Photo Subject
+         * @description Set the subject by hand (upright photo coordinates), or ``{"box": null}`` to use the detected one.
+         *     Changes no pixels: the edit's revision and its previews stay.
+         */
+        put: operations["set_photo_subject_api_photos__photo_id__subject_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photos/{photo_id}/suggest-crop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest Crop
+         * @description A crop of the ratio framing the photo's subject, in the frame of the given (draft) geometry. Nothing
+         *     is saved.
+         */
+        post: operations["suggest_crop_api_photos__photo_id__suggest_crop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photos/{photo_id}/style": {
         parameters: {
             query?: never;
@@ -724,7 +771,7 @@ export interface paths {
         put?: never;
         /**
          * Create Job
-         * @description Apply a style, export, or apply then export.
+         * @description Apply a style, export, apply then export, or detect subjects.
          */
         post: operations["create_job_api_jobs_post"];
         delete?: never;
@@ -882,7 +929,7 @@ export interface components {
              */
             orientation: components["schemas"]["Orientation"];
             /**
-             * @description What the aspect crop is centered on. 'subject' needs subject detection (Phase 6).
+             * @description What the aspect crop frames: the photo's main subject (set by hand or detected; centered when there is none) or the center.
              * @default center
              */
             anchor: components["schemas"]["CropAnchor"];
@@ -900,7 +947,7 @@ export interface components {
              */
             orientation: components["schemas"]["Orientation"];
             /**
-             * @description What the aspect crop is centered on. 'subject' needs subject detection (Phase 6).
+             * @description What the aspect crop frames: the photo's main subject (set by hand or detected; centered when there is none) or the center.
              * @default center
              */
             anchor: components["schemas"]["CropAnchor"];
@@ -975,6 +1022,11 @@ export interface components {
          */
         CropAnchor: "subject" | "center";
         /**
+         * CropPlacement
+         * @enum {string}
+         */
+        CropPlacement: "centered" | "thirds";
+        /**
          * CropRect
          * @description Crop rectangle in normalized coordinates (0..1) of the frame after flips and the quarter turn.
          *
@@ -1034,6 +1086,51 @@ export interface components {
              */
             bottom: number;
         };
+        /** CropSuggestion */
+        CropSuggestion: {
+            /** @description The suggested crop, normalized to the frame of the given geometry. */
+            crop: components["schemas"]["CropRect-Output"];
+            /**
+             * Aspect
+             * @description The ratio used, turned to the chosen orientation (e.g. '5:4').
+             */
+            aspect: string;
+            placement: components["schemas"]["CropPlacement"];
+            /**
+             * Zoom
+             * @description The zoom actually used (capped where the subject plus margin fills it).
+             */
+            zoom: number;
+            source: components["schemas"]["SubjectSource"];
+            kind: components["schemas"]["SubjectKind"] | null;
+            /** @description The subject used, normalized to the frame of the given geometry. */
+            subject: components["schemas"]["SubjectBox"] | null;
+            /** Warnings */
+            warnings: string[];
+        };
+        /** CropSuggestionRequest */
+        CropSuggestionRequest: {
+            /** @description The geometry to suggest in (the crop tool's draft); its flips, turn and angle are kept. */
+            geometry?: components["schemas"]["Geometry-Input"];
+            /**
+             * Aspect
+             * @description Crop ratio, e.g. '4:5'.
+             */
+            aspect: string;
+            /**
+             * @description auto = the frame's orientation; otherwise force the ratio's.
+             * @default auto
+             */
+            orientation: components["schemas"]["Orientation"];
+            /** @default centered */
+            placement: components["schemas"]["CropPlacement"];
+            /**
+             * Zoom
+             * @description 1 = the largest crop; higher = tighter around the subject.
+             * @default 1
+             */
+            zoom: number;
+        };
         /** CurvePoint */
         CurvePoint: {
             /**
@@ -1091,6 +1188,20 @@ export interface components {
         "Detail-Output": {
             sharpening: components["schemas"]["Sharpening-Output"];
             noise_reduction: components["schemas"]["NoiseReduction-Output"];
+        };
+        /**
+         * DetectSubjectsRequest
+         * @description Detect the photos' main subjects in the background (stored; photos already detected are skipped).
+         */
+        DetectSubjectsRequest: {
+            /** Photo Ids */
+            photo_ids: string[];
+            /**
+             * Kind
+             * @default detect_subjects
+             * @constant
+             */
+            kind: "detect_subjects";
         };
         /** DirEntry */
         DirEntry: {
@@ -1190,6 +1301,14 @@ export interface components {
             collision: components["schemas"]["CollisionStatus"];
             /** Warnings */
             warnings: string[];
+            /** @description Where the subject the aspect crop frames came from ('none' = centered). Only with the 'subject' anchor. */
+            subject: components["schemas"]["SubjectSource"] | null;
+            subject_kind: components["schemas"]["SubjectKind"] | null;
+            /**
+             * Subject Score
+             * @description How sure detection is of the subject (none when set by hand).
+             */
+            subject_score: number | null;
         };
         /** ExportPreset */
         ExportPreset: {
@@ -1843,7 +1962,7 @@ export interface components {
          * JobKind
          * @enum {string}
          */
-        JobKind: "import" | "render" | "apply_style" | "export" | "apply_and_export";
+        JobKind: "import" | "render" | "apply_style" | "export" | "apply_and_export" | "detect_subjects";
         /**
          * JobStatus
          * @enum {string}
@@ -2880,6 +2999,78 @@ export interface components {
             samples_stale: boolean;
         };
         /**
+         * SubjectBox
+         * @description A box in normalized coordinates (0..1): of the upright photo, unless a field says otherwise.
+         */
+        SubjectBox: {
+            /** Left */
+            left: number;
+            /** Top */
+            top: number;
+            /** Right */
+            right: number;
+            /** Bottom */
+            bottom: number;
+        };
+        /** SubjectCandidate */
+        SubjectCandidate: {
+            box: components["schemas"]["SubjectBox"];
+            kind: components["schemas"]["SubjectKind"];
+            /**
+             * Score
+             * @description How likely this is the photo's main subject.
+             */
+            score: number;
+            /**
+             * Label
+             * @description What the detector called it, e.g. 'truck'.
+             */
+            label: string | null;
+        };
+        /**
+         * SubjectInfo
+         * @description A photo's main subject: a manual box, the detected one, the AF point, or none.
+         */
+        SubjectInfo: {
+            source: components["schemas"]["SubjectSource"];
+            box: components["schemas"]["SubjectBox"] | null;
+            kind: components["schemas"]["SubjectKind"] | null;
+            /** Score */
+            score: number | null;
+            /**
+             * Candidates
+             * @description Everything found, best first (the main subject included).
+             */
+            candidates: components["schemas"]["SubjectCandidate"][];
+            /**
+             * Detector
+             * @description Identity of the detector that found them.
+             */
+            detector: string | null;
+            /**
+             * Notes
+             * @description E.g. that the detector model is missing.
+             */
+            notes: string[];
+        };
+        /**
+         * SubjectKind
+         * @enum {string}
+         */
+        SubjectKind: "car" | "motorcycle" | "aircraft" | "animal" | "person" | "face" | "salient" | "af_point";
+        /**
+         * SubjectSource
+         * @enum {string}
+         */
+        SubjectSource: "detected" | "manual" | "af_point" | "none";
+        /**
+         * SubjectUpdate
+         * @description Set the photo's subject by hand (upright coordinates), or ``null`` to use the detected one.
+         */
+        SubjectUpdate: {
+            box: components["schemas"]["SubjectBox"] | null;
+        };
+        /**
          * TiffCompression
          * @enum {string}
          */
@@ -3660,6 +3851,107 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Geometry-Output"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    photo_subject_api_photos__photo_id__subject_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_photo_subject_api_photos__photo_id__subject_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubjectUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggest_crop_api_photos__photo_id__suggest_crop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CropSuggestionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CropSuggestion"];
                 };
             };
             /** @description Validation Error */
@@ -4726,7 +5018,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ApplyStyleRequest"] | components["schemas"]["ExportRequest"] | components["schemas"]["ApplyAndExportRequest"];
+                "application/json": components["schemas"]["ApplyStyleRequest"] | components["schemas"]["ExportRequest"] | components["schemas"]["ApplyAndExportRequest"] | components["schemas"]["DetectSubjectsRequest"];
             };
         };
         responses: {

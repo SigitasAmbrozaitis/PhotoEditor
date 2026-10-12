@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Download, Eraser, Wand2 } from 'lucide-react'
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Download, Eraser, ScanSearch, Wand2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { imageUrls } from '../../api/client'
@@ -108,6 +108,7 @@ export function LibraryPage() {
   const styleNames = useMemo(() => new Map(styles.data?.map((s) => [s.id, s.name])), [styles.data])
   const count = selection.ids.length
   const removeStyle = useCreateJob()
+  const detectSubjects = useCreateJob()
   const selected = new Set(selection.ids)
   const selectedHaveStyle = items.some((p) => selected.has(p.id) && p.style_id)
 
@@ -158,6 +159,13 @@ export function LibraryPage() {
               }
             >
               <Eraser className="size-4" aria-hidden /> Remove style
+            </Button>
+            <Button
+              disabled={count === 0 || detectSubjects.isPending}
+              title="Find each selected photo's main subject in the background (a few seconds per photo, once)"
+              onClick={() => detectSubjects.mutate({ kind: 'detect_subjects', photo_ids: selection.ids })}
+            >
+              <ScanSearch className="size-4" aria-hidden /> Detect subjects
             </Button>
             <Button disabled={count === 0} onClick={() => setDialog('export')}>
               <Download className="size-4" aria-hidden /> Export…

@@ -1,6 +1,7 @@
 import type { UseQueryResult } from '@tanstack/react-query'
 import type { CollisionStatus, ExportPlan } from '../../api/types'
 import { Chip, ErrorState, Loading } from '../../components/ui'
+import { subjectLabel } from '../photo/subjectLabel'
 
 const COLLISION: Record<CollisionStatus, { label: string; tone: 'neutral' | 'warn' | 'err' }> = {
   new: { label: 'new', tone: 'neutral' },
@@ -9,11 +10,19 @@ const COLLISION: Record<CollisionStatus, { label: string; tone: 'neutral' | 'war
   skip: { label: 'exists: skipped', tone: 'warn' },
 }
 
-/** What the export will write, per photo: name, pixel size, decode, collisions and warnings. */
+// Said by the Subject column already.
+const NO_SUBJECT = 'no subject found: centered'
+
+/** What the export will write, per photo: name, pixel size, decode, the subject the crop frames (with the
+ * subject anchor), collisions and warnings. */
 export function ExportPlanTable({ plan }: { plan: UseQueryResult<ExportPlan> }) {
   if (plan.isError) return <ErrorState error={plan.error} />
-  if (!plan.data) return plan.isFetching ? <Loading label="Planning…" /> : null
+  if (!plan.data)
+    return plan.isFetching ? (
+      <Loading label="Planning… (finding a photo's subject takes a few seconds the first time)" />
+    ) : null
   const items = plan.data.items
+  const framing = items.some((i) => i.subject != null)
   const warnings = items.filter((i) => i.warnings.length > 0).length
   return (
     <div className="flex flex-col gap-1">
@@ -29,6 +38,7 @@ export function ExportPlanTable({ plan }: { plan: UseQueryResult<ExportPlan> }) 
               <th className="px-2 py-1 font-medium">File</th>
               <th className="px-2 py-1 font-medium">Size</th>
               <th className="px-2 py-1 font-medium">Decode</th>
+              {framing && <th className="px-2 py-1 font-medium">Subject</th>}
               <th className="px-2 py-1 font-medium">Notes</th>
             </tr>
           </thead>
@@ -43,10 +53,24 @@ export function ExportPlanTable({ plan }: { plan: UseQueryResult<ExportPlan> }) 
                     {item.width}×{item.height}
                   </td>
                   <td className="px-2 py-1">{item.decode === 'half' ? 'half size' : 'full size'}</td>
+                  {framing && (
+                    <td className="px-2 py-1" data-testid="plan-subject">
+                      {item.subject == null || item.subject === 'none' ? (
+                        <span className="text-muted">none → centered</span>
+                      ) : (
+                        <>
+                          {subjectLabel({ source: item.subject, kind: item.subject_kind ?? null })}
+                          {item.subject_score != null && (
+                            <span className="text-muted"> · {Math.round(item.subject_score * 100)} %</span>
+                          )}
+                        </>
+                      )}
+                    </td>
+                  )}
                   <td className="px-2 py-1">
                     <span className="flex flex-wrap gap-1">
                       {item.collision !== 'new' && <Chip tone={collision.tone}>{collision.label}</Chip>}
-                      {item.warnings.map((w) => (
+                      {item.warnings.filter((w) => w !== NO_SUBJECT).map((w) => (
                         <Chip key={w} tone="warn">
                           {w}
                         </Chip>

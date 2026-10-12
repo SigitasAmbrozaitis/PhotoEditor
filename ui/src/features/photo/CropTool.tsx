@@ -1,17 +1,43 @@
-import { Check, FlipHorizontal2, FlipVertical2, RotateCcw, RotateCcwSquare, RotateCwSquare, X } from 'lucide-react'
+import {
+  Check,
+  FlipHorizontal2,
+  FlipVertical2,
+  Grid3x3,
+  RotateCcw,
+  RotateCcwSquare,
+  RotateCwSquare,
+  ScanSearch,
+  SquareDashedMousePointer,
+  Wand2,
+  X,
+} from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { ApiError, imageUrls } from '../../api/client'
-import { previewGeometry } from '../../api/queries'
-import type { Geometry, GeometryChange as FullChange, Photo } from '../../api/types'
+import { previewGeometry, suggestCrop, useSetSubject, useSubject } from '../../api/queries'
+import type {
+  CropPlacement,
+  CropSuggestion,
+  Geometry,
+  GeometryChange as FullChange,
+  Photo,
+  SubjectBox,
+} from '../../api/types'
 import { Button, Select, Spinner } from '../../components/ui'
 import { fitInside, useElementSize } from '../../hooks/useElementSize'
+import { ThirdsGrid } from '../../components/ThirdsGrid'
+import { useGrid } from '../../hooks/useGrid'
 import { cn } from '../../lib/cn'
-import { dragCrop, parseRatio, swapRatio, turnedSize, type Handle } from './cropMath'
+import { subjectLabel } from './subjectLabel'
+import { boxBetween, dragCrop, parseRatio, swapRatio, turnedSize, uprightPoint, type Handle } from './cropMath'
 
 type GeometryChange = Partial<FullChange>
 
 const ASPECTS = ['1:1', '4:5', '5:4', '2:3', '3:2', '16:9', '9:16']
 const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
+// Other things found are drawn faintly, at most this many.
+const MAX_CANDIDATES = 8
+// A box drawn by hand smaller than this (fraction of the photo) is taken as a click, not a subject.
+const MIN_SUBJECT = 0.01
 
 const HANDLE_POSITION: Record<Exclude<Handle, 'move'>, string> = {
   nw: 'left-0 top-0 cursor-nwse-resize',
@@ -29,12 +55,24 @@ function errorText(e: unknown): string {
   return e instanceof Error ? e.message : 'The change was refused'
 }
 
+function boxStyle(box: SubjectBox) {
+  return {
+    left: `${box.left * 100}%`,
+    top: `${box.top * 100}%`,
+    width: `${(box.right - box.left) * 100}%`,
+    height: `${(box.bottom - box.top) * 100}%`,
+  }
+}
+
 /**
  * The crop tool: the whole photo, turned and straightened on screen, with the crop rectangle on it.
  *
  * It edits a draft. Turning, flipping, straightening and the aspect lock go to core (which shrinks the crop to
  * fit the straightened photo); dragging the rectangle is checked locally with the same rule so it stops at the
  * edge. Done checks the draft with core once more and hands it back; nothing is saved here.
+ *
+ * Subjects (P6b.12) are boxes on the upright photo, drawn in the same turned layer as the image so they follow
+ * every flip and turn. Setting one by hand is saved at once: it changes no pixels.
  */
 export function CropTool({
   photo,
@@ -51,9 +89,20 @@ export function CropTool({
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [dragging, setDragging] = useState(false)
+  const [grid, toggleGrid] = useGrid({ key: true })
+  // Subject overlay, drawing a subject by hand, and the last suggestion.
+  const [showSubject, setShowSubject] = useState(false)
+  const [drawing, setDrawing] = useState(false)
+  const [sketch, setSketch] = useState<SubjectBox | null>(null)
+  const [placement, setPlacement] = useState<CropPlacement>('centered')
+  const [zoom, setZoom] = useState(1)
+  const [suggestion, setSuggestion] = useState<CropSuggestion | null>(null)
+  const subject = useSubject(photo.id, showSubject || drawing || suggestion !== null)
+  const setSubject = useSetSubject(photo.id)
   // The last draft core accepted: a refused change goes back to it.
   const accepted = useRef<Geometry>(geometry)
   const boxRef = useRef<HTMLDivElement>(null)
+  const frameRef = useRef<HTMLDivElement>(null)
   const box = useElementSize(boxRef)
   const [frameW, frameH] = turnedSize(photo.width, photo.height, draft.rotate)
   const frame = fitInside(box, frameW / frameH)
@@ -98,7 +147,39 @@ export function CropTool({
   const change = (c: GeometryChange) => {
     // Show the user's values at once; core's answer (with the crop fitted) replaces them.
     setDraft((d) => ({ ...d, ...(c as Partial<Geometry>), crop: d.crop }))
+    setSuggestion(null)
     void send(c)
+  }
+
+  // Suggestions: the newest request wins, older answers are dropped (the zoom slider sends many).
+  const suggestSeq = useRef(0)
+  const suggest = async (options: { placement?: CropPlacement; zoom?: number } = {}) => {
+    const seq = ++suggestSeq.current
+    const current = { ...accepted.current, crop: latest.current.crop }
+    const aspect = latest.current.aspect ?? `${frameW}:${frameH}`
+    // The ratio as locked in the tool (4:5 stays portrait on a landscape photo; Swap turns it).
+    const ratio = parseRatio(aspect) ?? 1
+    const orientation = ratio < 1 ? 'portrait' : ratio > 1 ? 'landscape' : 'auto'
+    setBusy(true)
+    try {
+      const result = await suggestCrop(photo.id, {
+        geometry: current,
+        aspect,
+        orientation,
+        placement: options.placement ?? placement,
+        zoom: options.zoom ?? zoom,
+      })
+      if (seq !== suggestSeq.current) return
+      // Core made it fit the straightened photo: it is the accepted draft now.
+      accepted.current = { ...accepted.current, crop: result.crop, aspect: result.aspect }
+      setDraft((d) => ({ ...d, crop: result.crop, aspect: result.aspect }))
+      setSuggestion(result)
+      setError(null)
+    } catch (e) {
+      if (seq === suggestSeq.current) setError(errorText(e))
+    } finally {
+      if (seq === suggestSeq.current) setBusy(false)
+    }
   }
 
   const finish = useCallback(async () => {
@@ -124,12 +205,15 @@ export function CropTool({
         void finish()
       } else if (e.key === 'Escape') {
         e.preventDefault()
-        onCancel()
+        if (drawing) {
+          setDrawing(false)
+          setSketch(null)
+        } else onCancel()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [finish, onCancel])
+  }, [finish, onCancel, drawing])
 
   const startDrag = (handle: Handle) => (e: ReactMouseEvent) => {
     e.preventDefault()
@@ -139,6 +223,7 @@ export function CropTool({
     const origin = { x: e.clientX, y: e.clientY }
     const ratio = parseRatio(draft.aspect)
     setDragging(true)
+    setSuggestion(null)
     const onMove = (m: MouseEvent) => {
       const dx = (m.clientX - origin.x) / frame.width
       const dy = (m.clientY - origin.y) / frame.height
@@ -159,12 +244,48 @@ export function CropTool({
   const turned = draft.rotate % 180 !== 0
   const imageW = turned ? frame.height : frame.width
   const imageH = turned ? frame.width : frame.height
-  const transform =
-    `translate(-50%, -50%) rotate(${draft.rotate + draft.angle}deg) ` +
-    `scale(${draft.flip_horizontal ? -1 : 1}, ${draft.flip_vertical ? -1 : 1})`
+  const degrees = draft.rotate + draft.angle
+  const flips = `scale(${draft.flip_horizontal ? -1 : 1}, ${draft.flip_vertical ? -1 : 1})`
+  const transform = `translate(-50%, -50%) rotate(${degrees}deg) ${flips}`
+  // Undoes the layer's turn and flips, so labels inside it read upright.
+  const upright = `${flips} rotate(${-degrees}deg)`
+
+  // Drawing a subject: from where the mouse went down to where it goes up, in upright coordinates.
+  const toUpright = (e: { clientX: number; clientY: number }): [number, number] => {
+    const rect = frameRef.current?.getBoundingClientRect()
+    if (!rect) return [0.5, 0.5]
+    const dx = e.clientX - (rect.left + rect.width / 2)
+    const dy = e.clientY - (rect.top + rect.height / 2)
+    return uprightPoint(dx, dy, imageW, imageH, degrees, draft.flip_horizontal, draft.flip_vertical)
+  }
+  const startSketch = (e: ReactMouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const start = toUpright(e)
+    setSketch(boxBetween(start, start))
+    const onMove = (m: MouseEvent) => setSketch(boxBetween(start, toUpright(m)))
+    const onUp = (m: MouseEvent) => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      const drawn = boxBetween(start, toUpright(m))
+      setSketch(null)
+      if (drawn.right - drawn.left < MIN_SUBJECT || drawn.bottom - drawn.top < MIN_SUBJECT) return
+      setDrawing(false)
+      setShowSubject(true)
+      setSuggestion(null)
+      setSubject.mutate(drawn, { onError: (err) => setError(errorText(err)) })
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
+  const info = subject.data
   const crop = draft.crop
   const original = `${frameW}:${frameH}`
   const aspectValue = draft.aspect === null ? 'free' : ASPECTS.includes(draft.aspect) ? draft.aspect : 'original'
+  const candidates = (info?.candidates ?? [])
+    .filter((c) => !(info?.box && c.box.left === info.box.left && c.box.top === info.box.top && c.box.right === info.box.right))
+    .slice(0, MAX_CANDIDATES)
 
   return (
     <div className="flex h-full flex-col gap-2" data-testid="crop-tool">
@@ -264,6 +385,117 @@ export function CropTool({
           <Check className="size-3.5" aria-hidden /> Done
         </Button>
       </div>
+      <div role="toolbar" aria-label="Subject" className="flex flex-wrap items-center gap-2 text-xs">
+        <Button
+          size="sm"
+          variant="secondary"
+          title="The largest crop of the aspect ratio that keeps the photo's subject"
+          onClick={() => void suggest()}
+        >
+          <Wand2 className="size-3.5" aria-hidden /> Suggest crop
+        </Button>
+        <label className="flex items-center gap-1">
+          <span className="text-muted">Placement</span>
+          <Select
+            aria-label="Placement"
+            value={placement}
+            onChange={(e) => {
+              const value = e.target.value as CropPlacement
+              setPlacement(value)
+              if (suggestion) void suggest({ placement: value })
+            }}
+            className="h-7 text-xs"
+          >
+            <option value="centered">Centered</option>
+            <option value="thirds">On the thirds</option>
+          </Select>
+        </label>
+        <label className="flex items-center gap-1" title="Tighter around the subject; it stops where the subject fills the crop">
+          <span className="text-muted">Zoom</span>
+          <input
+            type="range"
+            aria-label="Zoom"
+            min={1}
+            max={4}
+            step={0.05}
+            value={zoom}
+            onChange={(e) => {
+              const value = Number(e.target.value)
+              setZoom(value)
+              void suggest({ zoom: value })
+            }}
+            onDoubleClick={() => {
+              setZoom(1)
+              void suggest({ zoom: 1 })
+            }}
+            className="w-28 accent-accent"
+          />
+          <span className="w-10 tabular-nums text-muted">{(suggestion?.zoom ?? zoom).toFixed(2)}×</span>
+        </label>
+        <span className="mx-1 h-4 w-px bg-line" aria-hidden />
+        <Button
+          size="sm"
+          variant={showSubject ? 'primary' : 'ghost'}
+          aria-pressed={showSubject}
+          title="Show the photo's subject and the other things found"
+          onClick={() => setShowSubject(!showSubject)}
+        >
+          <ScanSearch className="size-3.5" aria-hidden /> Show subject
+        </Button>
+        <Button
+          size="sm"
+          variant={drawing ? 'primary' : 'ghost'}
+          aria-pressed={drawing}
+          title="Drag a box around the subject (Esc stops)"
+          onClick={() => setDrawing(!drawing)}
+        >
+          <SquareDashedMousePointer className="size-3.5" aria-hidden /> Set subject
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={info?.source !== 'manual'}
+          title="Forget the box set by hand and use the detected subject"
+          onClick={() => {
+            setSuggestion(null)
+            setSubject.mutate(null, { onError: (err) => setError(errorText(err)) })
+          }}
+        >
+          Use detected
+        </Button>
+        <Button
+          size="sm"
+          variant={grid ? 'primary' : 'ghost'}
+          aria-pressed={grid}
+          title="3×3 grid to compose by (G)"
+          onClick={toggleGrid}
+        >
+          <Grid3x3 className="size-3.5" aria-hidden /> Grid
+        </Button>
+        {(showSubject || drawing) && (subject.isFetching || setSubject.isPending) && (
+          <span className="flex items-center gap-1 text-muted">
+            <Spinner className="size-3.5" label="Finding the subject" />
+            Finding the subject (a few seconds the first time)…
+          </span>
+        )}
+        {showSubject && info && !subject.isFetching && (
+          <span className="text-muted" data-testid="subject-summary">
+            Subject: {subjectLabel(info)}
+            {info.score != null && ` · ${Math.round(info.score * 100)} %`}
+          </span>
+        )}
+      </div>
+      {suggestion && (
+        <p className="text-xs text-muted" data-testid="suggestion">
+          {suggestion.aspect} crop, {suggestion.placement === 'thirds' ? 'on the thirds' : 'centered'}, framed on:{' '}
+          {subjectLabel({ ...suggestion, candidates: info?.candidates })}
+          {suggestion.warnings.map((w) => (
+            <span key={w} className="ml-2 text-warn">
+              {w}
+            </span>
+          ))}
+        </p>
+      )}
       {error && (
         <p role="alert" className="text-xs text-err">
           {error}
@@ -271,17 +503,19 @@ export function CropTool({
       )}
       <div ref={boxRef} className="checker relative flex min-h-0 flex-1 items-center justify-center overflow-hidden">
         <div
+          ref={frameRef}
           className="relative overflow-hidden"
           style={frame.width ? { width: frame.width, height: frame.height } : undefined}
           data-testid="crop-frame"
         >
-          <img
-            src={imageUrls.preview(photo.id, { upright: true, size: 1600, version: photo.image_version })}
-            alt={`${photo.filename} (whole photo)`}
-            draggable={false}
-            className="absolute top-1/2 left-1/2 max-w-none select-none"
-            style={{ width: imageW, height: imageH, transform }}
-          />
+          <div className="absolute top-1/2 left-1/2" style={{ width: imageW, height: imageH, transform }} data-testid="upright-layer">
+            <img
+              src={imageUrls.preview(photo.id, { upright: true, size: 1600, version: photo.image_version })}
+              alt={`${photo.filename} (whole photo)`}
+              draggable={false}
+              className="block h-full w-full max-w-none select-none"
+            />
+          </div>
           <div
             className="absolute border border-white/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.6)]"
             style={{
@@ -293,13 +527,7 @@ export function CropTool({
             data-testid="crop-rect"
           >
             <div aria-label="Move crop" className="absolute inset-0 cursor-move" onMouseDown={startDrag('move')} />
-            {dragging &&
-              [1, 2].map((i) => (
-                <div key={i} className="pointer-events-none">
-                  <div className="absolute top-0 bottom-0 w-px bg-white/40" style={{ left: `${(i * 100) / 3}%` }} />
-                  <div className="absolute right-0 left-0 h-px bg-white/40" style={{ top: `${(i * 100) / 3}%` }} />
-                </div>
-              ))}
+            {(dragging || grid) && <ThirdsGrid />}
             {HANDLES.map((h) => (
               <div
                 key={h}
@@ -312,11 +540,50 @@ export function CropTool({
               />
             ))}
           </div>
+          {(showSubject || drawing || sketch) && (
+            // Above the dimmed outside of the crop, in the same turned layer as the photo.
+            <div
+              className="pointer-events-none absolute top-1/2 left-1/2"
+              style={{ width: imageW, height: imageH, transform }}
+              data-testid="subject-layer"
+            >
+              {showSubject &&
+                candidates.map((c, i) => (
+                  <div
+                    key={i}
+                    className="absolute border border-dashed border-white/50"
+                    style={boxStyle(c.box)}
+                    data-testid="subject-candidate"
+                    title={`${c.label ?? c.kind} ${Math.round(c.score * 100)} %`}
+                  />
+                ))}
+              {showSubject && info?.box && (
+                <div className="absolute border-2 border-amber-400" style={boxStyle(info.box)} data-testid="subject-box">
+                  <span
+                    className="absolute top-0 left-0 origin-top-left rounded-br bg-amber-400 px-1 text-[11px] whitespace-nowrap text-black"
+                    style={{ transform: upright }}
+                  >
+                    {subjectLabel(info)}
+                  </span>
+                </div>
+              )}
+              {sketch && <div className="absolute border-2 border-dashed border-amber-300" style={boxStyle(sketch)} />}
+            </div>
+          )}
+          {drawing && (
+            <div
+              aria-label="Draw the subject"
+              className="absolute inset-0 z-10 cursor-crosshair"
+              onMouseDown={startSketch}
+              data-testid="subject-draw"
+            />
+          )}
         </div>
       </div>
       <p className="text-[11px] text-muted">
-        Drag the corners or edges, drag inside to move · Enter applies, Esc cancels · the crop stays inside the
-        straightened photo
+        {drawing
+          ? 'Drag a box around the subject · Esc stops'
+          : 'Drag the corners or edges, drag inside to move · Enter applies, Esc cancels · G shows the grid · the crop stays inside the straightened photo'}
       </p>
     </div>
   )

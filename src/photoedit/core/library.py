@@ -14,12 +14,18 @@ from PIL import Image
 from photoedit.core import color
 from photoedit.core.cache import ImageCache
 from photoedit.core.catalog import Catalog, CatalogPhoto, FolderRecord, photo_id
-from photoedit.core.decode import is_raw, oriented_image, read_raw_info
+from photoedit.core.decode import DecodeError, embedded_jpeg, is_raw, oriented_image, read_raw_info
 from photoedit.core.edits import EditStore, EffectiveEdit
 from photoedit.core.errors import NotFoundError
 from photoedit.core.geometry import apply_change, edited_size, is_identity
 from photoedit.core.jobs import ItemResult, ItemSpec, JobManager
-from photoedit.core.metadata import MetadataError, PhotoMetadata, read_metadata, read_metadata_from_bytes
+from photoedit.core.metadata import (
+    AfMode,
+    MetadataError,
+    PhotoMetadata,
+    read_metadata,
+    read_metadata_from_bytes,
+)
 from photoedit.core.renderer import Renderer, stored_stats
 from photoedit.core.scan import ScannedPhoto, SourceKind, scan_folder
 from photoedit.core.style_rules import RuleInputs
@@ -150,6 +156,8 @@ class Library:
             if existing.missing:
                 existing = existing.model_copy(update={"missing": False})
                 self.catalog.upsert(existing)
+            if existing.af_mode is None:
+                existing = self.with_af_point(existing)
             return existing, ImportOutcome.UNCHANGED
 
         sha256 = _sha256(path)
@@ -179,6 +187,9 @@ class Library:
             dynamic_range=meta.dynamic_range,
             as_shot_temperature=as_shot[0] if as_shot else None,
             as_shot_tint=as_shot[1] if as_shot else None,
+            af_x=meta.af_point[0] if meta.af_point else None,
+            af_y=meta.af_point[1] if meta.af_point else None,
+            af_mode=meta.af_mode,
         )
         # Thumbnail first: a file that can't be decoded fails here and never enters the catalog half-done.
         if thumbnail is not None:
@@ -188,6 +199,21 @@ class Library:
         self.catalog.upsert(photo)
         outcome = ImportOutcome.NEW if existing is None and previous is None else ImportOutcome.UPDATED
         return photo, outcome
+
+    def with_af_point(self, photo: CatalogPhoto) -> CatalogPhoto:
+        """``photo`` with its focus point read from the file if the catalog doesn't have it yet (photos
+        imported before P6b.3). Reads only the header (a RAW's embedded JPEG), never the raw data. A file that
+        can't be read counts as having no point."""
+        if photo.af_mode is not None:
+            return photo
+        try:
+            meta = _read_metadata(photo.path)
+        except (MetadataError, DecodeError, OSError):
+            meta = None
+        point, mode = (meta.af_point, meta.af_mode) if meta is not None else (None, AfMode.NONE)
+        self.catalog.set_af_point(photo.id, point, mode)
+        x, y = point if point is not None else (None, None)
+        return photo.model_copy(update={"af_x": x, "af_y": y, "af_mode": mode})
 
     # ---- folders
 
@@ -442,6 +468,15 @@ def _sha256(path: Path) -> str:
         while chunk := handle.read(_HASH_CHUNK):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _read_metadata(path: Path) -> PhotoMetadata:
+    if not is_raw(path):
+        return read_metadata(path)
+    jpeg = embedded_jpeg(path)
+    if jpeg is None:
+        raise MetadataError(f"{path.name} has no embedded JPEG")
+    return read_metadata_from_bytes(jpeg)
 
 
 def _read_metadata_and_thumbnail(

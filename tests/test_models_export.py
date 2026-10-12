@@ -94,9 +94,11 @@ def test_export_plan_round_trip() -> None:
     assert ExportPlan.model_validate_json(plan.model_dump_json()) == plan
 
 
-def test_builtin_presets_center_and_print_full_decode() -> None:
+def test_builtin_presets_anchor_and_print_full_decode() -> None:
     for preset in BUILTIN_PRESETS:
-        assert preset.settings.aspect.anchor == CropAnchor.CENTER
+        # Instagram crops frame the subject (P6b.8); prints keep the photo's own framing, centered.
+        anchor = CropAnchor.SUBJECT if preset.target == "instagram" else CropAnchor.CENTER
+        assert preset.settings.aspect.anchor == anchor, preset.id
         expected = DecodeSize.FULL if preset.target == "print" else DecodeSize.AUTO
         assert preset.settings.file.decode == expected, preset.id
         ExportSettings.model_validate_json(preset.settings.model_dump_json())

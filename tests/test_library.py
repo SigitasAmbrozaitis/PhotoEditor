@@ -392,3 +392,47 @@ def test_invalid_geometry_changes_nothing(env: Env) -> None:
     with pytest.raises(InvalidRequestError, match="blank corners"):
         env.library.set_geometry(pid, GeometryChange(crop=CropRect()))
     assert env.library.edit(pid).adjustments.geometry.angle == 10
+
+
+def _fuji_jpeg(path: Path, focus: tuple[int, int], size: tuple[int, int] = (400, 200)) -> None:
+    import struct
+
+    entries = struct.pack("<HHII", 0x1022, 3, 1, 1) + struct.pack("<HHIHH", 0x1023, 3, 2, *focus)
+    note = b"FUJIFILM" + struct.pack("<IH", 12, 2) + entries + b"\0\0\0\0"
+    exif = Image.Exif()
+    exif[0x010F] = "FUJIFILM"
+    exif.get_ifd(0x8769)[0x927C] = note
+    Image.new("RGB", size, (90, 90, 90)).save(path, "JPEG", exif=exif.tobytes())
+
+
+def test_focus_point_is_imported_and_filled_in_for_older_photos(env: Env) -> None:
+    import sqlite3
+
+    from photoedit.core.metadata import AfMode
+
+    _fuji_jpeg(env.photos / "fuji.jpg", (100, 150))
+    write_jpeg(env.photos / "other.jpg", (10, 20, 30))
+    env.run_import()
+    catalog = env.library.catalog
+    fuji, other = (catalog.find(name) for name in ("fuji", "other"))
+    assert fuji is not None and other is not None
+    assert (fuji.af_point, fuji.af_mode) == ((0.25, 0.75), AfMode.SINGLE)
+    assert (other.af_point, other.af_mode) == (None, AfMode.NONE)
+
+    # As if imported before P6b.3: the next (unchanged) import reads the point without re-importing.
+    with sqlite3.connect(env.workspace / "catalog.sqlite") as db:
+        db.execute("UPDATE photos SET af_x = NULL, af_y = NULL, af_mode = NULL")
+    job = env.run_import()
+    assert "2 unchanged" in job.summary  # type: ignore[attr-defined]
+    fuji = catalog.find("fuji")
+    assert fuji is not None and (fuji.af_point, fuji.af_mode) == ((0.25, 0.75), AfMode.SINGLE)
+
+    # ...or the first use does.
+    with sqlite3.connect(env.workspace / "catalog.sqlite") as db:
+        db.execute("UPDATE photos SET af_x = NULL, af_y = NULL, af_mode = NULL")
+    old = catalog.find("fuji")
+    assert old is not None and old.af_mode is None
+    filled = env.library.with_af_point(old)
+    assert (filled.af_point, filled.af_mode) == ((0.25, 0.75), AfMode.SINGLE)
+    assert catalog.find("fuji") == filled
+    assert env.library.with_af_point(filled) is filled  # already known: the file isn't read again

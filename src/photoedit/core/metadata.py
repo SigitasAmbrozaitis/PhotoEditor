@@ -11,6 +11,7 @@ import math
 import re
 import struct
 from datetime import datetime, timedelta, timezone
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,7 @@ _MAKER_NOTE = 0x927C
 
 # Fujifilm maker note tags and values (as documented by ExifTool's FujiFilm tag table).
 _FUJI_SATURATION, _FUJI_FILM_MODE, _FUJI_DEVELOPMENT_DR = 0x1003, 0x1401, 0x1403
+_FUJI_FOCUS_MODE, _FUJI_AF_MODE, _FUJI_FOCUS_PIXEL = 0x1021, 0x1022, 0x1023
 _FUJI_FILM_MODES = {
     0x000: "Provia",
     0x100: "Studio Portrait",
@@ -63,6 +65,21 @@ _OFFSET = re.compile(r"^([+-])(\d{2}):(\d{2})$")
 _SWAPS_AXES = frozenset({5, 6, 7, 8})
 
 
+class AfMode(StrEnum):
+    """How the camera chose its focus point. In zone and wide/tracking modes the recorded point is the zone's
+    center, not what was tracked, so it is only a weak hint."""
+
+    SINGLE = "single"
+    ZONE = "zone"
+    WIDE = "wide"  # wide / tracking
+    MANUAL = "manual"  # manual focus: the point is where focus assist was, if anywhere
+    UNKNOWN = "unknown"  # a point without a known mode
+    NONE = "none"  # no focus point recorded (other makes, or a file without one)
+
+
+_FUJI_AF_MODES = {1: AfMode.SINGLE, 256: AfMode.ZONE, 512: AfMode.WIDE}
+
+
 class MetadataError(ValueError):
     """The file is not an image Pillow can read."""
 
@@ -87,6 +104,10 @@ class PhotoMetadata(BaseModel):
         default=None,
         description="Fujifilm dynamic range setting in % (100, 200, 400): DR200/400 underexpose.",
     )
+    af_point: tuple[float, float] | None = Field(
+        default=None, description="Where the camera focused, normalized (0..1) to the upright photo."
+    )
+    af_mode: AfMode = AfMode.NONE
 
 
 def read_metadata(path: Path) -> PhotoMetadata:
@@ -172,22 +193,31 @@ def _from_image(image: Image.Image) -> PhotoMetadata:
         rating=_rating(ifd0.get(_RATING), image.info.get("xmp")),
         width=width,
         height=height,
-        **_fujifilm(exif_ifd.get(_MAKER_NOTE)),
+        **_fujifilm(exif_ifd.get(_MAKER_NOTE), image.size, orientation),
     )
 
 
-def _fujifilm(maker_note: Any) -> dict[str, Any]:
-    """Film simulation and dynamic range from a Fujifilm maker note ({} for other makes or if unreadable)."""
+def _fujifilm(maker_note: Any, stored_size: tuple[int, int], orientation: int) -> dict[str, Any]:
+    """Film simulation, dynamic range and the focus point from a Fujifilm maker note ({} for other makes or
+    if unreadable).
+
+    The focus point (FocusPixel) is in pixels of the JPEG that carries the note, as stored (before the
+    orientation): the camera JPEG and the RAW's smaller embedded JPEG give the same normalized point.
+    """
     if not isinstance(maker_note, bytes) or not maker_note.startswith(b"FUJIFILM") or len(maker_note) < 14:
         return {}
     try:
         offset = struct.unpack_from("<I", maker_note, 8)[0]
         (count,) = struct.unpack_from("<H", maker_note, offset)
         tags: dict[int, int] = {}
+        pairs: dict[int, tuple[int, int]] = {}
         for i in range(count):
-            tag, kind, n, value = struct.unpack_from("<HHII", maker_note, offset + 2 + 12 * i)
+            entry = offset + 2 + 12 * i
+            tag, kind, n, value = struct.unpack_from("<HHII", maker_note, entry)
             if n == 1 and kind in (3, 4):  # one SHORT/LONG stored inline
                 tags[tag] = value & 0xFFFF if kind == 3 else value
+            elif n == 2 and kind == 3:  # two SHORTs stored inline
+                pairs[tag] = struct.unpack_from("<2H", maker_note, entry + 8)
     except struct.error:
         return {}
     film = _FUJI_MONOCHROME.get(tags.get(_FUJI_SATURATION, -1)) or _FUJI_FILM_MODES.get(
@@ -197,7 +227,36 @@ def _fujifilm(maker_note: Any) -> dict[str, Any]:
     return {
         "film_simulation": film,
         "dynamic_range": dynamic_range if dynamic_range in (100, 200, 400) else None,
+        **_focus_point(pairs.get(_FUJI_FOCUS_PIXEL), tags, stored_size, orientation),
     }
+
+
+def _focus_point(
+    pixel: tuple[int, int] | None, tags: dict[int, int], stored_size: tuple[int, int], orientation: int
+) -> dict[str, Any]:
+    width, height = stored_size
+    if pixel is None or not (0 <= pixel[0] <= width and 0 <= pixel[1] <= height):
+        return {}
+    if tags.get(_FUJI_FOCUS_MODE) == 1:
+        mode = AfMode.MANUAL
+    else:
+        mode = _FUJI_AF_MODES.get(tags.get(_FUJI_AF_MODE, -1), AfMode.UNKNOWN)
+    return {"af_point": orient_point(pixel[0] / width, pixel[1] / height, orientation), "af_mode": mode}
+
+
+def orient_point(x: float, y: float, orientation: int) -> tuple[float, float]:
+    """A normalized point of the stored pixels as a normalized point of the upright photo (EXIF orientation:
+    2/4 mirror, 3 turns 180°, 6 needs 90° clockwise, 8 needs 90° counter-clockwise, 5/7 transpose)."""
+    return {
+        1: (x, y),
+        2: (1 - x, y),
+        3: (1 - x, 1 - y),
+        4: (x, 1 - y),
+        5: (y, x),
+        6: (1 - y, x),
+        7: (1 - y, 1 - x),
+        8: (y, 1 - x),
+    }.get(orientation, (x, y))
 
 
 def _text(value: Any) -> str | None:

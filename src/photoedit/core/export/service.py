@@ -17,7 +17,7 @@ import sys
 import threading
 from collections import Counter
 from collections.abc import Callable, Sequence
-from concurrent.futures import Executor, ProcessPoolExecutor
+from concurrent.futures import Executor, ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -32,17 +32,21 @@ from photoedit.core.export.geometry import ExportGeometry, export_geometry
 from photoedit.core.export.geometry import warnings as geometry_warnings
 from photoedit.core.export.naming import NameFields, plan_names
 from photoedit.core.export.worker import ExportTask, RenderedExport, render_export
+from photoedit.core.geometry import subject_in_crop
 from photoedit.core.jobs import ItemResult, ItemSpec, JobManager
 from photoedit.core.library import Library
 from photoedit.core.renderer import profile_of
+from photoedit.core.subject.service import Subjects
 from photoedit.models import Job, JobKind
 from photoedit.models.export import (
     CollisionStatus,
+    CropAnchor,
     DestinationCheck,
     ExportPlan,
     ExportPlanItem,
     ExportSettings,
 )
+from photoedit.models.subject import SubjectBox, SubjectInfo, SubjectKind, SubjectSource
 from photoedit.safety import PathGuard
 
 EXPORT_QUEUE = "export"
@@ -52,6 +56,8 @@ MAX_AUTO_WORKERS = 10
 # Peak memory of one worker rendering a full-size X-T3 export (measured 1.6 GiB, P5.11; a straightened crop
 # adds ~0.1 GiB, P6a.5). Workers that would not fit in the free memory aren't started.
 WORKER_PEAK_BYTES = 1.8 * 1024**3
+# Subject detections a plan runs at once (threads; each decodes a half-size RAW, ~0.3 GiB at its peak).
+MAX_DETECTIONS = 8
 
 type ExecutorFactory = Callable[[int], Executor]
 
@@ -78,6 +84,18 @@ class _Item:
     copyright: str | None
     warnings: list[str] = field(default_factory=list)
     error: str | None = None
+    subject: SubjectSource | None = None
+    subject_kind: SubjectKind | None = None
+    subject_score: float | None = None
+
+
+@dataclass(frozen=True)
+class _Framed:
+    box: SubjectBox | None = None
+    source: SubjectSource | None = None
+    kind: SubjectKind | None = None
+    score: float | None = None
+    note: str | None = None
 
 
 @dataclass(frozen=True)
@@ -99,6 +117,9 @@ class _Prepared:
                     decode=i.geometry.decode,
                     collision=i.collision,
                     warnings=[*i.warnings, *([i.error] if i.error else [])],
+                    subject=i.subject,
+                    subject_kind=i.subject_kind,
+                    subject_score=i.subject_score,
                 )
                 for i in self.items
             ],
@@ -114,8 +135,10 @@ class Exporter:
         settings: Settings,
         *,
         executor_factory: ExecutorFactory | None = None,
+        subjects: Subjects | None = None,
     ) -> None:
         self._library = library
+        self._subjects = subjects
         self._jobs = jobs
         self._guard = guard
         self._settings = settings
@@ -314,7 +337,13 @@ class Exporter:
                 p.path.name.lower(),
             ),
         )
-        geometries = [export_geometry(*_edited_size(p), settings, is_raw=is_raw(p.path)) for p in photos]
+        framing = settings.aspect.ratio is not None and settings.aspect.anchor == CropAnchor.SUBJECT
+        found = self._subjects_of(photos) if framing else {}
+        framed = [self._framed(p, *found[p.id]) if framing else _Framed() for p in photos]
+        geometries = [
+            export_geometry(*_edited_size(p), settings, is_raw=is_raw(p.path), subject=f.box)
+            for p, f in zip(photos, framed, strict=True)
+        ]
         existing = {p.name.lower() for p in dest.iterdir() if p.is_file()} if dest.is_dir() else set()
         fields = [
             NameFields(
@@ -328,16 +357,68 @@ class Exporter:
         ]
         names = plan_names(settings.naming, fields, EXTENSIONS[settings.file.format], existing)
         items: list[_Item] = []
-        for photo, geometry, name in zip(photos, geometries, names, strict=True):
+        for photo, geometry, name, frame in zip(photos, geometries, names, framed, strict=True):
             warnings = geometry_warnings(geometry)
+            if frame.note:
+                warnings.append(frame.note)
+            if geometry.subject_cut:
+                cut, ratio = geometry.subject_cut, settings.aspect.ratio
+                warnings.append(f"the subject is cut off: it is {cut} than a {ratio} crop allows")
             copyright_, note = self._copyright(settings, photo)
             if note:
                 warnings.append(note)
             error = None
             if not photo.path.is_file():
                 error = f"the original is no longer at {photo.path}"
-            items.append(_Item(photo, geometry, name.name, name.collision, copyright_, warnings, error))
+            items.append(
+                _Item(
+                    photo,
+                    geometry,
+                    name.name,
+                    name.collision,
+                    copyright_,
+                    warnings,
+                    error,
+                    subject=frame.source,
+                    subject_kind=frame.kind,
+                    subject_score=frame.score,
+                )
+            )
         return _Prepared(dest, settings, items)
+
+    def _subjects_of(
+        self, photos: Sequence[CatalogPhoto]
+    ) -> dict[str, tuple[SubjectInfo | None, str | None]]:
+        """Each photo's subject and, if there is none to use, why. Detections not stored yet run here, a few
+        at a time, and are stored, so the export itself reuses them."""
+        subjects = self._subjects
+        if subjects is None:
+            return {p.id: (None, "subject detection isn't available here: centered") for p in photos}
+
+        def one(photo: CatalogPhoto) -> tuple[SubjectInfo | None, str | None]:
+            if not photo.path.is_file():
+                return None, None  # reported as the item's error
+            try:
+                return subjects.subject(photo), None
+            except Exception as exc:  # one photo's failure must not stop the plan; it says so and centers
+                return None, f"subject detection failed ({exc}): centered"
+
+        workers = max(1, min(len(photos), MAX_DETECTIONS, (os.cpu_count() or 2) - 2))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            return {p.id: result for p, result in zip(photos, pool.map(one, photos), strict=True)}
+
+    def _framed(self, photo: CatalogPhoto, info: SubjectInfo | None, problem: str | None) -> _Framed:
+        """The subject in the edited photo's coordinates (after its own crop), for the aspect crop."""
+        if info is None or info.box is None:
+            note = problem if info is None else "no subject found: centered"
+            return _Framed(source=SubjectSource.NONE, note=note)
+        geometry = self._library.edit(photo.id).adjustments.geometry
+        box = subject_in_crop(info.box, geometry, photo.width, photo.height)
+        if box is None:
+            return _Framed(
+                source=SubjectSource.NONE, note="the subject is outside the photo's crop: centered"
+            )
+        return _Framed(box=box, source=info.source, kind=info.kind, score=info.score)
 
     def _copyright(self, settings: ExportSettings, photo: CatalogPhoto) -> tuple[str | None, str | None]:
         text = settings.metadata.copyright or self._settings.export_copyright

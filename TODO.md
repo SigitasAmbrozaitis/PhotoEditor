@@ -1393,9 +1393,21 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
 
 **Design** (confirmed 2026-10-11, approach B):
 - **Subject** = one main box per photo, plus the other candidates found, each with a kind (`car`, `animal`,
-  `person`, `face`, `salient`, `af_point`) and a score. A box the user or the AI sets by hand (`geometry.subject`
-  in the edit) always wins over detection. Detection is cached in the catalog per detector identity, like the tone
-  anchors, so exports stay deterministic.
+  `person`, `face`, `salient`, `af_point`) and a score. A box the user or the AI sets by hand always wins over
+  detection. Detection is cached in the catalog per detector identity, like the tone anchors, so exports stay
+  deterministic.
+- **Subject boxes are in upright photo coordinates** (0..1 of the photo as shot, before any geometry), both
+  detected and manual (updated at P6b.0). So a flip, turn or straighten never has to move them, and detection
+  doesn't depend on the edit. Core maps them into the frame when it needs to: the box's corners through the
+  geometry (a straightened box becomes the bounding box of its turned corners). The crop tool draws them on its
+  upright image, which the browser turns along with the photo.
+- **The manual box lives in the photo's edit file** next to the adjustments (`PhotoEditFile.subject`, like
+  `group`), not in `AdjustmentParams` (updated at P6b.0). It changes no pixels, so setting it doesn't change
+  the edit revision or throw away cached previews and tiles.
+- **Detection input** = the photo's default look (no edit, no geometry), rendered from the 2048 px working base
+  that previews already use, so it's deterministic and costs no extra decode. The detector runs on overlapping
+  640 px tiles of it (a drift car at ~3 % of the width is ~60 px there). The working size is measured in P6b.5
+  (accuracy against time) and may move to the half-size decode (3120 px) if small cars are missed.
 - **Detector**: classical cues + a small pretrained object detector (COCO classes) run by OpenCV's `cv2.dnn` on
   the CPU. It only returns labeled boxes. The model is downloaded once, after the user's OK.
 - **Suggested crop** = the largest crop of the requested ratio that keeps the subject box plus a margin.
@@ -1403,57 +1415,105 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   subject's center on the nearest thirds intersection, which keeps the side the photographer chose). `zoom` > 1
   makes it tighter around the subject. With no subject found it falls back to a center crop and says so.
 
-- [ ] **P6b.0** Re-check this detail against what 6a built, and update it. ⛔ STOP for the user to review it.
+- [x] **P6b.0** Re-check this detail against what 6a built, and update it. ⛔ STOP for the user to review it.
+  Reviewed 2026-10-11: the user said to continue with the phase.
+  Updated 2026-10-11: subject boxes in upright coordinates; the manual box in the edit file outside the
+  adjustments (no re-render when it changes); detection on the default look from the 2048 px working base;
+  `suggest_crop` and its endpoint take the crop tool's draft geometry; `PUT /subject`; the 3×3 grid (P6b.13,
+  requested after the 6a test).
 
 ### Dependencies
-- [ ] **P6b.1** Choose the model (the proposal is YOLOX from the OpenCV Model Zoo, Apache-2.0; a smaller variant
+- [x] **P6b.1** Choose the model (the proposal is YOLOX from the OpenCV Model Zoo, Apache-2.0; a smaller variant
   if it detects small cars as well, measured on a few samples). ⛔ **Ask the user before downloading**, showing the
   file name, URL, size and SHA-256. Then `photoedit models fetch`: the pinned model goes into
   `cache/models/<name>`, checked by SHA-256. An existing file with the right hash is left alone. A wrong hash is
   deleted and reported. Downloads go through the path guard (`cache/` is tool-owned). `detector_identity()` = model
   name + hash + OpenCV version. Tests use a fake downloader (no network in tests).
+  Done 2026-10-11: the user OKed YOLOX-S float32 + int8 for a comparison. On 12 rally/drift samples (2048 px,
+  12 tiles + whole frame) float32 found the cars at 3-47 % of the width, while int8 found nothing under OpenCV 5
+  and ran 1.8x slower. **Pinned: YOLOX-S float32** (`yolox_s`, 35.9 MB). One 640 px pass takes 0.23 s at 8
+  threads, and the output is bit-identical at any thread count. `photoedit models list` shows the state.
 
 ### Core
-- [ ] **P6b.2** Model: `geometry.subject: SubjectBox | None` (normalized box in the same frame as the crop),
-  `SubjectInfo`, `CropSuggestion`, `CropPlacement` (`centered` | `thirds`). Tests: validation, round-trip, old
-  edits load.
-- [ ] **P6b.3** AF point: read the Fujifilm maker note at import (FocusPixel 0x1023, AF mode 0x1022, and faces
+- [x] **P6b.2** Models: `SubjectBox` (upright normalized box), `PhotoEditFile.subject: SubjectBox | None`,
+  `SubjectInfo`, `CropSuggestion`, `CropPlacement` (`centered` | `thirds`). Core: `subject_in_frame(box,
+  geometry, size)` (upright → frame, exact for flips and turns, the bounding box when straightened). Setting or
+  clearing the manual box leaves the edit revision alone. Tests: validation, round-trip, old edit files load, the
+  mapping for each flip and turn and at ±45°.
+- [x] **P6b.3** AF point: read the Fujifilm maker note at import (FocusPixel 0x1023, AF mode 0x1022, and faces
   detected 0x4100/0x4103 if present) into the catalog, as an upright normalized point, through a catalog migration
   (already-imported photos get it on the next import or on first use). Other cameras get none. Reading never
   unpacks the RAW. Tests with synthetic maker-note bytes (including truncated and wrong-header ones) and the
   orientation mapping. Golden: the values for 3 sample files.
-- [ ] **P6b.4** Classical cues (`core/subject/cues.py`, on a ~1024 px render of the photo): a sharpness map (local
+  Done 2026-10-11: FocusPixel is in pixels of the JPEG that carries the note, as stored (the camera JPEG at
+  6240×4160 and the RAW's embedded 4416×2944 give the same normalized point). Checked by eye: single points
+  land on the person and on the cat's face. Catalog schema 6 (`af_x`, `af_y`, `af_mode`); photos imported
+  before get it on their next (unchanged) import or from `Library.with_af_point` on first use. Camera face
+  positions (0x4103) are **not read**: no sample has any (0x4100 = 0 in all), so their coordinate space can't
+  be checked. The Haar faces of P6b.4 cover faces.
+- [x] **P6b.4** Classical cues (`core/subject/cues.py`, on a ~1024 px render of the photo): a sharpness map (local
   Laplacian energy relative to the photo's own spread), spectral-residual saliency, and Haar detectors for human
   faces and cat faces (bundled with OpenCV). Each one returns candidate boxes with a score. Tests on synthetic
   images: a sharp square on a blurred background, a bright blob on noise, deterministic output, and an empty or
   flat image gives no candidates.
-- [ ] **P6b.5** Object detector (`core/subject/detector.py`): the model through `cv2.dnn` on overlapping 640 px
-  tiles of the half-size image plus one whole-frame pass, then merged with class-wise NMS. Threads fixed for
+  Done 2026-10-11, with one change the user OKed: **OpenCV 5.0 dropped the Haar cascades**, so faces come
+  from **YuNet** (`cv2.FaceDetectorYN`, `face_detection_yunet_2026may.onnx`, 0.23 MB, MIT, pinned and fetched
+  like YOLOX). It runs on the 2048 px detection input (~90 ms; spectators' faces are ~30 px there). Cat faces
+  have no cue of their own: YOLOX's `cat` box covers cats. Sharpness needs a region ≥ 8× the photo's median
+  energy as well as 2 robust deviations above it, so an evenly sharp photo has no sharp region.
+- [x] **P6b.5** Object detector (`core/subject/detector.py`): the model through `cv2.dnn` on overlapping 640 px
+  tiles of the detection input plus one whole-frame pass, then merged with class-wise NMS. Threads fixed for
   determinism. Classes of interest are mapped to kinds (car/truck/bus → `car`, motorcycle, cat/dog → `animal`,
   person, airplane/bird…). Without the model file, detection uses only the cues and says so. Tests: tiling and NMS
   math on synthetic boxes; with the model present (golden), two runs give identical boxes, and a sample photo with
   a car finds it. Time per photo measured.
-- [ ] **P6b.6** Choosing the main subject (`core/subject/choose.py`): score every candidate by kind priority
+  Done 2026-10-11: ~2.0 s per photo (12 tiles + the whole frame at 2048 px, OpenCV's default threads). The
+  output is bit-identical at any thread count, so threads are not pinned: `cv2.setNumThreads` is global and
+  would slow the renders. Duplicates merge per **kind** (one vehicle called both car and truck), and a box lying
+  ≥ 70 % inside a better box of the same kind is a part (a tile that sees only a cat's head) and is dropped. It
+  finds the 5 %-wide rally car, the drift cars and the black cat (0.92). The cues-only fallback without the
+  model is part of P6b.6, where cues and detector are combined.
+- [x] **P6b.6** Choosing the main subject (`core/subject/choose.py`): score every candidate by kind priority
   (vehicle/animal > face > person > salient), size (not tiny, not the whole frame), sharpness inside the box
   (panning), and closeness to the AF point. Crowds count as one weak "people" region when a vehicle is present.
   Result: `SubjectInfo` (main box, kind, score, source `detected`/`manual`/`af_point`/`none`, candidates,
   detector identity). It is stored in the catalog and recomputed only when the detector identity changes.
-  `Library.subject(photo)` returns the manual box from the edit if one is set. Tests: the scoring rules on
+  `Library.subject(photo)` returns the manual box from the edit file if one is set. Tests: the scoring rules on
   constructed candidate sets (car vs crowd, cat face vs saliency, nothing found → `none`).
-- [ ] **P6b.7** `suggest_crop(photo, aspect, *, orientation=auto, placement=centered, zoom=1.0)` →
-  `CropSuggestion` (crop rectangle in the edit's frame, the current angle kept, the subject used, warnings such as
+  Done 2026-10-11. The subject lives in `core/subject/service.py` (`Subjects.subject(photo)`, wired as
+  `services.subjects`) rather than on `Library`, so the library doesn't grow detection code. Detections are
+  stored in a new catalog table (schema 7), keyed by an identity made of both models, OpenCV, the render engine
+  and `CHOOSER_VERSION`. Vehicles of the same kind that are close and nearly as good merge into one subject
+  (a tandem drift). With no candidate good enough, the focus point stands in as a square box (`af_point`).
+  **Cost**: ~6 s per photo the first time (2.3 s to render the default look + ~4.3 s for YOLOX). The render
+  pipeline pins OpenCV to one thread for determinism (`stages.py`), so the detector runs single-threaded;
+  batches gain by running photos in parallel. Cached afterwards.
+- [x] **P6b.7** `suggest_crop(photo, geometry, aspect, *, orientation=auto, placement=centered, zoom=1.0)` →
+  `CropSuggestion` (crop rectangle in the frame of `geometry`, which may be the crop tool's unsaved draft; its
+  angle, turn and flips are kept, the subject used, warnings such as
   "subject is cut off: it is wider than a 4:5 crop allows" or "no subject found: centered"). Pure math on top of
   `core/geometry.py`: the largest crop of the ratio inside the straightened image containing the subject box plus
   a margin (≥ 5 % of the crop), placed per `placement` and clamped to the frame. `zoom` tightens it toward the
   subject box plus margin, capped there. Tests: subject in a corner → the crop touches that edge; subject too
   large → a warning, crop centered on it; thirds picks the nearest intersection; zoom 1/1.5/max; rotated photos;
   portrait vs landscape ratio with `orientation`.
-- [ ] **P6b.8** Export `anchor: subject`: the aspect crop inside the photo's crop is placed by P6b.7's rule
-  (centered, zoom 1). With no subject it falls back to center, with a warning in the plan. The built-in Instagram
+  Done 2026-10-11 (`core/subject/suggest.py` + `Subjects.suggest_crop`). The crop's possible centers form a
+  convex polygon (frame, straightened image, subject + margin are all linear in the center), so the largest
+  size comes from bisection and the center from an exact closest-point search: 0.1 ms straight, ~5 ms
+  straightened. Where the frame's edge is closer than the margin, the crop goes to the edge (a subject at the
+  photo's edge isn't "cut off"). `oriented_ratio` moved from the export code into `core/geometry.py`.
+- [x] **P6b.8** Export `anchor: subject`: the aspect crop inside the photo's crop is placed by P6b.7's rule
+  (centered, zoom 1), with the subject mapped into the edited photo's pixels (`subject_in_frame`, then cut to the
+  photo's crop; a subject outside the crop counts as none). With no subject it falls back to center, with a warning in the plan. The built-in Instagram
   presets switch to `subject`. The export plan shows each photo's subject source. Missing detections are computed
   when the plan is made, in parallel, and cached. Tests: the plan and the files for a synthetic photo with a known
   off-center subject; the fallback warning; determinism.
-- [ ] **P6b.9** Evaluation set + report: hand-labeled main-subject boxes for ~40 photos across the four sample
+  Done 2026-10-11. The aspect box keeps the centered box's exact size; only its position follows the subject.
+  Detections missing when a plan is made run on up to 8 threads and are stored, so the export reuses them.
+  Plan items carry `subject` (source) and `subject_kind`, plus warnings ("no subject found: centered", "the
+  subject is outside the photo's crop: centered", "the subject is cut off: …"). Subject models split:
+  `models/crop.py` now holds the suggestion models, so `models/export.py` can use the subject enums.
+- [x] **P6b.9** Evaluation set + report: hand-labeled main-subject boxes for ~40 photos across the four sample
   folders (rally, drift, both cats, orange cat + sunsets), including hard ones: tiny drift cars, the black cat,
   the helicopter, and sunsets with no subject. Claude labels them from previews, and the user checks the labels on
   a contact sheet. Labels go in `tests/data/subject-labels.json` (file names + boxes, committed; the photos stay
@@ -1463,57 +1523,104 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   crops ≥ 90 % in each folder (photos labeled "no subject" count as hits when the result is `none` or the crop is
   centered). Results go into `docs/geometry.md`. ⛔ **If a target is missed, STOP and discuss**, with the misses,
   their causes and the options (e.g. a larger model, tuned scoring, manual or AI subjects for that kind of shot).
+  **Status 2026-10-11, at the STOP**: 44 photos labeled (`tests/data/subject-labels.json`); `photoedit subject
+  eval` built. The crop score counts against what a crop of that size could keep at most, since a cat filling a
+  2:3 frame can't fit a 4:5 crop. Results: drift 92/92 %, both cats 83/92 %, rally 93/93 % (all pass);
+  orange cat + sunsets **33/33 % (missed)**. The four TV-tower sunsets are labeled "no subject", and saliency
+  moves their crops. Measured option, not committed: saliency never the main subject on its own → rally
+  100/100 %, sunsets 83/83 % (one miss: DSCF6288, the crop follows the camera's focus point on the tower).
+  **Decided 2026-10-12** (user): sharpness and saliency alone never make the subject (`CHOOSER_VERSION` 2);
+  a photo without a recognized subject is centered or follows the focus point. Final: drift 92/92 %, both cats
+  83/92 %, rally 100/100 %, orange cat + sunsets 83/83 % (one miss in 6 photos, DSCF6288 framed on the focus
+  point at the tower). The user accepted it as good enough. Flagging uncertain photos for review is Phase 6c.
+  The export plan also carries each subject's score (`subject_score`) for 6c.
 
 ### API + CLI
-- [ ] **P6b.10** Endpoints: `GET /api/photos/{id}/subject` (detect if needed) → `SubjectInfo` (the manual box goes
-  through the edit); `POST /api/photos/{id}/suggest-crop` (`aspect`, `orientation`, `placement`, `zoom`) →
-  `CropSuggestion` (nothing saved); `POST /api/jobs` `detect_subjects` (a selection, in the background); the export
+- [x] **P6b.10** Endpoints: `GET /api/photos/{id}/subject` (detect if needed) → `SubjectInfo`;
+  `PUT /api/photos/{id}/subject` (`{box}` or `{box: null}` = use detected); `POST /api/photos/{id}/suggest-crop`
+  (`geometry` = the draft, `aspect`, `orientation`, `placement`, `zoom`) → `CropSuggestion` (nothing saved); `POST /api/jobs` `detect_subjects` (a selection, in the background); the export
   plan's subject column. Regenerate `openapi.json` + `schema.d.ts`. Tests for every endpoint.
-- [ ] **P6b.11** CLI: `photoedit subject detect [PHOTO…|--folder DIR] | show PHOTO | eval`, `photoedit crop suggest
+- [x] **P6b.11** CLI: `photoedit subject detect [PHOTO…|--folder DIR] | show PHOTO | eval`, `photoedit crop suggest
   PHOTO --aspect 4:5 [--orientation …] [--placement thirds] [--zoom 1.2] [--apply]`, `photoedit models fetch`
   (P6b.1). Tests with `CliRunner`.
 
 ### UI
-- [ ] **P6b.12** Crop tool: **Suggest crop** for the chosen aspect (placement centered/thirds, zoom slider). A
+- [x] **P6b.12** Crop tool: **Suggest crop** for the chosen aspect (placement centered/thirds, zoom slider). A
   "Show subject" toggle draws the main box (labeled with its kind and source) and the other candidates faintly.
   "Set subject" lets you drag a box by hand, and "Use detected" clears it. The Library gets a "Detect subjects"
   action for the selection (a background job).
-- [ ] **P6b.13** Grid overlay (requested 2026-10-11 after the 6a test): a 3×3 rule-of-thirds grid to compose by,
+- [x] **P6b.13** Grid overlay (requested 2026-10-11 after the 6a test): a 3×3 rule-of-thirds grid to compose by,
   on demand rather than only while dragging. A **Grid** toggle (key `G`) in the crop tool, where it shows over
   the crop rectangle all the time, and in the Photo view (Fit), where it shows over the photo. The choice is
   remembered per browser. It fits with Suggest crop's `thirds` placement: the subject lands on a grid
   intersection. Display only (no edit data), so nothing reaches the render or exports.
-- [ ] **P6b.14** Export dialog: the "Detected subject" anchor is enabled (no "(Phase 6)"), and the plan table
+- [x] **P6b.14** Export dialog: the "Detected subject" anchor is enabled (no "(Phase 6)"), and the plan table
   shows each photo's subject (kind + source, or "none → centered").
-- [ ] **P6b.15** UI tests: Vitest for Suggest crop (placement, zoom), the subject overlay and manual box, and the
+- [x] **P6b.15** UI tests: Vitest for Suggest crop (placement, zoom), the subject overlay and manual box, and the
   export dialog's subject column, the grid toggle (button and `G`, remembered). Playwright: suggest a 4:5 crop and apply it; export with the Instagram preset
   (subject anchor). Screenshots of the subject overlay.
 
 ### Tests + docs
-- [ ] **P6b.16** Golden (local): subject detection on the labeled set matches the stored results (determinism);
+- [x] **P6b.16** Golden (local): subject detection on the labeled set matches the stored results (determinism);
   Instagram exports of labeled photos keep the labeled subject; the sample folders' hashes are unchanged.
-- [ ] **P6b.17** `docs/geometry.md` (subject cues, the model, how the main subject is chosen, the evaluation
+- [x] **P6b.17** `docs/geometry.md` (subject cues, the model, how the main subject is chosen, the evaluation
   results, suggested crops and placement, the export `subject` anchor) and README (`models fetch`, subject CLI).
-- [ ] **P6b.18** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e).
+- [x] **P6b.18** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e).
+
+  Done 2026-10-12: pytest 1008 passed incl. golden (one Windows file-lock flake in an export test fixed: its
+  fixture now waits for the import's thumbnail job), ruff, format, mypy, Vitest 122, oxlint, build, e2e 8/8.
 
 ### 🧑 Human test: Phase 6b
 0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`,
-   `uv run photoedit models fetch`.
-1. Rally (`2026-08-16`) and drift (`2026-07-26`): open several photos → Crop → **Show subject** → the car is
-   boxed (or say which ones are wrong) → **Suggest crop** 4:5 and 1:1, centered and thirds → the car stays in the
-   frame. Same for the cats (`2026-08-11`, `2026-08-17`), including the black cat.
-2. **Grid** (or `G`) in the crop tool and in the Photo view → a 3×3 grid; after Suggest crop with **thirds**, the
-   subject sits on a grid intersection. Reload → the grid setting is remembered.
-3. On a photo where detection is wrong: **Set subject** → drag a box on the right thing → Suggest crop now frames
-   it.
-4. Library → select ~10 rally/drift photos → Export… with **Instagram portrait** → the plan shows each photo's
-   subject → export → in the files the cars are inside the 4:5 frame (not cut off by a center crop).
-5. `uv run photoedit subject eval` → the report and contact sheet match `docs/geometry.md`. `uv run photoedit crop
-   suggest DSCF5437 --aspect 4:5` prints a suggestion.
-6. The photo folders are unchanged (Explorer, Date modified). `uv run pytest -m golden` passes.
-7. **Give feedback** on the grid, the suggested framing, detection misses and the subject tools.
+   `uv run photoedit models fetch` (YOLOX 35.9 MB + YuNet 0.2 MB, checked by SHA-256), `uv run photoedit ui`.
+   Note: opening the app migrates your catalog to schema 7; `main` reads it once this phase is merged.
+1. Library → open the rally folder (`2026-08-16`), select ~10 photos → **Detect subjects** (a background job,
+   ~6 s per photo the first time; see Jobs). Then open some of them → **Crop** → **Show subject**: the car is
+   boxed and labeled (e.g. "car (detected) · 84 %"), other things found are dashed. Say which ones are wrong.
+2. In the crop tool: Aspect **4:5** → **Suggest crop** (centered), then **On the thirds**, then move **Zoom**:
+   the car stays in the frame and the crop gets tighter until it stops ("zoom stopped at …"). **Done** saves
+   it like any crop (Ctrl+Z undoes). Repeat on drift (`2026-07-26`, tiny cars and tandems) and the cats
+   (`2026-08-11`, `2026-08-17`), including the black cat.
+3. **Grid** (or `G`) in the crop tool and in the Photo view → a 3×3 grid; after a **thirds** suggestion the
+   subject sits on a grid intersection. Reload the page → the grid setting is remembered.
+4. On a photo where detection is wrong or there is no subject (a sunset): **Set subject** → drag a box on the
+   right thing → it shows "set by hand" → Suggest crop frames it. **Use detected** goes back.
+5. Library → select ~10 rally/drift photos (some without a crop) → **Export…** → **Instagram portrait** ("Frame
+   the crop on: the photo's subject") → destination → the plan's **Subject** column shows each photo's subject
+   and score, or "none → centered" → export → in the files the cars are inside the 4:5 frame.
+6. `uv run photoedit subject eval` → the per-folder table matches `docs/geometry.md`, and
+   `output/contact-sheets/subject-eval.jpg` shows labels, findings and crops. `uv run photoedit crop suggest
+   DSCF5437 --aspect 4:5` prints a suggestion.
+7. The photo folders are unchanged (Explorer, Date modified). `uv run pytest -m golden` passes (~25 min).
+8. **Give feedback** on the grid, the suggested framing, detection misses and the subject tools. (The
+   pre-export review with Ready / Check is Phase 6c.)
 
 ### ⛔ STOP: user approves Phase 6b
+
+**Approved 2026-10-12.** The user tested it ("everything seems fine"). Next: Phase 6c (pre-export review),
+starting with P6c.0 in a new session.
+
+## Phase 6c: Pre-export review (outline, added 2026-10-12)
+
+Goal (user's words): "most photos are handled by the tool, but where the tool is unable to take an accurate
+decision, the decision is left for the user." Bulk flow: select photos → style → export settings → **Prepare**
+→ review → export. Decisions in PLAN.md §0 (2026-10-12).
+
+- [ ] **P6c.0** Detail this phase into items. ⛔ STOP for the user to review it.
+- [ ] Prepare step (on the export plan): each photo's style, subject, crop in the **export's ratio and
+  orientation**, automatic zoom on small subjects (capped where the export would start to upscale), output
+  size, and a styled preview of the final framing.
+- [ ] Review rules, each giving a reason: uncertain subject (score below the threshold, only the focus point,
+  nothing found), ambiguous (two candidates close in score), subject cut off by the crop, zoom at the quality
+  limit, no clear subject (centered or on the focus point, and asked). **Thresholds are settings** the user can
+  tune (start strict).
+- [ ] Review screen: Ready and Check groups; per photo the reason, the final framing, other candidates as
+  one-click choices, a zoom slider (the crop tool's flow plus zoom), and Set subject. A chosen subject is saved
+  to the photo's edit; the zoom belongs to this export.
+- [ ] Approvals: each Check photo is approved by hand. Buttons **Export Approved** and **Force Export All**
+  (exports the rest with the tool's suggestions); a single **Export All** when everything is approved.
+- [ ] Tests, docs, full check.
+- 🧑 Human test (bulk rally/drift/cat export through the review) + ⛔ STOP.
 
 ## Phase 7: MCP server (outline)
 - [ ] **P7.0** Detail this phase. ⛔ STOP for review.

@@ -3,6 +3,7 @@ import { imageUrls } from '../../api/client'
 import type { Photo } from '../../api/types'
 import { Spinner } from '../../components/ui'
 import { fitInside, useElementSize } from '../../hooks/useElementSize'
+import { ThirdsGrid } from '../../components/ThirdsGrid'
 import { cn } from '../../lib/cn'
 
 export type ViewMode = 'after' | 'before' | 'split' | 'camera'
@@ -12,10 +13,12 @@ export type ViewMode = 'after' | 'before' | 'split' | 'camera'
 export function PhotoViewer({
   photo,
   mode,
+  grid = false,
   onZoomAt,
 }: {
   photo: Photo
   mode: ViewMode
+  grid?: boolean
   onZoomAt?: (point: { x: number; y: number }) => void
 }) {
   const boxRef = useRef<HTMLDivElement>(null)
@@ -48,6 +51,7 @@ export function PhotoViewer({
           }}
           className={cn('block h-full w-full object-contain select-none', onZoomAt && mode !== 'camera' && 'cursor-zoom-in')}
         />
+        {grid && <ThirdsGrid />}
         {settled?.src !== shown ? (
           settled?.ok ? (
             // An earlier image is still showing: keep it in view and just signal the update in a corner.

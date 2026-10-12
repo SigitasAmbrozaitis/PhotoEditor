@@ -16,6 +16,7 @@ from photoedit.core.catalog import (
     FolderRecord,
     photo_id,
 )
+from photoedit.core.metadata import AfMode
 from photoedit.core.scan import SourceKind
 from photoedit.models import PhotoSort, SortOrder
 from photoedit.safety import PathGuard, WriteNotAllowedError
@@ -277,8 +278,24 @@ def test_v1_catalog_is_migrated(workspace: Path) -> None:
     # v5: no edited size yet = the original size.
     assert (old.edited_width, old.edited_height) == (None, None)
     assert (old.to_photo().edited_width, old.to_photo().edited_height) == (60, 40)
+    # v6: the focus point is not read yet.
+    assert (old.af_point, old.af_mode) == (None, None)
     with sqlite3.connect(path) as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 5
+        assert db.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 7
+    # v7: no subjects detected yet.
+    assert catalog.subject(photo_id(_sha(9)), "any") is None
+
+
+def test_af_point_is_stored_and_refreshed_by_reimport(catalog: Catalog) -> None:
+    catalog.upsert(_photo(3, af_x=0.25, af_y=0.75, af_mode=AfMode.ZONE))
+    stored = catalog.get(photo_id(_sha(3)))
+    assert stored is not None and (stored.af_point, stored.af_mode) == ((0.25, 0.75), AfMode.ZONE)
+    catalog.set_af_point(photo_id(_sha(3)), None, AfMode.NONE)
+    stored = catalog.get(photo_id(_sha(3)))
+    assert stored is not None and (stored.af_point, stored.af_mode) == (None, AfMode.NONE)
+    catalog.upsert(_photo(3, af_x=0.5, af_y=0.5, af_mode=AfMode.SINGLE))  # the file's value wins
+    stored = catalog.get(photo_id(_sha(3)))
+    assert stored is not None and (stored.af_point, stored.af_mode) == ((0.5, 0.5), AfMode.SINGLE)
 
 
 def test_edited_size_survives_reimport(catalog: Catalog) -> None:
@@ -355,3 +372,22 @@ def test_style_is_stored_and_survives_reimport(catalog: Catalog) -> None:
     catalog.set_style(pid, None)
     cleared = catalog.get(pid)
     assert cleared is not None and cleared.style_id is None
+
+
+def test_subjects_are_stored_per_detection_identity(catalog: Catalog) -> None:
+    from photoedit.models.subject import SubjectBox, SubjectInfo, SubjectKind, SubjectSource
+
+    pid = photo_id(_sha(4))
+    found = SubjectInfo(
+        source=SubjectSource.DETECTED,
+        box=SubjectBox(left=0.1, top=0.2, right=0.3, bottom=0.4),
+        kind=SubjectKind.CAR,
+        score=0.8,
+        detector="d1",
+    )
+    catalog.set_subject(pid, "d1", found)
+    assert catalog.subject(pid, "d1") == found
+    assert catalog.subject(pid, "d2") is None  # found by another detection: recompute
+    nothing = SubjectInfo(source=SubjectSource.NONE, detector="d2")
+    catalog.set_subject(pid, "d2", nothing)
+    assert catalog.subject(pid, "d2") == nothing and catalog.subject(pid, "d1") is None

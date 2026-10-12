@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import shutil
 import threading
 from collections.abc import Callable, Iterator
 from concurrent.futures import Executor, Future, ThreadPoolExecutor
@@ -25,8 +26,10 @@ from photoedit.core.export.icc import icc_profile
 from photoedit.core.export.service import Exporter, auto_workers
 from photoedit.core.jobs import JobManager
 from photoedit.core.library import Library
+from photoedit.core.subject.service import Subjects
 from photoedit.models import Job, JobStatus
 from photoedit.models.export import CollisionStatus, ColorSpace, DecodeUsed, ExportSettings
+from photoedit.models.subject import SubjectBox, SubjectCandidate, SubjectKind, SubjectSource
 from photoedit.safety import PathGuard
 
 TIMEOUT = 120
@@ -72,6 +75,9 @@ def env(tmp_path: Path) -> Iterator[Env]:
     cache = ImageCache(settings.cache_dir, guard, identity="test")
     library = Library(catalog, cache, jobs, guard)
     jobs.wait(library.import_folder(photos).id, TIMEOUT)
+    # And the thumbnail job the import starts: it reads the photos, and Windows can't rename an open file.
+    for job in jobs.list():
+        jobs.wait(job.id, TIMEOUT)
     yield Env(library, jobs, guard, settings, photos, tmp_path / "exports")
     jobs.shutdown()
 
@@ -207,10 +213,64 @@ def test_destination_refusals(env: Env, tmp_path: Path) -> None:
     assert not (env.photos / "sub").exists()
 
 
-def test_subject_anchor_rejected_before_writing(env: Env) -> None:
-    with pytest.raises(InvalidRequestError, match="Phase 6"):
-        env.exporter().export(env.ids(), _web(aspect={"ratio": "4:5", "anchor": "subject"}), str(env.out))
-    assert not env.out.exists()
+def _subjects(env: Env, *found: SubjectCandidate) -> Subjects:
+    def finder(_: object) -> list[SubjectCandidate]:
+        return list(found)
+
+    return Subjects(
+        env.library, env.settings.cache_dir, objects=(finder, "fake"), faces=(lambda _: [], "none")
+    )
+
+
+def test_subject_anchor_frames_the_subject_in_the_files(env: Env) -> None:
+    # Blue left half, red right half; the "car" is on the red side, near the right edge.
+    pixels = np.zeros((200, 320, 3), np.uint8)
+    pixels[:, :160] = (0, 0, 255)
+    pixels[:, 160:] = (255, 0, 0)
+    Image.fromarray(pixels).save(env.photos / "d_split.jpg", quality=95)
+    env.run(env.library.import_folder(env.photos))
+    split = next(p.id for p in env.library.list_photos(limit=50).items if p.filename == "d_split.jpg")
+    car = SubjectCandidate(
+        box=SubjectBox(left=0.8, top=0.4, right=0.95, bottom=0.6), kind=SubjectKind.CAR, score=0.9
+    )
+    exporter = env.exporter(subjects=_subjects(env, car))
+    settings = _web(aspect={"ratio": "1:1", "anchor": "subject"})
+
+    plan = exporter.plan([split], settings, str(env.out))
+    item = plan.items[0]
+    assert (item.subject, item.subject_kind, item.width, item.height) == (
+        SubjectSource.DETECTED,
+        "car",
+        160,
+        160,
+    )
+    assert not any("subject" in w for w in item.warnings)
+    job = env.run(exporter.export([split], settings, str(env.out)))
+    assert job.status == JobStatus.DONE
+    first = _hashes(env.out)
+    out = np.asarray(Image.open(env.out / item.output_name).convert("RGB"), dtype=np.float32)
+    # The 200 px square sits against the right edge (x 120-320): blue only in its left 20 %. A centered crop
+    # (x 60-260) would be blue up to the middle.
+    assert out[:, 48:].mean(axis=(0, 1))[0] > 200 and out[:, 48:].mean(axis=(0, 1))[2] < 60
+    assert out[:, :24].mean(axis=(0, 1))[2] > 200
+
+    # Exported again: the same file (the stored detection, the same crop).
+    shutil.rmtree(env.out)
+    env.run(exporter.export([split], settings, str(env.out)))
+    assert _hashes(env.out) == first
+
+
+def test_subject_anchor_without_a_subject_centers_and_says_so(env: Env) -> None:
+    exporter = env.exporter(subjects=_subjects(env))
+    plan = exporter.plan(env.ids(), _web(aspect={"ratio": "4:5", "anchor": "subject"}), str(env.out))
+    assert {i.subject for i in plan.items} == {SubjectSource.NONE}
+    assert all("no subject found: centered" in i.warnings for i in plan.items)
+    # An exporter without subject detection says why it centers.
+    plain = env.exporter().plan(env.ids(), _web(aspect={"ratio": "4:5", "anchor": "subject"}), str(env.out))
+    assert all("subject detection isn't available here: centered" in i.warnings for i in plain.items)
+    # The center anchor doesn't look for subjects at all.
+    centered = exporter.plan(env.ids(), _web(aspect={"ratio": "4:5"}), str(env.out))
+    assert all(i.subject is None and not any("subject" in w for w in i.warnings) for i in centered.items)
 
 
 def test_a_missing_original_fails_only_that_photo(env: Env) -> None:

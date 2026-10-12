@@ -8,6 +8,7 @@ from photoedit.core.errors import InvalidRequestError
 from photoedit.core.export.geometry import Box, export_geometry, parse_ratio, warnings
 from photoedit.core.presets import BUILTIN_PRESETS
 from photoedit.models.export import DecodeUsed, ExportSettings
+from photoedit.models.subject import SubjectBox
 
 LANDSCAPE = (6240, 4160)
 PORTRAIT = (4160, 6240)
@@ -124,9 +125,37 @@ def test_decode_choice_boundary() -> None:
     assert export_geometry(*LANDSCAPE, one_more, is_raw=True).decode == DecodeUsed.FULL
 
 
-def test_subject_anchor_is_rejected_until_phase_6() -> None:
-    settings = _settings(aspect={"ratio": "4:5", "anchor": "subject"})
-    with pytest.raises(InvalidRequestError, match="Phase 6"):
-        export_geometry(*LANDSCAPE, settings, is_raw=True)
-    # Without a crop the anchor does nothing, so it isn't an error.
-    export_geometry(*LANDSCAPE, _settings(aspect={"anchor": "subject"}), is_raw=True)
+def test_subject_anchor_frames_the_subject_with_the_centered_crops_size() -> None:
+    settings = _preset("instagram-portrait")
+    assert settings.aspect.anchor == "subject"
+    centered = export_geometry(*LANDSCAPE, settings, is_raw=True)
+    car = SubjectBox(left=0.75, top=0.4, right=0.85, bottom=0.5)  # x 4680-5304 px of 6240
+    framed = export_geometry(*LANDSCAPE, settings, is_raw=True, subject=car)
+    assert (framed.width, framed.height, framed.decode) == (centered.width, centered.height, centered.decode)
+    assert (
+        (framed.crop.width, framed.crop.height) == (centered.crop.width, centered.crop.height) == (3328, 4160)
+    )
+    # Centered on the car (x 4992) as far as the photo allows: against the right edge.
+    assert framed.crop == Box(6240 - 3328, 0, 3328, 4160) and framed.subject_cut is None
+    near_middle = SubjectBox(left=0.4, top=0.4, right=0.5, bottom=0.5)  # center x 2808
+    assert export_geometry(*LANDSCAPE, settings, is_raw=True, subject=near_middle).crop.left == 2808 - 1664
+
+
+def test_without_a_subject_or_with_the_center_anchor_the_crop_is_centered() -> None:
+    car = SubjectBox(left=0.75, top=0.4, right=0.85, bottom=0.5)
+    subject_anchor = _settings(aspect={"ratio": "4:5", "anchor": "subject"})
+    center_anchor = _settings(aspect={"ratio": "4:5", "anchor": "center"})
+    centered = export_geometry(*LANDSCAPE, center_anchor, is_raw=True)
+    assert export_geometry(*LANDSCAPE, subject_anchor, is_raw=True).crop == centered.crop
+    assert export_geometry(*LANDSCAPE, center_anchor, is_raw=True, subject=car).crop == centered.crop
+    # Without an aspect ratio the anchor has nothing to place.
+    whole = export_geometry(*LANDSCAPE, _settings(aspect={"anchor": "subject"}), is_raw=True, subject=car)
+    assert whole.crop == Box(0, 0, *LANDSCAPE)
+
+
+def test_a_subject_too_wide_for_the_crop_is_cut_and_centered_on() -> None:
+    settings = _settings(aspect={"ratio": "4:5", "orientation": "portrait", "anchor": "subject"})
+    wide = SubjectBox(left=0.05, top=0.4, right=0.75, bottom=0.6)  # 4368 px; the crop is 3328
+    framed = export_geometry(*LANDSCAPE, settings, is_raw=True, subject=wide)
+    assert framed.subject_cut == "wider"
+    assert framed.crop.left + framed.crop.width / 2 == pytest.approx(0.4 * 6240, abs=1)

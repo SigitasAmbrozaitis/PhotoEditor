@@ -16,6 +16,7 @@ import type {
   StyleDiff,
   StyleSummary,
   StyleVersionInfo,
+  SubjectInfo,
 } from '../api/types'
 
 const band = () => ({ hue: 0, saturation: 0, luminance: 0 })
@@ -340,9 +341,29 @@ export function exportPlan(request: ExportRequest): ExportPlan {
       height,
       decode: width <= 3000 ? 'half' : 'full',
       collision: 'new',
-      warnings: [],
+      // With the subject anchor: the first photo frames a detected car, the others have none.
+      ...(request.settings.aspect?.anchor === 'subject'
+        ? id === request.photo_ids[0]
+          ? { subject: 'detected' as const, subject_kind: 'car' as const, subject_score: 0.84 }
+          : { subject: 'none' as const, subject_kind: null, subject_score: null }
+        : { subject: null, subject_kind: null, subject_score: null }),
+      warnings: id === request.photo_ids[0] || request.settings.aspect?.anchor !== 'subject' ? [] : ['no subject found: centered'],
     })),
   }
+}
+
+/** The detected subject of every photo in the fake backend: a car right of the middle, plus a person. */
+export const detectedSubject: SubjectInfo = {
+  source: 'detected',
+  box: { left: 0.6, top: 0.4, right: 0.8, bottom: 0.55 },
+  kind: 'car',
+  score: 0.84,
+  candidates: [
+    { box: { left: 0.6, top: 0.4, right: 0.8, bottom: 0.55 }, kind: 'car', score: 0.84, label: 'car' },
+    { box: { left: 0.1, top: 0.6, right: 0.2, bottom: 0.9 }, kind: 'person', score: 0.2, label: 'person' },
+  ],
+  detector: 'yolox_s-test',
+  notes: [],
 }
 
 /** Export result fields of a job item that tests don't care about. */
