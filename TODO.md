@@ -1597,6 +1597,9 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
 
 ### ⛔ STOP: user approves Phase 6b
 
+**Approved 2026-10-12.** The user tested it ("everything seems fine"). Next: Phase 6c (pre-export review),
+starting with P6c.0 in a new session.
+
 ## Phase 6c: Pre-export review (outline, added 2026-10-12)
 
 Goal (user's words): "most photos are handled by the tool, but where the tool is unable to take an accurate
