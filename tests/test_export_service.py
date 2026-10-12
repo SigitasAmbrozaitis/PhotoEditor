@@ -75,6 +75,9 @@ def env(tmp_path: Path) -> Iterator[Env]:
     cache = ImageCache(settings.cache_dir, guard, identity="test")
     library = Library(catalog, cache, jobs, guard)
     jobs.wait(library.import_folder(photos).id, TIMEOUT)
+    # And the thumbnail job the import starts: it reads the photos, and Windows can't rename an open file.
+    for job in jobs.list():
+        jobs.wait(job.id, TIMEOUT)
     yield Env(library, jobs, guard, settings, photos, tmp_path / "exports")
     jobs.shutdown()
 

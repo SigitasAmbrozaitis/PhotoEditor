@@ -1565,24 +1565,35 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   Instagram exports of labeled photos keep the labeled subject; the sample folders' hashes are unchanged.
 - [x] **P6b.17** `docs/geometry.md` (subject cues, the model, how the main subject is chosen, the evaluation
   results, suggested crops and placement, the export `subject` anchor) and README (`models fetch`, subject CLI).
-- [ ] **P6b.18** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e).
+- [x] **P6b.18** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e).
+
+  Done 2026-10-12: pytest 1008 passed incl. golden (one Windows file-lock flake in an export test fixed: its
+  fixture now waits for the import's thumbnail job), ruff, format, mypy, Vitest 122, oxlint, build, e2e 8/8.
 
 ### 🧑 Human test: Phase 6b
 0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`,
-   `uv run photoedit models fetch`.
-1. Rally (`2026-08-16`) and drift (`2026-07-26`): open several photos → Crop → **Show subject** → the car is
-   boxed (or say which ones are wrong) → **Suggest crop** 4:5 and 1:1, centered and thirds → the car stays in the
-   frame. Same for the cats (`2026-08-11`, `2026-08-17`), including the black cat.
-2. **Grid** (or `G`) in the crop tool and in the Photo view → a 3×3 grid; after Suggest crop with **thirds**, the
-   subject sits on a grid intersection. Reload → the grid setting is remembered.
-3. On a photo where detection is wrong: **Set subject** → drag a box on the right thing → Suggest crop now frames
-   it.
-4. Library → select ~10 rally/drift photos → Export… with **Instagram portrait** → the plan shows each photo's
-   subject → export → in the files the cars are inside the 4:5 frame (not cut off by a center crop).
-5. `uv run photoedit subject eval` → the report and contact sheet match `docs/geometry.md`. `uv run photoedit crop
-   suggest DSCF5437 --aspect 4:5` prints a suggestion.
-6. The photo folders are unchanged (Explorer, Date modified). `uv run pytest -m golden` passes.
-7. **Give feedback** on the grid, the suggested framing, detection misses and the subject tools.
+   `uv run photoedit models fetch` (YOLOX 35.9 MB + YuNet 0.2 MB, checked by SHA-256), `uv run photoedit ui`.
+   Note: opening the app migrates your catalog to schema 7; `main` reads it once this phase is merged.
+1. Library → open the rally folder (`2026-08-16`), select ~10 photos → **Detect subjects** (a background job,
+   ~6 s per photo the first time; see Jobs). Then open some of them → **Crop** → **Show subject**: the car is
+   boxed and labeled (e.g. "car (detected) · 84 %"), other things found are dashed. Say which ones are wrong.
+2. In the crop tool: Aspect **4:5** → **Suggest crop** (centered), then **On the thirds**, then move **Zoom**:
+   the car stays in the frame and the crop gets tighter until it stops ("zoom stopped at …"). **Done** saves
+   it like any crop (Ctrl+Z undoes). Repeat on drift (`2026-07-26`, tiny cars and tandems) and the cats
+   (`2026-08-11`, `2026-08-17`), including the black cat.
+3. **Grid** (or `G`) in the crop tool and in the Photo view → a 3×3 grid; after a **thirds** suggestion the
+   subject sits on a grid intersection. Reload the page → the grid setting is remembered.
+4. On a photo where detection is wrong or there is no subject (a sunset): **Set subject** → drag a box on the
+   right thing → it shows "set by hand" → Suggest crop frames it. **Use detected** goes back.
+5. Library → select ~10 rally/drift photos (some without a crop) → **Export…** → **Instagram portrait** ("Frame
+   the crop on: the photo's subject") → destination → the plan's **Subject** column shows each photo's subject
+   and score, or "none → centered" → export → in the files the cars are inside the 4:5 frame.
+6. `uv run photoedit subject eval` → the per-folder table matches `docs/geometry.md`, and
+   `output/contact-sheets/subject-eval.jpg` shows labels, findings and crops. `uv run photoedit crop suggest
+   DSCF5437 --aspect 4:5` prints a suggestion.
+7. The photo folders are unchanged (Explorer, Date modified). `uv run pytest -m golden` passes (~25 min).
+8. **Give feedback** on the grid, the suggested framing, detection misses and the subject tools. (The
+   pre-export review with Ready / Check is Phase 6c.)
 
 ### ⛔ STOP: user approves Phase 6b
 
