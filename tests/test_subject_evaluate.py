@@ -135,7 +135,7 @@ def test_evaluate_report_and_sheet() -> None:
         return buffer.getvalue()
 
     sheet = Image.open(io.BytesIO(contact_sheet(results, thumbnail)))
-    assert sheet.size == (8 * 300, 316)
+    assert sheet.size == (8 * 300, 30 + 350)
 
 
 def test_cli_eval(tmp_path: Path) -> None:
