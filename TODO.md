@@ -1627,7 +1627,7 @@ touched):
   the output (beyond it the export needs the full decode: ~31 s per photo instead of ~1 s, PLAN §7.1). The
   quality limit (no upscaling) is 3.08×; one tiny rally car (4.7 % of the width) wants more than that.
 
-**Design** (proposed, see the questions at the STOP):
+**Design** (confirmed by the user 2026-10-12, see P6c.0):
 - **A review** (`ExportReview`) is a prepared export: photos, settings, preset, destination, and per photo the
   framing, reasons, a zoom override and the approval. Stored as JSON in `workspace/reviews/<id>.json` (through
   the path guard), so a reload or restart keeps the approvals. Deleted after Export All or by Discard; reviews
@@ -1657,18 +1657,21 @@ touched):
   A subject **set by hand** (by the user, the AI or in this review) skips `no_subject`, `uncertain` and
   `ambiguous`. Collisions and "enlarged" stay plan notes, not Check reasons.
 - **Approvals**: Ready photos need none. A Check photo is approved by **Approve**, or by fixing it (choosing a
-  candidate, Set subject, moving the zoom), since that is the user's decision. An approval stores the framing it
+  candidate, Set subject, moving the zoom), since that is the user's decision (un-approving is possible). An approval stores the framing it
   approved; if the framing changes later (the photo was re-edited elsewhere), the approval is dropped and the
   photo goes back to Check with "changed since you approved it".
 - **Export**: **Export Approved** (Ready + approved), **Force Export All** (also the unapproved Check photos, with
   the tool's framing; asks to confirm), and a single **Export All** once nothing is left to approve. Exported
   photos leave the review; the rest stay for later. The export job is the normal one, with the review's
   per-photo zoom passed along, so the files match the previews.
-- **Entry points**: in the Export dialog and the Apply-style wizard, an export that frames subjects (a ratio +
-  the subject anchor) gets **Prepare…** as its main button, with **Export without review** next to it. Other
-  exports (print, web full size: centered) export directly, as now.
+- **Entry point**: a separate **Prepare export…** action in the Library for the selection: a dialog with an
+  optional style (+ even out), the export preset/settings and the destination, then **Prepare**. The Export
+  dialog and the Apply-style wizard stay as they are (direct export).
 
 - [ ] **P6c.0** Detail this phase into items. ⛔ STOP for the user to review it.
+  Decided 2026-10-12 (user): auto zoom capped at the **fast (half-size decode) limit**, the review's slider goes
+  to the quality limit; fill target **40 %**; **fixing a Check photo approves it**; the review starts from a
+  **separate Prepare export… action** in the Library (Export and the wizard unchanged).
 
 ### Core
 - [ ] **P6c.1** Models (`models/review.py`, `models/export.py`): `AspectSettings.zoom` (`off`|`auto`) and
@@ -1716,8 +1719,9 @@ touched):
   `review settings [--min-score 0.5] [--ambiguity 0.75] [--rule NAME=on|off]`. Tests with `CliRunner`.
 
 ### UI
-- [ ] **P6c.9** Entry points: **Prepare…** in the Export dialog and the wizard when the export frames subjects
-  (with **Export without review** beside it); the Prepare job's progress, then the review opens. A **Reviews**
+- [ ] **P6c.9** Entry point: Library **Prepare export…** for the selection → a dialog (optional style + even out,
+  preset/settings reusing the export form, destination) → **Prepare**; the job's progress, then the review
+  opens. A preset without subject framing is allowed (everything is Ready). A **Reviews**
   link in the header lists open reviews (photo count, Check left, destination).
 - [ ] **P6c.10** Review screen (`/reviews/:id`): header (preset, destination, counts); **Check** first, then
   **Ready**, as grids of framing previews with reason chips. Selecting a photo opens its panel: the whole photo
@@ -1728,7 +1732,7 @@ touched):
 - [ ] **P6c.11** Export buttons: **Export Approved (N)**, **Force Export All (N)** (confirm dialog naming the
   unapproved photos), or one **Export All** when nothing is left to approve. After export the job page opens;
   the review keeps the photos not exported.
-- [ ] **P6c.12** UI tests: Vitest for the entry points, the review groups and reasons, each fix approving,
+- [ ] **P6c.12** UI tests: Vitest for the Prepare dialog, the review groups and reasons, each fix approving,
   the zoom slider limits, the rules popover, the export buttons' states. Playwright: prepare an Instagram export
   of a few photos, fix one Check photo, Export Approved, then Export All. Screenshots of the review screen.
 
@@ -1744,8 +1748,8 @@ touched):
 0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`,
    `uv run photoedit ui`.
 1. Library → rally (`2026-08-16`), select ~10 photos, plus ~10 drift (`2026-07-26`) and ~10 cats (`2026-08-11`)
-   in their folders (or one folder at a time) → **Export…** → **Instagram portrait** → destination →
-   **Prepare…** → the job runs, then the review opens.
+   in their folders (or one folder at a time) → **Prepare export…** → (a style, optional) → **Instagram
+   portrait** → destination → **Prepare** → the job runs, then the review opens.
 2. **Check** lists the doubtful photos, each with a reason (no subject, uncertain, two candidates, cut off, zoom
    limit); **Ready** has the rest. Look through Ready: are any of them wrong? (Say which.)
 3. On a Check photo with two candidates: click the other box → the frame moves to it and the photo is approved.
