@@ -107,7 +107,7 @@ a background job renders every thumbnail with the photo's default look.
 photo and saves automatically; the preview follows. Double-click a slider to reset it, click its value to type
 one, use the ↺ button on a group to reset that group, **Reset all** to start over, and Ctrl+Z / Ctrl+Shift+Z to
 undo and redo. Compare with **Before**, **Split**, or **Camera JPEG** (the camera's own JPEG next to a RAW).
-Sliders labeled *Phase 6* / *Phase 9* (crop, clarity, noise reduction, …) arrive later. Edits are small JSON
+Sliders labeled *Phase 9* (clarity, texture, dehaze, …) arrive later. Edits are small JSON
 files in `workspace/edits/`; the original photos are never changed.
 
 **Highlights, Shadows, Whites, Blacks** and **Contrast** work on each photo's own tonal range, like Lightroom:
@@ -140,6 +140,15 @@ Enter applies (Ctrl+Z undoes it like any change). Thumbnails, previews and expor
 own aspect crop (e.g. Instagram 4:5) is taken inside it. **Fit / 50% / 100%** (or Z, or a click on the photo)
 zoom in, so sharpening can be judged at 1:1; the first 100 % view of a RAW needs its full decode (~12-25 s).
 See [docs/geometry.md](docs/geometry.md).
+
+**Subjects.** The tool finds each photo's main subject (cars, animals, people, faces; with a small local
+object detector, fetched once with `uv run photoedit models fetch`). In the crop tool, **Suggest crop** frames
+it for the chosen ratio (**Centered** or **On the thirds**, with a **Zoom** slider), **Show subject** draws what
+was found, and **Set subject** lets you drag a box yourself (it wins over detection). **Grid** (key G) shows a
+3×3 grid in the crop tool and the Photo view. The Instagram export presets frame each photo's subject instead of
+cropping the center, and the export plan lists the subject per photo. **Detect subjects** in the Library finds
+them for a selection in the background (~6 s per photo the first time). See
+[docs/geometry.md](docs/geometry.md#subjects-and-suggested-crops-phase-6b).
 
 An unedited RAW renders through a **camera profile** fitted to that camera's own JPEGs (FUJIFILM X-T3 · Provia
 ships with the tool; other cameras get a neutral generic profile). See [docs/default-look.md](docs/default-look.md).
@@ -195,7 +204,8 @@ uv run photoedit export DSCF5437 --preset instagram-portrait --dest output\expor
 
 Presets: `photoedit preset list | show ID | duplicate ID --name "My preset" | delete ID | check`.
 Geometry: `photoedit crop show PHOTO | set PHOTO [--aspect 4:5] [--angle -2] [--rotate 90] [--flip-h]
-[--crop L,T,R,B] | reset PHOTO`.
+[--crop L,T,R,B] | suggest PHOTO --aspect 4:5 [--placement thirds] [--zoom 1.5] [--apply] | reset PHOTO`.
+Subjects: `photoedit models fetch | list`, `photoedit subject detect [PHOTO…|--folder DIR] | show PHOTO | eval`.
 `photoedit benchmark --export full|instagram` times real exports per worker count.
 
 For UI development with hot reload (backend plus Vite dev server on http://localhost:5173):

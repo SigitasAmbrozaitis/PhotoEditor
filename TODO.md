@@ -1563,7 +1563,7 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
 ### Tests + docs
 - [x] **P6b.16** Golden (local): subject detection on the labeled set matches the stored results (determinism);
   Instagram exports of labeled photos keep the labeled subject; the sample folders' hashes are unchanged.
-- [ ] **P6b.17** `docs/geometry.md` (subject cues, the model, how the main subject is chosen, the evaluation
+- [x] **P6b.17** `docs/geometry.md` (subject cues, the model, how the main subject is chosen, the evaluation
   results, suggested crops and placement, the export `subject` anchor) and README (`models fetch`, subject CLI).
 - [ ] **P6b.18** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e).
 

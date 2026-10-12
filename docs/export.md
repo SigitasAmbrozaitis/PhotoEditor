@@ -15,7 +15,8 @@ How a photo becomes an output file (Phase 5). The code is in `src/photoedit/core
 
 ## Pipeline
 
-1. **Geometry** (`geometry.py`): the aspect crop (centered; `subject` arrives with Phase 6b), the output size
+1. **Geometry** (`geometry.py`): the aspect crop (centered, or framed on the photo's subject with the `subject` anchor, as in
+   the Instagram presets: [geometry.md](geometry.md#subjects-and-suggested-crops-phase-6b)), the output size
    and whether the half-size decode is enough. All of this is in the full-size pixels of the photo after its
    own geometry (crop, straighten, turn: [geometry.md](geometry.md)), so the aspect crop is taken inside the
    photo's crop.
