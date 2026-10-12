@@ -1556,7 +1556,7 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   intersection. Display only (no edit data), so nothing reaches the render or exports.
 - [x] **P6b.14** Export dialog: the "Detected subject" anchor is enabled (no "(Phase 6)"), and the plan table
   shows each photo's subject (kind + source, or "none → centered").
-- [ ] **P6b.15** UI tests: Vitest for Suggest crop (placement, zoom), the subject overlay and manual box, and the
+- [x] **P6b.15** UI tests: Vitest for Suggest crop (placement, zoom), the subject overlay and manual box, and the
   export dialog's subject column, the grid toggle (button and `G`, remembered). Playwright: suggest a 4:5 crop and apply it; export with the Instagram preset
   (subject anchor). Screenshots of the subject overlay.
 

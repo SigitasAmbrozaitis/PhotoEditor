@@ -347,3 +347,54 @@ test('crop: 4:5 + straighten → thumbnail turns 4:5; zoom to 100 % and pan', as
   await expect(view).toHaveCount(0)
   await expect(page.getByRole('img', { name: /E2E_0002.JPG \(after\)/ })).toBeVisible()
 })
+
+test('subject: set by hand → suggest 4:5 → apply; grid; Instagram export frames it', async ({ page }) => {
+  await page.goto('/library')
+  await page.getByRole('listbox', { name: 'Photos' }).getByRole('option', { name: 'E2E_0004.JPG' }).dblclick()
+  await expect(page.getByRole('heading', { name: 'E2E_0004.JPG' })).toBeVisible()
+
+  // The 3×3 grid over the photo view, toggled with G and remembered.
+  await page.keyboard.press('g')
+  await expect(page.getByTestId('thirds-grid')).toBeVisible()
+  await page.reload()
+  await expect(page.getByTestId('thirds-grid')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Crop', exact: true }).click()
+  const tool = page.getByTestId('crop-tool')
+  await expect(tool.getByRole('img', { name: /whole photo/ })).toHaveJSProperty('complete', true, { timeout: 15_000 })
+
+  // Draw the subject near the right edge (the synthetic photos have nothing a detector would recognize).
+  await tool.getByRole('button', { name: /Set subject/ }).click()
+  const frame = (await page.getByTestId('crop-frame').boundingBox())!
+  await page.mouse.move(frame.x + frame.width * 0.75, frame.y + frame.height * 0.4)
+  await page.mouse.down()
+  await page.mouse.move(frame.x + frame.width * 0.9, frame.y + frame.height * 0.6, { steps: 5 })
+  await page.mouse.up()
+  await expect(page.getByTestId('subject-box')).toContainText('set by hand', { timeout: 15_000 })
+
+  await tool.getByRole('combobox', { name: 'Aspect ratio' }).selectOption('4:5')
+  await expect(page.getByRole('status', { name: 'Checking the crop' })).toHaveCount(0, { timeout: 10_000 })
+  await tool.getByRole('button', { name: /Suggest crop/ }).click()
+  await expect(page.getByTestId('suggestion')).toContainText('4:5 crop, centered, framed on: set by hand')
+  // A 4:5 crop of a 3:2 photo is 53 % of its width; on a subject at 75-90 % it reaches the right edge.
+  const left = async () => Number(/left: ([\d.]+)%/.exec((await page.getByTestId('crop-rect').getAttribute('style')) ?? '')?.[1])
+  await expect.poll(left).toBeGreaterThan(45)
+  await shot(page, '21-crop-subject')
+  await tool.getByRole('button', { name: /Done/ }).click()
+  await expect(tool).toHaveCount(0)
+  await page.keyboard.press('g') // grid off again for the other screenshots
+  await expect(page.getByTestId('thirds-grid')).toHaveCount(0)
+
+  // Export with the Instagram preset, which frames the subject: the plan says which one.
+  await page.getByRole('button', { name: /Export…/ }).click()
+  const dialog = page.getByRole('dialog', { name: 'Export 1 photo' })
+  await expect(dialog.getByRole('combobox', { name: 'Export preset' })).toHaveValue('instagram-portrait')
+  await expect(dialog.getByRole('combobox', { name: 'Frame the crop on' })).toHaveValue('subject')
+  await dialog.getByRole('textbox', { name: 'Destination folder' }).fill(`${EXPORTS}/subject`)
+  const plan = dialog.getByRole('table', { name: 'Export plan' })
+  await expect(plan.getByTestId('plan-subject')).toHaveText('set by hand', { timeout: 30_000 })
+  await shot(page, '22-export-plan-subject')
+  await dialog.getByRole('button', { name: 'Export', exact: true }).click()
+  await expect(page.getByText(/1 exported →/)).toBeVisible({ timeout: 60_000 })
+  expect(readdirSync(`${EXPORTS}/subject`)).toHaveLength(1)
+})

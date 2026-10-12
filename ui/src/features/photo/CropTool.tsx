@@ -157,12 +157,15 @@ export function CropTool({
     const seq = ++suggestSeq.current
     const current = { ...accepted.current, crop: latest.current.crop }
     const aspect = latest.current.aspect ?? `${frameW}:${frameH}`
+    // The ratio as locked in the tool (4:5 stays portrait on a landscape photo; Swap turns it).
+    const ratio = parseRatio(aspect) ?? 1
+    const orientation = ratio < 1 ? 'portrait' : ratio > 1 ? 'landscape' : 'auto'
     setBusy(true)
     try {
       const result = await suggestCrop(photo.id, {
         geometry: current,
         aspect,
-        orientation: 'auto',
+        orientation,
         placement: options.placement ?? placement,
         zoom: options.zoom ?? zoom,
       })

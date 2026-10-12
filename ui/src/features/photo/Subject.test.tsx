@@ -39,7 +39,12 @@ describe('Suggest crop', () => {
     await user.click(within(tool).getByRole('button', { name: /Suggest crop/ }))
     await waitFor(() => expect(suggestions(calls)).toHaveLength(1))
     // No aspect lock yet: the photo's own ratio, and the draft geometry (flips, turn, angle) goes along.
-    expect(suggestions(calls)[0]).toMatchObject({ aspect: '6240:4160', placement: 'centered', zoom: 1 })
+    expect(suggestions(calls)[0]).toMatchObject({
+      aspect: '6240:4160',
+      orientation: 'landscape',
+      placement: 'centered',
+      zoom: 1,
+    })
     expect(suggestions(calls)[0]!.geometry).toMatchObject({ rotate: 0, angle: 0 })
     const rect = screen.getByTestId('crop-rect')
     await waitFor(() => expect(parseFloat(rect.style.left)).toBeCloseTo(45)) // half the frame wide, on the car at x 0.7
@@ -55,6 +60,11 @@ describe('Suggest crop', () => {
     fireEvent.change(within(tool).getByRole('slider', { name: 'Zoom' }), { target: { value: '4' } })
     await waitFor(() => expect(screen.getByTestId('suggestion')).toHaveTextContent('zoom stopped at 2.50×'))
     expect(within(tool).getByText('2.50×')).toBeInTheDocument()
+
+    // A locked portrait ratio stays portrait on this landscape photo.
+    await user.selectOptions(within(tool).getByRole('combobox', { name: 'Aspect ratio' }), '4:5')
+    await user.click(within(tool).getByRole('button', { name: /Suggest crop/ }))
+    await waitFor(() => expect(suggestions(calls).at(-1)).toMatchObject({ aspect: '4:5', orientation: 'portrait' }))
 
     // Done saves the suggested crop like any other.
     await user.click(within(tool).getByRole('button', { name: /Done/ }))
