@@ -331,16 +331,14 @@ export function ExportSettingsForm({
             <option value="landscape">Force landscape</option>
           </Select>
         </Field>
-        <Field label="Center crop on">
+        <Field label="Frame the crop on">
           <Select
             value={aspect.anchor}
             disabled={disabled || !aspect.ratio}
             onChange={(e) => set('aspect', { anchor: e.target.value as CropAnchor })}
           >
             <option value="center">Image center</option>
-            <option value="subject" disabled>
-              Detected subject (Phase 6)
-            </option>
+            <option value="subject">The photo's subject</option>
           </Select>
         </Field>
       </Section>

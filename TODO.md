@@ -1545,16 +1545,16 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
   (P6b.1). Tests with `CliRunner`.
 
 ### UI
-- [ ] **P6b.12** Crop tool: **Suggest crop** for the chosen aspect (placement centered/thirds, zoom slider). A
+- [x] **P6b.12** Crop tool: **Suggest crop** for the chosen aspect (placement centered/thirds, zoom slider). A
   "Show subject" toggle draws the main box (labeled with its kind and source) and the other candidates faintly.
   "Set subject" lets you drag a box by hand, and "Use detected" clears it. The Library gets a "Detect subjects"
   action for the selection (a background job).
-- [ ] **P6b.13** Grid overlay (requested 2026-10-11 after the 6a test): a 3×3 rule-of-thirds grid to compose by,
+- [x] **P6b.13** Grid overlay (requested 2026-10-11 after the 6a test): a 3×3 rule-of-thirds grid to compose by,
   on demand rather than only while dragging. A **Grid** toggle (key `G`) in the crop tool, where it shows over
   the crop rectangle all the time, and in the Photo view (Fit), where it shows over the photo. The choice is
   remembered per browser. It fits with Suggest crop's `thirds` placement: the subject lands on a grid
   intersection. Display only (no edit data), so nothing reaches the render or exports.
-- [ ] **P6b.14** Export dialog: the "Detected subject" anchor is enabled (no "(Phase 6)"), and the plan table
+- [x] **P6b.14** Export dialog: the "Detected subject" anchor is enabled (no "(Phase 6)"), and the plan table
   shows each photo's subject (kind + source, or "none → centered").
 - [ ] **P6b.15** UI tests: Vitest for Suggest crop (placement, zoom), the subject overlay and manual box, and the
   export dialog's subject column, the grid toggle (button and `G`, remembered). Playwright: suggest a 4:5 crop and apply it; export with the Instagram preset

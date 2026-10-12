@@ -24,6 +24,8 @@ import type {
   PresetUpdate,
   SortOrder,
   ConsistencyReport,
+  CropSuggestion,
+  CropSuggestionRequest,
   Style,
   StyleCreate,
   StyleDeleted,
@@ -33,6 +35,8 @@ import type {
   StyleUpdate,
   StyleUpdateFromPhoto,
   StyleVersionInfo,
+  SubjectBox,
+  SubjectInfo,
   ZoomInfo,
   ZoomLevel,
 } from './types'
@@ -53,6 +57,7 @@ export const queryKeys = {
   dirs: (path: string | null) => ['dirs', path] as const,
   photos: (q: PhotoQuery) => ['photos', q] as const,
   photo: (id: string) => ['photo', id] as const,
+  subject: (id: string) => ['subject', id] as const,
   styles: ['styles'] as const,
   style: (id: string) => ['style', id] as const,
   styleHistory: (id: string) => ['style', id, 'history'] as const,
@@ -179,6 +184,35 @@ export function useSaveEdit(photoId: string) {
 /** The geometry a change would give from `geometry` (the crop tool's draft); core constrains it, nothing is saved. */
 export function previewGeometry(photoId: string, geometry: Geometry, change: Partial<GeometryChange>): Promise<Geometry> {
   return api.post<Geometry>(`/api/photos/${encodeURIComponent(photoId)}/geometry/preview`, { geometry, change })
+}
+
+/** The photo's main subject (the hand-set box, else the detected one; the first detection takes a few
+ * seconds). Only asked for when `enabled`. */
+export function useSubject(photoId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.subject(photoId),
+    queryFn: () => api.get<SubjectInfo>(`/api/photos/${encodeURIComponent(photoId)}/subject`),
+    enabled,
+    staleTime: Infinity, // changes only through useSetSubject or a detection job
+  })
+}
+
+/** Set the subject by hand (upright photo coordinates), or `null` to use the detected one. */
+export function useSetSubject(photoId: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (box: SubjectBox | null) =>
+      api.put<SubjectInfo>(`/api/photos/${encodeURIComponent(photoId)}/subject`, { box }),
+    onSuccess: (info) => {
+      client.setQueryData(queryKeys.subject(photoId), info)
+      void client.invalidateQueries({ queryKey: ['export', 'plan'] })
+    },
+  })
+}
+
+/** A crop framing the subject in the crop tool's draft geometry; nothing is saved. */
+export function suggestCrop(photoId: string, request: CropSuggestionRequest): Promise<CropSuggestion> {
+  return api.post<CropSuggestion>(`/api/photos/${encodeURIComponent(photoId)}/suggest-crop`, request)
 }
 
 export const ZOOM_POLL_MS = 500
@@ -450,6 +484,14 @@ export function useRefreshAfterJobs() {
       if (!EDITING_JOBS.has(job.kind)) continue
       if (isActive(job)) running.current.add(job.id)
       else if (running.current.delete(job.id)) finished = true
+    }
+    for (const job of jobs.data ?? []) {
+      if (job.kind !== 'detect_subjects') continue
+      if (isActive(job)) running.current.add(job.id)
+      else if (running.current.delete(job.id)) {
+        void client.invalidateQueries({ queryKey: ['subject'] })
+        void client.invalidateQueries({ queryKey: ['export', 'plan'] })
+      }
     }
     if (finished) {
       void client.invalidateQueries({ queryKey: ['photos'] })

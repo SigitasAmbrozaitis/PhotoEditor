@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cropInside, dragCrop, parseRatio, swapRatio, turnedSize } from './cropMath'
+import { boxBetween, cropInside, dragCrop, parseRatio, swapRatio, turnedSize, uprightPoint } from './cropMath'
 
 const W = 6240
 const H = 4160
@@ -65,5 +65,28 @@ describe('crop math', () => {
     expect(parseRatio('4:5')).toBe(0.8)
     expect(parseRatio(null)).toBeNull()
     expect(swapRatio('4:5')).toBe('5:4')
+  })
+})
+
+describe('screen to upright', () => {
+  // A 600 × 400 px upright image drawn around the frame's center.
+  const at = (dx: number, dy: number, degrees: number, flipH = false, flipV = false) =>
+    uprightPoint(dx, dy, 600, 400, degrees, flipH, flipV).map((v) => Math.round(v * 1000) / 1000)
+
+  it('maps straight, turned and flipped drawings back', () => {
+    expect(at(0, 0, 0)).toEqual([0.5, 0.5])
+    expect(at(150, -100, 0)).toEqual([0.75, 0.25])
+    // Turned 90° clockwise: what is right on screen was at the top of the upright photo.
+    expect(at(100, 0, 90)).toEqual([0.5, 0.25])
+    expect(at(0, 150, 90)).toEqual([0.75, 0.5])
+    expect(at(0, 150, 270)).toEqual([0.25, 0.5])
+    expect(at(150, -100, 180)).toEqual([0.25, 0.75])
+    expect(at(150, -100, 0, true)).toEqual([0.25, 0.25])
+    expect(at(150, -100, 0, false, true)).toEqual([0.75, 0.75])
+  })
+
+  it('clamps points off the photo and spans boxes either way', () => {
+    expect(at(1000, -1000, 0)).toEqual([1, 0])
+    expect(boxBetween([0.7, 0.2], [0.3, 0.6])).toEqual({ left: 0.3, top: 0.2, right: 0.7, bottom: 0.6 })
   })
 })

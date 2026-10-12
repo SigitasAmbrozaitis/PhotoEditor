@@ -15,6 +15,9 @@ import type {
   PresetUpdate,
   Style,
   StyleUpdate,
+  CropSuggestionRequest,
+  SubjectBox,
+  SubjectInfo,
 } from '../api/types'
 import * as fx from './fixtures'
 
@@ -34,6 +37,13 @@ export function defaultHandlers(): Record<string, Handler> {
   let style: Style = structuredClone(fx.warmFilm)
   let presets: ExportPreset[] = structuredClone(fx.presets)
   const destinations: string[] = []
+  // Subjects set by hand, per photo id; the others are fx.detectedSubject.
+  const manual = new Map<string, SubjectBox>()
+  const photoIdOf = (path: string) => path.split('/')[3]!
+  const subjectOf = (id: string): SubjectInfo => {
+    const box = manual.get(id)
+    return box ? { ...fx.detectedSubject, source: 'manual', box, kind: null, score: null } : fx.detectedSubject
+  }
   const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
   const newJob = (kind: Job['kind'], photoIds: string[]) => {
     const job = fx.makeJob({
@@ -99,6 +109,31 @@ export function defaultHandlers(): Record<string, Handler> {
         next.crop = c
       }
       return next
+    },
+    'GET /api/photos/:id/subject': ({ path }) => subjectOf(photoIdOf(path)),
+    'PUT /api/photos/:id/subject': ({ path, body }) => {
+      const box = (body as { box: SubjectBox | null }).box
+      if (box) manual.set(photoIdOf(path), box)
+      else manual.delete(photoIdOf(path))
+      return subjectOf(photoIdOf(path))
+    },
+    // A crop half the frame wide divided by the zoom, centered on the subject; zoom stops at 2.5×.
+    'POST /api/photos/:id/suggest-crop': ({ path, body }) => {
+      const request = body as CropSuggestionRequest
+      const info = subjectOf(photoIdOf(path))
+      const zoom = Math.min(request.zoom ?? 1, 2.5)
+      const half = 0.25 / zoom
+      const cx = Math.min(1 - half, Math.max(half, info.box ? (info.box.left + info.box.right) / 2 : 0.5))
+      return {
+        crop: { left: cx - half, top: 0, right: cx + half, bottom: 1 },
+        aspect: request.aspect,
+        placement: request.placement ?? 'centered',
+        zoom,
+        source: info.source,
+        kind: info.kind,
+        subject: info.box,
+        warnings: (request.zoom ?? 1) > 2.5 ? ['zoom stopped at 2.50×, where the subject fills the crop'] : [],
+      }
     },
     'GET /api/photos/:id/zoom/:level': ({ path }) => ({
       level: Number(path.split('/').at(-1)),

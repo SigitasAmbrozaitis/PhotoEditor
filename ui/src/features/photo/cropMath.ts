@@ -123,3 +123,37 @@ export function swapRatio(aspect: string): string {
   const [w, h] = aspect.split(':')
   return `${h}:${w}`
 }
+
+/**
+ * A point on screen, as an offset (px) from the frame's center, in upright photo coordinates (0..1, clamped).
+ *
+ * The crop tool draws the upright photo `imageW` × `imageH` px around the frame's center, flipped and then
+ * turned by `degrees` clockwise (the quarter turn plus the straighten angle); this undoes that.
+ */
+export function uprightPoint(
+  dx: number,
+  dy: number,
+  imageW: number,
+  imageH: number,
+  degrees: number,
+  flipH: boolean,
+  flipV: boolean,
+): [number, number] {
+  const a = (-degrees * Math.PI) / 180
+  let x = dx * Math.cos(a) - dy * Math.sin(a)
+  let y = dx * Math.sin(a) + dy * Math.cos(a)
+  if (flipH) x = -x
+  if (flipV) y = -y
+  const clamp = (v: number) => Math.min(1, Math.max(0, v))
+  return [clamp(x / imageW + 0.5), clamp(y / imageH + 0.5)]
+}
+
+/** The box spanned by two upright points (left, top, right, bottom). */
+export function boxBetween(a: [number, number], b: [number, number]) {
+  return {
+    left: Math.min(a[0], b[0]),
+    top: Math.min(a[1], b[1]),
+    right: Math.max(a[0], b[0]),
+    bottom: Math.max(a[1], b[1]),
+  }
+}

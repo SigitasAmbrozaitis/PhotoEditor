@@ -67,8 +67,8 @@ def suggest(
         return Suggestion(frame.crop(k, frame.closest(k, None, center)), zoom)
 
     box = (subject.left * width, subject.top * height, subject.right * width, subject.bottom * height)
-    need_w = (box[2] - box[0]) / (2 * base_hw * (1 - 2 * MARGIN))
-    need_h = (box[3] - box[1]) / (2 * base_hh * (1 - 2 * MARGIN))
+    need_w = _needed(box[0], box[2], width) / (2 * base_hw)
+    need_h = _needed(box[1], box[3], height) / (2 * base_hh)
     k_subject = max(need_w, need_h, _MIN_K)
     k_best = frame.largest(box) if frame.feasible(k_subject, box) else None
     if k_best is None:
@@ -80,6 +80,25 @@ def suggest(
     k = max(k_subject, k_best / zoom)
     target = _target(box, k * base_hw, k * base_hh, placement, width, height)
     return Suggestion(frame.crop(k, frame.closest(k, box, target)), k_best / k)
+
+
+def _needed(start: float, end: float, length: float) -> float:
+    """The smallest crop side that holds [start, end] plus the margin, where the margin stops at the frame's
+    edges (0 and ``length``). The span grows with the crop by at most 2 × MARGIN of it, so the shortfall is
+    increasing and bisection finds where it turns positive."""
+
+    def holds(side: float) -> bool:
+        margin = MARGIN * side
+        return side >= min(length, end + margin) - max(0.0, start - margin)
+
+    low, high = 0.0, max(length, (end - start) / (1 - 2 * MARGIN))
+    for _ in range(_BISECTIONS):
+        middle = (low + high) / 2
+        if holds(middle):
+            high = middle
+        else:
+            low = middle
+    return high
 
 
 def _target(

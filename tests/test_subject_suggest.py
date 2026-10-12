@@ -129,3 +129,12 @@ def test_same_inputs_same_crop() -> None:
     subject = box(0.2, 0.6, 0.3, 0.7)
     args = {"ratio": 1.91, "angle": 4.0, "width": W, "height": H, "placement": CropPlacement.THIRDS}
     assert suggest(subject, **args) == suggest(subject, **args)  # type: ignore[arg-type]
+
+
+def test_a_subject_at_the_frames_edge_is_not_cut_off_by_its_margin() -> None:
+    # A cat filling the width of a portrait photo up to its right edge: a full-width crop keeps it all; only
+    # the margin on the right can't be had.
+    cat = box(0.06, 0.2, 1.0, 0.9)
+    result = suggest(cat, ratio=4 / 5, angle=0, width=4000, height=6000)
+    assert result.cut_off is None
+    assert (result.crop.left, result.crop.right) == (0, 1)
