@@ -1716,7 +1716,7 @@ touched):
   `PUT /api/reviews/{id}/items/{photo_id}/subject` (`{candidate}` | `{box}` | `{box: null}`);
   `GET /api/reviews/{id}/items/{photo_id}/preview`; `POST /api/reviews/{id}/export` (`scope`). Settings changes
   re-sort open reviews. Regenerate `openapi.json` + `schema.d.ts`. Tests for every endpoint, valid and invalid.
-- [ ] **P6c.8** CLI: `photoedit review prepare PHOTO…|--folder DIR --preset ID --dest DIR [--style ID]` (prints
+- [x] **P6c.8** CLI: `photoedit review prepare PHOTO…|--folder DIR --preset ID --dest DIR [--style ID]` (prints
   Ready/Check with reasons), `review show ID`, `review approve ID PHOTO…`, `review export ID [--all]`,
   `review settings [--min-score 0.5] [--ambiguity 0.75] [--rule NAME=on|off]`. Tests with `CliRunner`.
 
