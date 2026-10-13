@@ -91,7 +91,7 @@ class ReviewItem(_Model):
     approved_framing: str | None = Field(
         default=None, description="The framing the approval was given for; a different one drops it."
     )
-    framing: str = Field(description="Identifies the framing (crop, output size, subject) to compare.")
+    framing: str = Field(description="Identifies the framing (the crop and the output size) to compare.")
     subject: SubjectSource = SubjectSource.NONE
     subject_kind: SubjectKind | None = None
     subject_score: float | None = Field(default=None, ge=0, le=1)

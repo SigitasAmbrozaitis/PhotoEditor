@@ -46,11 +46,18 @@ function num(value: string): number | null {
 }
 
 /** A number that can't be empty: while the field is cleared, the setting keeps its last value. */
-function RequiredNumberInput({
+export function RequiredNumberInput({
   value,
   onChange,
   ...props
-}: { value: number; onChange: (value: number) => void; min?: number; max?: number; disabled?: boolean }) {
+}: {
+  value: number
+  onChange: (value: number) => void
+  min?: number
+  max?: number
+  step?: number
+  disabled?: boolean
+}) {
   const [text, setText] = useState(String(value))
   const shown = text.trim() === '' || num(text) === value ? text : String(value)
   return (

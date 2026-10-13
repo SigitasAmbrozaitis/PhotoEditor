@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Download, Eraser, ScanSearch, Wand2 } from 'lucide-react'
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, ClipboardCheck, Download, Eraser, ScanSearch, Wand2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { imageUrls } from '../../api/client'
@@ -19,6 +19,7 @@ import { cn } from '../../lib/cn'
 import { useSelection } from '../../state/selection'
 import { ExportDialog } from '../export/ExportDialog'
 import { ProcessWizard } from '../process/ProcessWizard'
+import { PrepareDialog } from '../review/PrepareDialog'
 import { FolderBar, ImportStatus } from './FolderBar'
 
 function PhotoTile({
@@ -101,7 +102,7 @@ export function LibraryPage() {
     }
     wasImporting.current = importing
   }, [importing, client])
-  const [dialog, setDialog] = useState<'apply' | 'export' | null>(null)
+  const [dialog, setDialog] = useState<'apply' | 'export' | 'prepare' | null>(null)
 
   const items = useMemo(() => photos.data?.items ?? [], [photos.data])
   const orderedIds = useMemo(() => items.map((p) => p.id), [items])
@@ -166,6 +167,13 @@ export function LibraryPage() {
               onClick={() => detectSubjects.mutate({ kind: 'detect_subjects', photo_ids: selection.ids })}
             >
               <ScanSearch className="size-4" aria-hidden /> Detect subjects
+            </Button>
+            <Button
+              disabled={count === 0}
+              title="Frame the photos for an export and look at the doubtful ones before anything is written"
+              onClick={() => setDialog('prepare')}
+            >
+              <ClipboardCheck className="size-4" aria-hidden /> Prepare export…
             </Button>
             <Button disabled={count === 0} onClick={() => setDialog('export')}>
               <Download className="size-4" aria-hidden /> Export…
@@ -284,6 +292,9 @@ export function LibraryPage() {
       )}
       {dialog === 'export' && (
         <ExportDialog open onOpenChange={(o) => !o && setDialog(null)} photoIds={selection.ids} />
+      )}
+      {dialog === 'prepare' && (
+        <PrepareDialog open onOpenChange={(o) => !o && setDialog(null)} photoIds={selection.ids} />
       )}
     </>
   )

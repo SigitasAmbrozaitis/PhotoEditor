@@ -8,11 +8,16 @@ import { AppRoutes, Providers } from '../App'
 import type {
   ExportPreset,
   ExportRequest,
+  ExportReview,
   Geometry,
   GeometryChange,
   Job,
   JobRequest,
   PresetUpdate,
+  ReviewItem,
+  ReviewItemUpdate,
+  ReviewSettings,
+  ReviewSubjectUpdate,
   Style,
   StyleUpdate,
   CropSuggestionRequest,
@@ -43,6 +48,25 @@ export function defaultHandlers(): Record<string, Handler> {
   const subjectOf = (id: string): SubjectInfo => {
     const box = manual.get(id)
     return box ? { ...fx.detectedSubject, source: 'manual', box, kind: null, score: null } : fx.detectedSubject
+  }
+  // One open review; decisions change it like the backend does (a fix approves).
+  let review: ExportReview | null = fx.makeReview()
+  let reviewSettings: ReviewSettings = {
+    no_subject: true,
+    uncertain: true,
+    min_score: 0.5,
+    ambiguous: true,
+    ambiguity: 0.75,
+    cut_off: true,
+    zoom_limit: true,
+  }
+  const notFound = () => Response.json({ detail: 'review not found' }, { status: 404 })
+  const changeItem = (path: string, change: (item: ReviewItem) => ReviewItem) => {
+    if (!review || !path.includes(`/${review.id}/`)) return notFound()
+    const photoId = path.split('/')[5]!
+    const items = review.items.map((i) => (i.photo_id === photoId ? change(i) : i))
+    review = { ...review, items, counts: fx.reviewCounts(items) }
+    return review
   }
   const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
   const newJob = (kind: Job['kind'], photoIds: string[]) => {
@@ -229,12 +253,83 @@ export function defaultHandlers(): Record<string, Handler> {
     },
     'POST /api/export/plan': ({ body }) => fx.exportPlan(body as ExportRequest),
     'POST /api/export/reveal': () => new Response(null, { status: 204 }),
+    'GET /api/reviews': () =>
+      review
+        ? [
+            {
+              id: review.id,
+              created_at: review.created_at,
+              updated_at: review.updated_at,
+              preset_id: review.preset_id,
+              destination: review.destination,
+              counts: review.counts,
+            },
+          ]
+        : [],
+    'GET /api/reviews/:id': ({ path }) => (review && path.endsWith(`/${review.id}`) ? review : notFound()),
+    'DELETE /api/reviews/:id': () => {
+      review = null
+      return new Response(null, { status: 204 })
+    },
+    'PATCH /api/reviews/:id/items/:pid': ({ path, body }) => {
+      const update = body as ReviewItemUpdate
+      return changeItem(path, (item) => {
+        let next = { ...item, revision: `${item.revision}+` }
+        if ('zoom' in update) {
+          const zoom = update.zoom ?? item.auto_zoom
+          next = { ...next, zoom, zoom_override: update.zoom ?? null, approved: true }
+          next.decode = zoom > item.limits.fast ? 'full' : 'half'
+        }
+        if (update.approved !== undefined && update.approved !== null) next = { ...next, approved: update.approved }
+        return next
+      })
+    },
+    'PUT /api/reviews/:id/items/:pid/subject': ({ path, body }) => {
+      const update = body as ReviewSubjectUpdate
+      return changeItem(path, (item) => {
+        const chosen = update.candidate ?? null
+        const box = chosen !== null ? item.candidates[chosen]!.box : (update.box ?? null)
+        const manual = box !== null
+        const zoomLimited = item.reasons.some((r) => r.code === 'zoom_limit')
+        return {
+          ...item,
+          subject: manual ? 'manual' : item.candidates.length ? 'detected' : 'none',
+          subject_box: box ?? item.candidates[0]?.box ?? null,
+          candidates: item.candidates.map((c) => ({ ...c, chosen: chosen === null ? c.index === 0 : c.index === chosen })),
+          reasons: manual ? item.reasons.filter((r) => r.code === 'zoom_limit') : item.reasons,
+          status: manual && !zoomLimited ? 'ready' : item.status,
+          approved: true,
+          revision: `${item.revision}+`,
+        }
+      })
+    },
+    'POST /api/reviews/:id/export': ({ body }) => {
+      if (!review) return notFound()
+      const scope = (body as { scope?: string }).scope ?? 'approved'
+      const chosen = review.items.filter(
+        (i) => i.status !== 'unusable' && (scope === 'all' || i.status === 'ready' || i.approved),
+      )
+      const ids = new Set(chosen.map((i) => i.photo_id))
+      const items = review.items.filter((i) => !ids.has(i.photo_id))
+      review = { ...review, items, counts: fx.reviewCounts(items) }
+      return Response.json(newJob('export', [...ids]), { status: 201 })
+    },
+    'GET /api/review-settings': () => reviewSettings,
+    'PUT /api/review-settings': ({ body }) => {
+      reviewSettings = body as ReviewSettings
+      return reviewSettings
+    },
     'GET /api/jobs': () => jobs,
     'GET /api/jobs/:id': ({ path }) => jobs.find((j) => path.endsWith(`/${j.id}`)) ?? jobs[0],
     'POST /api/jobs': ({ body }) => {
       const request = body as JobRequest
       if ('destination' in request && !destinations.includes(request.destination)) destinations.unshift(request.destination)
-      return newJob(request.kind, request.photo_ids)
+      const job = newJob(request.kind, request.photo_ids)
+      if (request.kind === 'prepare_export') {
+        // Prepared at once: the review the dialog opens is the fake one.
+        Object.assign(job, { status: 'done', progress: 1, review_id: review?.id ?? 'abcdef123456' })
+      }
+      return job
     },
     'POST /api/jobs/:id/cancel': ({ path }) => {
       const job = jobs.find((j) => path.includes(`/${j.id}/`)) ?? jobs[0]!

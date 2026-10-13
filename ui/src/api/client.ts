@@ -48,6 +48,7 @@ export const api = {
   get: <T>(path: string, query?: Query, signal?: AbortSignal) => request<T>('GET', buildUrl(path, query), undefined, signal),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {}),
   put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
+  patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
   delete: <T>(path: string) => request<T>('DELETE', path),
 }
 
@@ -75,6 +76,11 @@ export const imageUrls = {
       `/api/styles/${encodeURIComponent(styleId)}/versions/${version}/photos/${encodeURIComponent(photoId)}.jpg`,
       { size },
     ),
+  /** A photo framed as a review's export will frame it; `revision` (ReviewItem.revision) busts the cache. */
+  reviewPreview: (reviewId: string, photoId: string, revision: string) =>
+    buildUrl(`/api/reviews/${encodeURIComponent(reviewId)}/items/${encodeURIComponent(photoId)}/preview`, {
+      v: revision,
+    }),
   /** The camera's own JPEG next to a RAW (for comparing with the default look). */
   sidecar: (photoId: string, size = 1600) =>
     buildUrl(`/api/photos/${encodeURIComponent(photoId)}/sidecar`, { size }),

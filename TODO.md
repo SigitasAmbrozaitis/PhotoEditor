@@ -1721,17 +1721,17 @@ touched):
   `review settings [--min-score 0.5] [--ambiguity 0.75] [--rule NAME=on|off]`. Tests with `CliRunner`.
 
 ### UI
-- [ ] **P6c.9** Entry point: Library **Prepare export…** for the selection → a dialog (optional style + even out,
+- [x] **P6c.9** Entry point: Library **Prepare export…** for the selection → a dialog (optional style + even out,
   preset/settings reusing the export form, destination) → **Prepare**; the job's progress, then the review
   opens. A preset without subject framing is allowed (everything is Ready). A **Reviews**
   link in the header lists open reviews (photo count, Check left, destination).
-- [ ] **P6c.10** Review screen (`/reviews/:id`): header (preset, destination, counts); **Check** first, then
+- [x] **P6c.10** Review screen (`/reviews/:id`): header (preset, destination, counts); **Check** first, then
   **Ready**, as grids of framing previews with reason chips. Selecting a photo opens its panel: the whole photo
   with the export frame drawn on it and the candidates as clickable boxes (one click = that subject), the
   reasons, the framing preview, a **Zoom** slider (Auto + manual, the fast and quality limits marked, "needs the
   full decode" past the first), **Set subject** (drag a box) and **Use detected**, **Approve** (key `A`),
   previous/next (arrow keys). A **Rules…** popover edits the review settings and re-sorts.
-- [ ] **P6c.11** Export buttons: **Export Approved (N)**, **Force Export All (N)** (confirm dialog naming the
+- [x] **P6c.11** Export buttons: **Export Approved (N)**, **Force Export All (N)** (confirm dialog naming the
   unapproved photos), or one **Export All** when nothing is left to approve. After export the job page opens;
   the review keeps the photos not exported.
 - [ ] **P6c.12** UI tests: Vitest for the Prepare dialog, the review groups and reasons, each fix approving,

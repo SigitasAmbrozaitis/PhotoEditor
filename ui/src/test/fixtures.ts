@@ -7,11 +7,14 @@ import type {
   ExportPlan,
   ExportPreset,
   ExportRequest,
+  ExportReview,
   Job,
   LibraryFolder,
   LibraryInfo,
   Photo,
   PhotoDetail,
+  ReviewCounts,
+  ReviewItem,
   Style,
   StyleDiff,
   StyleSummary,
@@ -461,4 +464,97 @@ export const styleReport: ConsistencyReport = {
     { measure: 'temperature', before_mad: 0, after_mad: 0, before_range: 0, after_range: 0 },
     { measure: 'tint', before_mad: 0, after_mad: 0, before_range: 0, after_range: 0 },
   ],
+}
+
+// ----------------------------------------------------------------- reviews (Phase 6c)
+
+const reviewItem = (n: number, overrides: Partial<ReviewItem>): ReviewItem => ({
+  photo_id: `p00${n}`,
+  filename: `DSCF${1000 + n}.RAF`,
+  status: 'ready',
+  reasons: [],
+  approved: false,
+  approved_framing: null,
+  framing: `f${n}`,
+  subject: 'detected',
+  subject_kind: 'car',
+  subject_score: 0.84,
+  subject_box: { left: 0.6, top: 0.4, right: 0.8, bottom: 0.55 },
+  candidates: [
+    { index: 0, box: { left: 0.6, top: 0.4, right: 0.8, bottom: 0.55 }, kind: 'car', score: 0.84, label: 'car', chosen: true },
+  ],
+  crop: { left: 0.45, top: 0, right: 0.95, bottom: 1 },
+  zoom: 1,
+  auto_zoom: 1,
+  zoom_override: null,
+  limits: { fast: 1.54, quality: 3.08 },
+  decode: 'half',
+  width: 1080,
+  height: 1350,
+  warnings: [],
+  revision: `r${n}`,
+  ...overrides,
+})
+
+export function reviewCounts(items: ReviewItem[]): ReviewCounts {
+  const check = items.filter((i) => i.status === 'check')
+  return {
+    total: items.length,
+    ready: items.filter((i) => i.status === 'ready').length,
+    check: check.filter((i) => !i.approved).length,
+    approved: check.filter((i) => i.approved).length,
+    unusable: items.filter((i) => i.status === 'unusable').length,
+  }
+}
+
+/** A prepared Instagram export: one Ready car, two cars to choose from, a sunset without a subject, a small
+ * car at the zoom limit, and a photo whose original is gone. */
+export function makeReview(): ExportReview {
+  const items: ReviewItem[] = [
+    reviewItem(1, { zoom: 1.3, auto_zoom: 1.3 }),
+    reviewItem(2, {
+      status: 'check',
+      reasons: [{ code: 'ambiguous', text: 'another car scores 0.80 (the car: 0.84)' }],
+      candidates: [
+        { index: 0, box: { left: 0.6, top: 0.4, right: 0.8, bottom: 0.55 }, kind: 'car', score: 0.84, label: 'car', chosen: true },
+        { index: 1, box: { left: 0.05, top: 0.4, right: 0.25, bottom: 0.55 }, kind: 'car', score: 0.8, label: 'truck', chosen: false },
+      ],
+    }),
+    reviewItem(3, {
+      status: 'check',
+      reasons: [{ code: 'no_subject', text: 'no subject found: centered' }],
+      subject: 'none',
+      subject_kind: null,
+      subject_score: null,
+      subject_box: null,
+      candidates: [],
+      crop: { left: 0.25, top: 0, right: 0.75, bottom: 1 },
+    }),
+    reviewItem(5, {
+      status: 'check',
+      reasons: [
+        {
+          code: 'zoom_limit',
+          text: 'the subject stays small: filling 40% of the crop needs 4.7×, the most without enlarging is 3.08×',
+        },
+      ],
+      zoom: 1.54,
+      auto_zoom: 1.54,
+    }),
+    reviewItem(6, {
+      status: 'unusable',
+      reasons: [{ code: 'unusable', text: 'the original is no longer at C:/Photos/DSCF1006.RAF' }],
+    }),
+  ]
+  return {
+    id: 'abcdef123456',
+    created_at: '2026-10-13T10:00:00Z',
+    updated_at: '2026-10-13T10:00:00Z',
+    preset_id: 'instagram-portrait',
+    style_id: null,
+    settings: presets[0]!.settings,
+    destination: 'C:/Exports/ig',
+    items,
+    counts: reviewCounts(items),
+  }
 }
