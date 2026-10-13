@@ -1739,9 +1739,11 @@ touched):
   of a few photos, fix one Check photo, Export Approved, then Export All. Screenshots of the review screen.
 
 ### Tests + docs
-- [ ] **P6c.13** Golden (local) on the labeled set: every wrong detection and every photo without a recognized
+- [x] **P6c.13** Golden (local) on the labeled set: every wrong detection and every photo without a recognized
   subject lands in Check (the tool never silently exports a wrong subject); the Check share per folder is
   recorded; exported files match the review's framing; the photo folders' hashes are unchanged.
+  Measured 2026-10-13 (instagram-portrait): 13 of 44 in Check (30 %): drift 1/12, cats 6/12, rally 2/14,
+  orange cat + sunsets 4/6; reasons: uncertain 6, no subject 5, ambiguous 4, zoom limit 2, cut off 2.
 - [ ] **P6c.14** Docs: `docs/export.md` (the review: Prepare, rules and settings, auto zoom and its limits,
   approvals, export buttons) and `docs/geometry.md` (zoom), README (review CLI).
 - [ ] **P6c.15** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e).
