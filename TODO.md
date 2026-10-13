@@ -1734,7 +1734,7 @@ touched):
 - [x] **P6c.11** Export buttons: **Export Approved (N)**, **Force Export All (N)** (confirm dialog naming the
   unapproved photos), or one **Export All** when nothing is left to approve. After export the job page opens;
   the review keeps the photos not exported.
-- [ ] **P6c.12** UI tests: Vitest for the Prepare dialog, the review groups and reasons, each fix approving,
+- [x] **P6c.12** UI tests: Vitest for the Prepare dialog, the review groups and reasons, each fix approving,
   the zoom slider limits, the rules popover, the export buttons' states. Playwright: prepare an Instagram export
   of a few photos, fix one Check photo, Export Approved, then Export All. Screenshots of the review screen.
 

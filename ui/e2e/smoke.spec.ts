@@ -398,3 +398,65 @@ test('subject: set by hand → suggest 4:5 → apply; grid; Instagram export fra
   await expect(page.getByText(/1 exported →/)).toBeVisible({ timeout: 60_000 })
   expect(readdirSync(`${EXPORTS}/subject`)).toHaveLength(1)
 })
+
+test('review: prepare an Instagram export → fix a Check photo → Export Approved → Export All', async ({ page }) => {
+  await page.goto('/library')
+  const tiles = page.getByRole('listbox', { name: 'Photos' })
+  await tiles.getByRole('option', { name: 'E2E_0004.JPG' }).click()
+  await tiles.getByRole('option', { name: 'E2E_0005.JPG' }).click({ modifiers: ['Control'] })
+  await tiles.getByRole('option', { name: 'E2E_0007.JPG' }).click({ modifiers: ['Control'] })
+  await expect(page.getByText(/3 selected/)).toBeVisible()
+
+  await page.getByRole('button', { name: /Prepare export…/ }).click()
+  const dialog = page.getByRole('dialog', { name: 'Prepare 3 photos for export' })
+  await expect(dialog.getByRole('combobox', { name: 'Export preset' })).toHaveValue('instagram-portrait')
+  await dialog.getByRole('textbox', { name: 'Destination folder' }).fill(`${EXPORTS}/review`)
+  await dialog.getByRole('button', { name: 'Prepare' }).click()
+  await expect(page.getByRole('heading', { name: 'Review · instagram-portrait' })).toBeVisible({ timeout: 60_000 })
+
+  // Nothing on the synthetic photos is recognized: two need a look. E2E_0004 is Ready: its subject was set by
+  // hand and it was cropped to 4:5 in the subject test.
+  const check = page.getByRole('region', { name: 'Check' })
+  await expect(check.getByRole('button', { name: /^E2E_000/ })).toHaveCount(2)
+  await expect(check.getByText('No subject')).toHaveCount(2)
+  await expect(page.getByRole('region', { name: 'Ready' }).getByRole('button', { name: 'E2E_0004.JPG' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Export Approved (1)' })).toBeEnabled()
+  await shot(page, '23-review')
+
+  // Fix one: draw its subject. That is a decision, so it is approved.
+  await check.getByRole('button', { name: 'E2E_0005.JPG' }).click()
+  const panel = page.getByRole('region', { name: 'Review of E2E_0005.JPG' })
+  await expect(panel.getByRole('img', { name: 'E2E_0005.JPG', exact: true })).toHaveJSProperty('complete', true, {
+    timeout: 15_000,
+  })
+  await panel.getByRole('button', { name: /Set subject/ }).click()
+  const photo = (await panel.getByTestId('review-photo').boundingBox())!
+  await page.mouse.move(photo.x + photo.width * 0.3, photo.y + photo.height * 0.3)
+  await page.mouse.down()
+  await page.mouse.move(photo.x + photo.width * 0.6, photo.y + photo.height * 0.7, { steps: 5 })
+  await page.mouse.up()
+  await expect(panel.getByRole('button', { name: 'Unapprove' })).toBeVisible({ timeout: 15_000 })
+  await expect(panel.getByRole('button', { name: 'Use detected' })).toBeVisible()
+  await shot(page, '24-review-fixed')
+
+  await page.getByRole('button', { name: 'Export Approved (2)' }).click()
+  await expect(page.getByText(/2 exported →/)).toBeVisible({ timeout: 60_000 })
+  expect(readdirSync(`${EXPORTS}/review`)).toHaveLength(2)
+
+  // The last one stays in the review: approve it as it is (A), then one Export All.
+  await page.getByRole('link', { name: /Reviews/ }).click()
+  await page.getByRole('list', { name: 'Open reviews' }).getByRole('link').first().click()
+  await expect(page.getByRole('region', { name: 'Check' }).getByRole('button', { name: /^E2E_000/ })).toHaveCount(1)
+  for (const name of ['E2E_0007.JPG']) {
+    await page.getByRole('button', { name, exact: true }).click()
+    await expect(page.getByRole('region', { name: `Review of ${name}` })).toBeVisible()
+    await page.keyboard.press('a')
+    await expect(page.getByRole('region', { name: `Review of ${name}` }).getByRole('button', { name: 'Unapprove' })).toBeVisible()
+  }
+  await shot(page, '25-review-approved')
+  await page.getByRole('button', { name: 'Export All (1)' }).click()
+  await expect(page.getByText(/1 exported →/)).toBeVisible({ timeout: 60_000 })
+  expect(readdirSync(`${EXPORTS}/review`)).toHaveLength(3)
+  await page.getByRole('link', { name: /Reviews/ }).click()
+  await expect(page.getByText('No open reviews.')).toBeVisible()
+})
