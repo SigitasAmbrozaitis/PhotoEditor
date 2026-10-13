@@ -1746,26 +1746,35 @@ touched):
   orange cat + sunsets 4/6; reasons: uncertain 6, no subject 5, ambiguous 4, zoom limit 2, cut off 2.
 - [x] **P6c.14** Docs: `docs/export.md` (the review: Prepare, rules and settings, auto zoom and its limits,
   approvals, export buttons) and `docs/geometry.md` (zoom), README (review CLI).
-- [ ] **P6c.15** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e).
+- [x] **P6c.15** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e).
 
 ### 🧑 Human test: Phase 6c
 0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`,
    `uv run photoedit ui`.
-1. Library → rally (`2026-08-16`), select ~10 photos, plus ~10 drift (`2026-07-26`) and ~10 cats (`2026-08-11`)
-   in their folders (or one folder at a time) → **Prepare export…** → (a style, optional) → **Instagram
-   portrait** → destination → **Prepare** → the job runs, then the review opens.
-2. **Check** lists the doubtful photos, each with a reason (no subject, uncertain, two candidates, cut off, zoom
-   limit); **Ready** has the rest. Look through Ready: are any of them wrong? (Say which.)
-3. On a Check photo with two candidates: click the other box → the frame moves to it and the photo is approved.
-   On a sunset: **Set subject** on the tower, or **Approve** the centered framing as it is.
-4. Move **Zoom** on a small drift car: the frame tightens; past the first mark it says the export needs the full
-   decode (slower); it stops at the quality limit.
-5. **Rules…** → lower the minimum score → photos move from Check to Ready. Put it back.
-6. **Export Approved** → only Ready + approved photos are written, and they look like their previews. The review
-   keeps the rest → **Force Export All** (confirm) → the rest are written with the tool's framing.
-7. Reload the page halfway through step 3 → approvals and zooms are still there.
-8. The photo folders are unchanged (Explorer, Date modified). **Give feedback** on the rules' strictness, the
-   zoom, and the review screen.
+1. Library → rally (`2026-08-16`): select ~10 photos. Switch to drift (`2026-07-26`) and cats (`2026-08-11`) and
+   **Ctrl-click** ~10 more in each (the selection keeps the earlier ones; "N selected" counts them all). Or do one
+   folder at a time (one review each). → **Prepare export…** → (a style, optional) → **Instagram portrait** →
+   destination → **Prepare**: the dialog shows the progress (detection takes a few seconds per photo the first
+   time), then the review opens. **Reviews** in the left rail lists open reviews, with a badge of photos to check.
+2. **Check** lists the doubtful photos, each with a reason chip and the reason in words (no subject, uncertain,
+   two candidates, cut off, zoom limit); **Ready** has the rest. Each card is the framing preview (what the file
+   will show). Look through Ready: are any of them wrong? (Say which.)
+3. On a Check photo with two candidates: click the other dashed box → the frame moves to it and the photo is
+   approved (it moves to Ready). On a sunset: **Set subject** and drag a box around the tower, or **Approve** (A)
+   the framing as it is. ← → step through the photos.
+4. Move **Zoom** on a small car (slider, or type a number + Enter): the frame and the preview tighten; past the
+   **fast** mark it says the export needs the full decode (slower); it stops at **max**. **Auto** goes back.
+5. **Rules…** → lower the minimum score (e.g. 0.3) → Save → photos move from Check to Ready. Put it back to 0.5.
+6. Reload the page halfway → approvals and zooms are still there.
+7. **Export Approved** → the job page; only Ready + approved photos are written, and they look like their
+   previews. **Reviews** → the review keeps the rest → **Force Export All** (it names the photos not approved;
+   confirm) → the rest are written with the tool's framing, and the review is gone.
+8. Plain **Export…** with Instagram portrait also zooms in on small subjects now (the switch **Zoom in on small
+   subjects** in the settings; the plan's sizes are the same, the crop is tighter).
+9. Optional, CLI: `uv run photoedit review prepare --folder "C:\Users\ambro\Pictures\2026\2026-08-17" --preset
+   instagram-portrait --dest output\exports\review` prints Ready/Check with reasons; `review settings` shows the rules.
+10. The photo folders are unchanged (Explorer, Date modified). **Give feedback** on the rules' strictness, the
+    zoom, and the review screen.
 
 ### ⛔ STOP: user approves Phase 6c
 
