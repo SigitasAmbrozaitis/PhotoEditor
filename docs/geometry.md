@@ -131,6 +131,13 @@ subject (mapped into the edited photo: through its geometry and cut to its crop)
 centered and say so in the plan. Missing detections run when the plan is made (several photos at once) and are
 stored, so the export reuses them. The plan shows each photo's subject and its score.
 
+**Export zoom** (Phase 6c, `zoom_plan` and `export_geometry(..., zoom)` in `core/export/geometry.py`). A zoom
+z makes the aspect crop z times smaller in each direction and keeps the output size; the crop is placed on the
+subject by the rule above and stops where the subject plus margin fills it. Two limits: the **fast** one, where
+the half-size decode still covers the output (automatic zoom stops there), and the **quality** one, where the
+crop has the output's pixels (nothing goes past it). For a JPEG, or with `decode: full`, the two are the same.
+How it is used: [export.md](export.md#pre-export-review-phase-6c).
+
 **Evaluation** (`photoedit subject eval`): 44 photos labeled by hand across the four sample folders
 (`tests/data/subject-labels.json`). A hit is the labeled box's center inside the found box (or IoU ≥ 0.3); a crop
 is right when the 4:5 suggestion keeps ≥ 95 % of the labeled box (of what a crop that size could keep). Photos
@@ -146,7 +153,7 @@ labeled "no subject" are right when nothing is framed or the crop stays centered
 The targets were 80 % / 90 % per folder. The last folder misses by its one sunset (DSCF6288), whose crop follows
 the camera's focus point onto the TV tower; the user accepted this. The other misses: the empty drift track (a
 spectator is framed), a shop test shot (a face on a TV screen) and the black cat on its back (only part of it is
-boxed; its crop is still right). Uncertain photos are meant to be reviewed before export: Phase 6c. The contact
+boxed; its crop is still right). Those photos are in Check in the pre-export review (Phase 6c). The contact
 sheet (`output/contact-sheets/subject-eval.jpg`) shows each labeled box, the found one with its score, and the
 suggested crop. `--results FILE` writes what was found per photo; `tests/data/subject-golden.json` holds the
 stored results the golden test compares a fresh detection against.
