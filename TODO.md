@@ -1689,7 +1689,7 @@ touched):
   The `Exporter` frames every photo through one `frame()` (plans, exports and reviews share it) and takes per-photo
   zoom overrides. The export form gets a **Zoom in on small subjects** switch and **Subject fills (%)**. Tests with exact numbers: no zoom when the subject is big enough,
   capped at each limit, decode switching at the fast limit, a centered photo never zooms, determinism.
-- [ ] **P6c.3** Review rules (`core/review/rules.py`): pure functions from the subject, the framing and
+- [x] **P6c.3** Review rules (`core/review/rules.py`): pure functions from the subject, the framing and
   `ReviewSettings` to reasons. Tests per rule at its threshold's edges (0.49/0.50), manual subjects skipping the
   subject rules, grouped tandems and parts not counting as rivals, rules switched off.
 - [ ] **P6c.4** Review service (`core/review/service.py`, wired as `services.reviews`): `prepare(...)` → job
