@@ -134,20 +134,30 @@ has `--dry-run` for the same.
 
 ## Pre-export review (Phase 6c)
 
-For a batch, **Library → Prepare export…** instead of **Export…**: the tool frames every photo as the export
-will and asks only about the ones it isn't sure of. The code is in `src/photoedit/core/review/`; the models are
+For a batch, **Library → Prepare export…** (or **Apply style…**, whose last step is now *Apply & prepare for
+review*) instead of **Export…**: the tool frames every photo as the export will and asks only about the ones it
+isn't sure of. **Frame the crop on the subject** is on by default in both dialogs (it sets the export's `subject`
+anchor, also for presets that center, such as the print presets); switched off, crops are centered, subjects
+aren't looked at and every photo is Ready. The code is in `src/photoedit/core/review/`; the models are
 in `src/photoedit/models/review.py`.
 
 1. **Prepare** (a job): an optional style is applied first (its own job; Prepare waits for it, so the previews
    show it). Then each photo's subject is found (stored detections are reused), it is framed through the same
    code as a plain export (`Exporter.frame`), the review rules sort it, and its **framing preview** is rendered:
-   the photo's edit cut to the export's crop, 800 px long edge, cached like previews.
+   the photo's edit cut to the export's crop, 800 px long edge, cached like previews. The review opens at
+   once and shows the job's progress until it is ready.
 2. **Ready / Check.** A Check photo carries one or more reasons. Ready photos need nothing. A photo that can't be
    exported at all (original gone, broken style) is listed apart and never exported.
-3. **Fix or approve.** On a Check photo: click another candidate's box, **Set subject** (drag a box), move the
-   **Zoom**, or **Approve** (key `A`) the tool's framing as it is. A fix is a decision, so it approves the photo.
-   A chosen subject is saved to the photo's edit (as the crop tool's Set subject); the zoom belongs to this
-   review only.
+3. **Fix or approve.** The panel shows the whole photo with the export's frame and **what detection found**:
+   the subject, every other candidate and the guesses (what stands out, sharp areas), each with its kind and
+   confidence, and the camera's focus point (**Hide details**, key `D`, remembered per browser). The subject's
+   confidence also shows next to the Ready/Check tag and on each card. On a photo: click another candidate's
+   box, **Set subject** (drag a box), **drag the frame** to move it, move the **Zoom**, or **Approve** (key `A`)
+   the tool's framing as it is. A fix is a decision, so it approves the photo. A chosen subject is saved to the
+   photo's edit (as the crop tool's Set subject) and places the frame on it again; the zoom and the frame's
+   position belong to this review only (**Re-center on subject** forgets the position). While the zoom slider
+   or the frame moves, the frame and the preview follow at once: core sends the crop for every 0.01× zoom step,
+   and the browser shows the loaded photo cut to the frame until the real preview has rendered.
 4. **Export.** **Export Approved** writes the Ready and approved photos. **Force Export All** also writes the
    ones not approved, with the tool's framing, after a confirmation that names them. Once nothing is left to
    approve there is one **Export All**. Exported photos leave the review; an empty review is deleted.
@@ -156,7 +166,7 @@ A review is stored as `workspace/reviews/<id>.json`, so a reload or a restart ke
 frames every photo again against its current edit and subject. An approval stores the framing it approved
 (the crop and the output size); when that changed since (the photo was re-edited elsewhere), the approval is
 dropped and the photo is back in Check with "the framing changed since you approved it". Exports use those
-refreshed framings and each photo's zoom, so the files show what the previews showed. A photo already in an
+refreshed framings and each photo's zoom and position, so the files show what the previews showed. A photo already in an
 export job isn't sent again. Reviews older than 30 days are deleted when the tool starts.
 
 **Rules** (`review-settings.json` in the workspace; **Rules…** on the review screen, or

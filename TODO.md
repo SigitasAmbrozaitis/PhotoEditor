@@ -1752,55 +1752,56 @@ touched):
 Decisions in PLAN.md §0 ("Review tweaks"). The first review used Print 5×7: centered framing, so no subjects,
 no candidates, zoom around the photo's center, and Set subject had no effect on the export. More feedback may
 follow from a subject-framed review.
-- [ ] **P6c.16** Prepare dialog: **Frame the crop on the subject** switch shown up front, on by default for any
+- [x] **P6c.16** Prepare dialog: **Frame the crop on the subject** switch shown up front, on by default for any
   preset with a ratio (sets `aspect.anchor`; off = centered). Set subject / Use detected are hidden in a review
   that doesn't frame subjects.
-- [ ] **P6c.17** Move the frame: `ReviewItem.position` (the crop's center, normalized to the edited photo; None =
+- [x] **P6c.17** Move the frame: `ReviewItem.position` (the crop's center, normalized to the edited photo; None =
   framed by the rules). Core places the crop there (rejected if it can't fit), the export uses it, a move
   approves; `PATCH …/items/{id}` gets `position` (null = back to the rules). Drag the frame in the panel.
-- [ ] **P6c.18** Detection details: the review item carries every candidate (recognized or not, the camera's
+- [x] **P6c.18** Detection details: the review item carries every candidate (recognized or not, the camera's
   focus point too), each with kind, label and confidence. The panel's photo shows them by default with the
   subject and the export frame; **Hide details** (key D) hides them, remembered per browser. Confidence next to
   the Ready/Check tag on the panel and the cards. Detection runs for every review that frames subjects.
-- [ ] **P6c.19** Live zoom and move: core sends the frame for each zoom step (0.01× up to the quality limit) for
+- [x] **P6c.19** Live zoom and move: core sends the frame for each zoom step (0.01× up to the quality limit) for
   the current position; while the slider or the frame is dragged, the panel moves the frame and shows the
   loaded photo cropped to it; on release the change is saved and the real framing preview replaces it.
-- [ ] **P6c.20** The Apply-style wizard ends in the review: its last step is **Prepare for review** (style +
+- [x] **P6c.20** The Apply-style wizard ends in the review: its last step is **Prepare for review** (style +
   export settings → the Prepare job → the review), replacing the direct apply-and-export.
-- [ ] **P6c.22** **AI Analysis** tab in the Photo view (next to Adjust, Info): the stored detection (subject:
+- [x] **P6c.22** **AI Analysis** tab in the Photo view (next to Adjust, Info): the stored detection (subject:
   source, kind, confidence; every candidate best first with label and confidence, cues marked as guesses; notes),
   **Detect now** when not detected yet, **Set subject** (opens the crop tool's drawing), **Use detected**. While
   the tab is open the boxes are drawn on the photo (Hide details, D, shared with the review). The Detect subjects
   job ends with a summary ("168 car, 6 aircraft, 6 focus point only, …").
 - [ ] **P6c.21** Tests (core, API, Vitest, Playwright), docs, full check; human test script updated.
 
-### 🧑 Human test: Phase 6c
+### 🧑 Human test: Phase 6c (round 2, after the feedback)
 0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`,
-   `uv run photoedit ui`.
-1. Library → rally (`2026-08-16`): select ~10 photos. Switch to drift (`2026-07-26`) and cats (`2026-08-11`) and
-   **Ctrl-click** ~10 more in each (the selection keeps the earlier ones; "N selected" counts them all). Or do one
-   folder at a time (one review each). → **Prepare export…** → (a style, optional) → **Instagram portrait** →
-   destination → **Prepare**: the dialog shows the progress (detection takes a few seconds per photo the first
-   time), then the review opens. **Reviews** in the left rail lists open reviews, with a badge of photos to check.
-2. **Check** lists the doubtful photos, each with a reason chip and the reason in words (no subject, uncertain,
-   two candidates, cut off, zoom limit); **Ready** has the rest. Each card is the framing preview (what the file
-   will show). Look through Ready: are any of them wrong? (Say which.)
-3. On a Check photo with two candidates: click the other dashed box → the frame moves to it and the photo is
-   approved (it moves to Ready). On a sunset: **Set subject** and drag a box around the tower, or **Approve** (A)
-   the framing as it is. ← → step through the photos.
-4. Move **Zoom** on a small car (slider, or type a number + Enter): the frame and the preview tighten; past the
-   **fast** mark it says the export needs the full decode (slower); it stops at **max**. **Auto** goes back.
-5. **Rules…** → lower the minimum score (e.g. 0.3) → Save → photos move from Check to Ready. Put it back to 0.5.
-6. Reload the page halfway → approvals and zooms are still there.
-7. **Export Approved** → the job page; only Ready + approved photos are written, and they look like their
-   previews. **Reviews** → the review keeps the rest → **Force Export All** (it names the photos not approved;
-   confirm) → the rest are written with the tool's framing, and the review is gone.
-8. Plain **Export…** with Instagram portrait also zooms in on small subjects now (the switch **Zoom in on small
-   subjects** in the settings; the plan's sizes are the same, the crop is tighter).
-9. Optional, CLI: `uv run photoedit review prepare --folder "C:\Users\ambro\Pictures\2026\2026-08-17" --preset
-   instagram-portrait --dest output\exports\review` prints Ready/Check with reasons; `review settings` shows the rules.
-10. The photo folders are unchanged (Explorer, Date modified). **Give feedback** on the rules' strictness, the
-    zoom, and the review screen.
+   `uv run photoedit ui`. (Old reviews from round 1 still open; **Reviews** → Discard them, or keep them.)
+1. **AI Analysis.** Open a photo → **AI Analysis** tab (next to Adjust, Info): the subject with its confidence,
+   everything found (best first, guesses marked), the boxes drawn on the photo; **D** or **Hide details** hides
+   them. On a photo not analysed yet: **Detect now**. **Use** on another find makes it the subject; **Use
+   detected** goes back. **Set subject** opens the crop tool ready to draw. Library → **Detect subjects** on a
+   selection now ends with a summary on its job ("168 car, 6 aircraft, …").
+2. **Prepare from the wizard.** Select ~10 photos → **Apply style…** → a style → Next → **Instagram portrait** (or
+   **Print 5×7**: **Frame the crop on the subject** is on by default either way) → destination → Next →
+   **Apply & prepare for review**: the review opens at once and shows the progress, then the photos. (Or
+   **Prepare export…** in the Library, the same without having to pick a style.)
+3. **Details.** Each photo in the panel shows the export frame and what detection found, with confidence (the
+   subject amber, other finds blue, guesses dotted, the focus point as a dotted square with a dot). The
+   subject's confidence is next to the Ready/Check tag and on each card. **D** hides and shows the details.
+4. **Set subject** on a Check photo (e.g. a sunset): drag a box → the frame moves onto it and the photo is
+   approved. Click another candidate's box → the frame moves to it.
+5. **Zoom** a small car with the slider: the frame and the preview follow while you drag (no wait); on release
+   the real preview replaces it. Past the **fast** mark it says the export needs the full decode.
+6. **Drag the frame** to another spot (zoomed in or not): it stays where you put it, the photo is approved,
+   **Re-center on subject** puts it back.
+7. Switch **Frame the crop on the subject** off in Prepare export… → every photo is Ready, centered, and the
+   review has no Set subject (zoom and dragging still work).
+8. **Rules…** → lower the minimum score → photos move from Check to Ready. Put it back.
+9. **Export Approved**, then **Force Export All** (it names the photos not approved) → the files look like their
+   previews, zoom and position included. Reload halfway: decisions are still there.
+10. The photo folders are unchanged. **Give feedback** on the details overlay, the live zoom and dragging, the AI
+    Analysis tab, and the rules' strictness.
 
 ### ⛔ STOP: user approves Phase 6c
 

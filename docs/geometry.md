@@ -136,6 +136,14 @@ z makes the aspect crop z times smaller in each direction and keeps the output s
 subject by the rule above and stops where the subject plus margin fills it. Two limits: the **fast** one, where
 the half-size decode still covers the output (automatic zoom stops there), and the **quality** one, where the
 crop has the output's pixels (nothing goes past it). For a JPEG, or with `decode: full`, the two are the same.
+A **position** (`export_geometry(..., position=(x, y))`, set by dragging the frame in a review) is where the
+crop's center should be, normalized to the edited photo: the crop sits as close to it as the photo allows at
+any zoom, and the subject no longer places it.
+
+**What detection found, as shown** (`core/subject/analysis.py`): the subject, every candidate (best first, at
+most 12) and the camera's focus point, mapped into the edited photo, so the boxes line up with what the user
+sees. The Photo view's **AI Analysis** tab and the review panel both draw these. A candidate is marked as the
+subject when it lies inside the subject's box and is of its kind (a face inside a car's box is the driver).
 How it is used: [export.md](export.md#pre-export-review-phase-6c).
 
 **Evaluation** (`photoedit subject eval`): 44 photos labeled by hand across the four sample folders

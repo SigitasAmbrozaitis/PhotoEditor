@@ -151,12 +151,18 @@ them for a selection in the background (~6 s per photo the first time). See
 [docs/geometry.md](docs/geometry.md#subjects-and-suggested-crops-phase-6b).
 
 **Pre-export review.** For a batch, **Prepare export…** in the Library (optional style, export preset,
-destination) frames every photo as the export will and opens a review: **Ready** photos need nothing, **Check**
-photos say why (no subject, uncertain or two candidates, cut off, too small even zoomed in). Click the other
-candidate, drag **Set subject**, move the **Zoom**, or **Approve** (A) as it is; then **Export Approved**, or
-**Force Export All**. **Rules…** sets how strict the review is. The Instagram presets zoom in on small subjects
-as far as the fast half-size decode allows. Open reviews are under **Reviews**. See
-[docs/export.md](docs/export.md#pre-export-review-phase-6c).
+destination), or **Apply style…** whose last step prepares the review, frames every photo as the export will
+and opens a review: **Ready** photos need nothing, **Check** photos say why (no subject, uncertain or two
+candidates, cut off, too small even zoomed in). The photo shows what detection found with its confidence
+(**Hide details**, D). Click the other candidate, drag **Set subject**, drag the frame, move the **Zoom** (the
+frame follows live), or **Approve** (A) as it is; then **Export Approved**, or **Force Export All**. **Rules…**
+sets how strict the review is. The Instagram presets zoom in on small subjects as far as the fast half-size
+decode allows. Open reviews are under **Reviews**. See [docs/export.md](docs/export.md#pre-export-review-phase-6c).
+
+**AI Analysis.** In the Photo view, the **AI Analysis** tab (next to Adjust and Info) shows what detection
+found in the photo: the subject and everything else with its confidence, drawn on the photo; **Detect now**
+for a photo not analysed yet, **Use** to make another find the subject, **Set subject** to draw one. Results are
+stored per photo, so this is instant after the first detection.
 
 An unedited RAW renders through a **camera profile** fitted to that camera's own JPEGs (FUJIFILM X-T3 · Provia
 ships with the tool; other cameras get a neutral generic profile). See [docs/default-look.md](docs/default-look.md).
