@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { imageUrls } from '../../api/client'
 import type { Photo } from '../../api/types'
 import { Spinner } from '../../components/ui'
@@ -14,11 +14,14 @@ export function PhotoViewer({
   photo,
   mode,
   grid = false,
+  overlay,
   onZoomAt,
 }: {
   photo: Photo
   mode: ViewMode
   grid?: boolean
+  /** Drawn over the edited photo (not over the camera JPEG, whose frame differs). */
+  overlay?: ReactNode
   onZoomAt?: (point: { x: number; y: number }) => void
 }) {
   const boxRef = useRef<HTMLDivElement>(null)
@@ -52,6 +55,7 @@ export function PhotoViewer({
           className={cn('block h-full w-full object-contain select-none', onZoomAt && mode !== 'camera' && 'cursor-zoom-in')}
         />
         {grid && <ThirdsGrid />}
+        {mode !== 'camera' && overlay}
         {settled?.src !== shown ? (
           settled?.ok ? (
             // An earlier image is still showing: keep it in view and just signal the update in a corner.

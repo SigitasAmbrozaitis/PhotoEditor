@@ -1,16 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { useCreateJob, useJob, useStyles } from '../../api/queries'
-import { Button, Dialog, ErrorState, Field, Loading, ProgressBar, Select, Switch } from '../../components/ui'
+import { useCreateJob, useStyles } from '../../api/queries'
+import { Button, Dialog, ErrorState, Field, Loading, Select, Switch } from '../../components/ui'
 import { DestinationField } from '../export/DestinationField'
 import { ExportSettingsForm } from '../export/ExportSettingsForm'
 import { exportSummary } from '../export/exportSummary'
 import { PresetPicker } from '../export/PresetPicker'
 import { useDestinationStatus } from '../export/useExportPlan'
 import { usePresetSettings } from '../export/usePresetSettings'
+import { withSubjectFraming } from './reviewWords'
+import { SubjectFramingSwitch } from './subjectFraming'
 
 /** Prepare an export for review (Phase 6c): an optional style, the export settings and the destination, then a
- * job frames every photo and the review opens. */
+ * job frames every photo; the review opens at once and shows the job's progress until it is ready. */
 export function PrepareDialog({
   open,
   onOpenChange,
@@ -23,24 +25,15 @@ export function PrepareDialog({
   const navigate = useNavigate()
   const styles = useStyles()
   const createJob = useCreateJob()
-  const { presets, preset, settings, modified, choosePreset, editSettings } = usePresetSettings()
+  const { presets, preset, settings: presetSettings, modified, choosePreset, editSettings } = usePresetSettings()
   const [styleId, setStyleId] = useState('')
   const [evenOut, setEvenOut] = useState(false)
+  const [frameOnSubject, setFrameOnSubject] = useState(true)
   const [destination, setDestination] = useState('')
   const [customize, setCustomize] = useState(false)
-  const [jobId, setJobId] = useState<string>()
   const status = useDestinationStatus(destination)
-  const job = useJob(jobId)
   const count = photoIds.length
-  const framesSubjects = settings?.aspect.ratio != null && settings.aspect.anchor === 'subject'
-
-  // The review opens once its job is done.
-  const reviewId = job.data?.status === 'done' ? job.data.review_id : null
-  useEffect(() => {
-    if (!reviewId) return
-    onOpenChange(false)
-    void navigate(`/reviews/${reviewId}`)
-  }, [reviewId, navigate, onOpenChange])
+  const settings = presetSettings ? withSubjectFraming(presetSettings, frameOnSubject) : null
 
   const prepare = () => {
     if (!settings || !status?.ok) return
@@ -54,12 +47,14 @@ export function PrepareDialog({
         settings,
         destination: status.path,
       },
-      { onSuccess: (created) => setJobId(created.id) },
+      {
+        onSuccess: (job) => {
+          onOpenChange(false)
+          void navigate(`/reviews/${job.review_id}`)
+        },
+      },
     )
   }
-
-  const running = jobId !== undefined
-  const failed = job.data && (job.data.status === 'failed' || job.data.status === 'cancelled')
 
   return (
     <Dialog
@@ -70,39 +65,25 @@ export function PrepareDialog({
       width="max-w-3xl"
       footer={
         <>
-          {settings && !running && (
+          {settings && (
             <p data-testid="prepare-summary" className="mr-auto truncate font-mono text-xs text-muted">
               {exportSummary(settings, destination)}
             </p>
           )}
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            {running ? 'Close' : 'Cancel'}
+            Cancel
           </Button>
-          {!running && (
-            <Button
-              variant="primary"
-              disabled={!settings || !status?.ok || count === 0 || createJob.isPending}
-              onClick={prepare}
-            >
-              Prepare
-            </Button>
-          )}
+          <Button
+            variant="primary"
+            disabled={!settings || !status?.ok || count === 0 || createJob.isPending}
+            onClick={prepare}
+          >
+            Prepare
+          </Button>
         </>
       }
     >
-      {running ? (
-        <div className="flex flex-col gap-3" data-testid="prepare-progress">
-          <p className="text-sm">
-            {job.data?.status === 'queued' ? 'Waiting for the style to be applied…' : 'Finding subjects and framing the photos…'}
-          </p>
-          <ProgressBar value={job.data?.progress ?? 0} label="Preparing" />
-          <p className="text-xs text-muted">
-            {job.data ? `${job.data.completed} of ${job.data.total}` : ''} · Detection takes a few seconds per photo
-            the first time. You can close this; the review appears under Reviews when it is ready.
-          </p>
-          {failed && <ErrorState error={new Error(job.data?.summary ?? `The job ${job.data?.status}.`)} />}
-        </div>
-      ) : presets.isError ? (
+      {presets.isError ? (
         <ErrorState error={presets.error} />
       ) : !settings || !presets.data ? (
         <Loading />
@@ -137,11 +118,7 @@ export function PrepareDialog({
             <PresetPicker presets={presets.data} value={preset?.id} modified={modified} onChange={choosePreset} />
             <p className="self-end pb-1.5 text-xs text-muted">{preset?.description}</p>
           </div>
-          {!framesSubjects && (
-            <p className="text-xs text-muted">
-              These settings don't frame subjects, so every photo will be Ready: the review only shows the framing.
-            </p>
-          )}
+          <SubjectFramingSwitch settings={settings} on={frameOnSubject} onChange={setFrameOnSubject} />
           <DestinationField value={destination} onChange={setDestination} status={status} />
           <button
             type="button"
@@ -150,7 +127,16 @@ export function PrepareDialog({
           >
             {customize ? 'Hide export settings' : 'Customize export settings…'}
           </button>
-          {customize && <ExportSettingsForm value={settings} onChange={editSettings} />}
+          {customize && (
+            <ExportSettingsForm
+              value={settings}
+              onChange={(next) => {
+                // The anchor chosen in the form decides the switch from then on.
+                setFrameOnSubject(next.aspect.anchor === 'subject')
+                editSettings(next)
+              }}
+            />
+          )}
         </div>
       )}
       {createJob.isError && <ErrorState error={createJob.error} />}

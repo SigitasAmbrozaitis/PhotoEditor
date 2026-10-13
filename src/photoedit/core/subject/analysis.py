@@ -10,7 +10,7 @@ from __future__ import annotations
 from photoedit.core.geometry import subject_in_crop
 from photoedit.core.subject.choose import UNRECOGNIZED, af_box
 from photoedit.models.adjustments import Geometry
-from photoedit.models.subject import FoundCandidate, SubjectAnalysis, SubjectBox, SubjectInfo
+from photoedit.models.subject import FoundCandidate, SubjectAnalysis, SubjectBox, SubjectInfo, SubjectKind
 
 # Candidates shown at most (best first); detection keeps more, mostly weak guesses.
 MAX_SHOWN = 12
@@ -32,10 +32,16 @@ def is_part(candidate: SubjectBox, subject: SubjectBox) -> bool:
 
 
 def found_candidates(
-    info: SubjectInfo, geometry: Geometry, width: int, height: int, subject: SubjectBox | None
+    info: SubjectInfo,
+    geometry: Geometry,
+    width: int,
+    height: int,
+    subject: SubjectBox | None,
+    kind: SubjectKind | None = None,
 ) -> list[FoundCandidate]:
     """``info``'s candidates inside the edited photo (best first, at most ``MAX_SHOWN``), each marked when it
-    is part of ``subject`` (normalized to the edited photo)."""
+    is the ``subject`` (normalized to the edited photo): inside its box and, for a detected subject, of its
+    ``kind`` (a person inside a car's box is the driver, not the subject)."""
     out: list[FoundCandidate] = []
     for index, candidate in enumerate(info.candidates):
         box = subject_in_crop(candidate.box, geometry, width, height)
@@ -50,7 +56,10 @@ def found_candidates(
                 score=candidate.score,
                 label=candidate.label,
                 recognized=recognized,
-                chosen=recognized and subject is not None and is_part(box, subject),
+                chosen=recognized
+                and subject is not None
+                and is_part(box, subject)
+                and (kind is None or candidate.kind is kind),
             )
         )
         if len(out) == MAX_SHOWN:
@@ -85,7 +94,7 @@ def analysis(
         kind=info.kind,
         score=info.score,
         box=box,
-        candidates=found_candidates(info, geometry, width, height, box),
+        candidates=found_candidates(info, geometry, width, height, box, info.kind),
         focus=focus_box(af_point, geometry, width, height),
         detector=info.detector,
         notes=info.notes,

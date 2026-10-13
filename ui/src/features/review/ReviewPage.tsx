@@ -2,24 +2,27 @@ import { Check } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { ApiError, imageUrls } from '../../api/client'
-import { useDiscardReview, useReview, useUpdateReviewItem } from '../../api/queries'
+import { isActive, useDiscardReview, useJobs, useReview, useUpdateReviewItem } from '../../api/queries'
 import type { ExportReview, ReviewItem } from '../../api/types'
-import { Button, Chip, EmptyState, ErrorState, Loading, PageHeader } from '../../components/ui'
+import { Button, Chip, EmptyState, ErrorState, Loading, PageHeader, ProgressBar } from '../../components/ui'
+import { useDetails } from '../../hooks/useDetails'
 import { cn } from '../../lib/cn'
 import { ReviewExportButtons } from './ReviewExportButtons'
 import { ReviewPanel } from './ReviewPanel'
 import { ReviewRules } from './ReviewRules'
-import { RULE_LABELS, reviewGroups, reviewOrder, zoomText } from './reviewWords'
+import { confidenceText, framesSubjects, RULE_LABELS, reviewGroups, reviewOrder, zoomText } from './reviewWords'
 
 function Card({
   review,
   item,
   selected,
+  subjects,
   onSelect,
 }: {
   review: ExportReview
   item: ReviewItem
   selected: boolean
+  subjects: boolean
   onSelect: () => void
 }) {
   return (
@@ -49,6 +52,7 @@ function Card({
           {item.filename}
           {item.zoom > 1.005 && <span className="ml-auto font-mono text-[10px] text-muted">{zoomText(item.zoom)}</span>}
         </span>
+        {subjects && <span className="text-[11px] text-muted">{confidenceText(item)}</span>}
         {item.reasons.length > 0 && (
           <span className="flex flex-wrap gap-1">
             {item.reasons.map((r) => (
@@ -89,6 +93,7 @@ function Group({
             review={review}
             item={item}
             selected={item.photo_id === current}
+            subjects={framesSubjects(review)}
             onSelect={() => onSelect(item.photo_id)}
           />
         ))}
@@ -101,6 +106,7 @@ function Review({ review }: { review: ExportReview }) {
   const navigate = useNavigate()
   const discard = useDiscardReview()
   const update = useUpdateReviewItem(review.id)
+  useDetails({ key: framesSubjects(review) })
   const order = reviewOrder(review.items)
   const groups = reviewGroups(review.items)
   const [selected, setSelected] = useState<string | undefined>(order[0]?.photo_id)
@@ -184,7 +190,24 @@ function Review({ review }: { review: ExportReview }) {
 export function ReviewPage() {
   const { reviewId } = useParams()
   const review = useReview(reviewId)
+  const jobs = useJobs()
+  // Opened straight from Prepare: the review exists once its job is done (the job list refreshes it then).
+  const preparing = jobs.data?.find((j) => j.kind === 'prepare_export' && j.review_id === reviewId)
   if (review.isLoading) return <Loading />
+  if (preparing && isActive(preparing)) {
+    return (
+      <div className="flex max-w-xl flex-col gap-3 p-6" data-testid="review-preparing">
+        <h1 className="text-base font-semibold text-strong">Preparing the review…</h1>
+        <p className="text-sm">
+          {preparing.status === 'queued' ? 'Waiting for the style to be applied…' : 'Finding subjects and framing the photos…'}
+        </p>
+        <ProgressBar value={preparing.progress} label="Preparing" />
+        <p className="text-xs text-muted">
+          {preparing.completed} of {preparing.total} · Detection takes a few seconds per photo the first time.
+        </p>
+      </div>
+    )
+  }
   if (review.error instanceof ApiError && review.error.status === 404) {
     return (
       <EmptyState title="This review is done or was discarded.">

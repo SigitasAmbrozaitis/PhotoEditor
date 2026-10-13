@@ -452,7 +452,9 @@ class Reviews:
         focus = None
         if info is not None and framing.source is not None:
             geometry = edit.adjustments.geometry
-            candidates = found_candidates(info, geometry, photo.width, photo.height, framing.box)
+            candidates = found_candidates(
+                info, geometry, photo.width, photo.height, framing.box, framing.kind
+            )
             focus = focus_box(
                 self._library.with_af_point(photo).af_point, geometry, photo.width, photo.height
             )

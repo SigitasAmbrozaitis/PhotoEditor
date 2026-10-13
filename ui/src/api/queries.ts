@@ -41,6 +41,8 @@ import type {
   StyleUpdate,
   StyleUpdateFromPhoto,
   StyleVersionInfo,
+  ReviewFrames,
+  SubjectAnalysis,
   SubjectBox,
   SubjectInfo,
   ZoomInfo,
@@ -64,6 +66,7 @@ export const queryKeys = {
   photos: (q: PhotoQuery) => ['photos', q] as const,
   photo: (id: string) => ['photo', id] as const,
   subject: (id: string) => ['subject', id] as const,
+  analysis: (id: string) => ['analysis', id] as const,
   styles: ['styles'] as const,
   style: (id: string) => ['style', id] as const,
   styleHistory: (id: string) => ['style', id, 'history'] as const,
@@ -215,6 +218,29 @@ export function useSetSubject(photoId: string) {
     onSuccess: (info) => {
       client.setQueryData(queryKeys.subject(photoId), info)
       void client.invalidateQueries({ queryKey: ['export', 'plan'] })
+      void client.invalidateQueries({ queryKey: queryKeys.analysis(photoId) })
+    },
+  })
+}
+
+/** What detection found in the photo, normalized to the edited photo (the AI Analysis tab). Never detects. */
+export function useAnalysis(photoId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.analysis(photoId),
+    queryFn: () => api.get<SubjectAnalysis>(`/api/photos/${encodeURIComponent(photoId)}/analysis`),
+    enabled,
+  })
+}
+
+/** Run detection for one photo now (a few seconds the first time) and show the result. */
+export function useDetectNow(photoId: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      api.get<SubjectAnalysis>(`/api/photos/${encodeURIComponent(photoId)}/analysis`, { detect: true }),
+    onSuccess: (analysis) => {
+      client.setQueryData(queryKeys.analysis(photoId), analysis)
+      void client.invalidateQueries({ queryKey: queryKeys.subject(photoId) })
     },
   })
 }
@@ -583,6 +609,19 @@ export function useSetReviewSubject(reviewId: string) {
     // The subject is saved to the photo's edit: the crop tool's view of it is stale now.
     ({ photoId }) => void client.invalidateQueries({ queryKey: queryKeys.subject(photoId) }),
   )
+}
+
+/** The export's crop at each zoom step for one photo (refetched when its framing changes). */
+export function useReviewFrames(reviewId: string, photoId: string, revision: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['review', reviewId, 'frames', photoId, revision] as const,
+    queryFn: () =>
+      api.get<ReviewFrames>(
+        `/api/reviews/${encodeURIComponent(reviewId)}/items/${encodeURIComponent(photoId)}/frames`,
+      ),
+    enabled,
+    staleTime: Infinity,
+  })
 }
 
 export function useExportReview(reviewId: string) {

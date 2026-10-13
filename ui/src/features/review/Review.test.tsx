@@ -1,8 +1,15 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { resetDetailsForTests } from '../../hooks/useDetails'
+import * as fx from '../../test/fixtures'
 import { mockApi, renderApp, type ApiCall } from '../../test/render'
 
 const REVIEW = '/reviews/abcdef123456'
+
+beforeEach(() => {
+  localStorage.clear()
+  resetDetailsForTests()
+})
 
 const sent = (calls: ApiCall[], method: string, path: string) =>
   calls.filter((c) => c.method === method && c.path.startsWith(path)).map((c) => c.body)
@@ -199,5 +206,105 @@ describe('Reviews list', () => {
     mockApi({ 'GET /api/reviews/:id': () => Response.json({ detail: 'not found' }, { status: 404 }) })
     renderApp(REVIEW)
     expect(await screen.findByText('This review is done or was discarded.')).toBeInTheDocument()
+  })
+})
+
+describe('Review details, frame and live zoom (feedback)', () => {
+  const rect = { left: 0, top: 0, width: 200, height: 100, right: 200, bottom: 100, x: 0, y: 0, toJSON: () => ({}) }
+
+  it('shows what detection found with confidence by default; Hide details and D hide it', async () => {
+    mockApi()
+    const { user } = renderApp(REVIEW)
+    const panel = await screen.findByRole('region', { name: 'Review of DSCF1002.RAF' })
+    expect(within(panel).getByText('car 84 %', { selector: 'span.rounded-full' })).toBeInTheDocument() // by the tag
+    const overlay = within(panel).getByTestId('detection-overlay')
+    expect(within(overlay).getByText('truck 80 %')).toBeInTheDocument()
+    expect(within(overlay).getByText('stands out 31 %')).toBeInTheDocument()
+    expect(within(overlay).getByTestId('focus-point')).toBeInTheDocument()
+    // The cards show the confidence too.
+    expect(within(screen.getByRole('region', { name: 'Check' })).getAllByText('car 84 %').length).toBeGreaterThan(0)
+
+    await user.click(within(panel).getByRole('button', { name: /Hide details/ }))
+    expect(within(panel).queryByTestId('detection-overlay')).not.toBeInTheDocument()
+    await user.keyboard('d')
+    expect(within(panel).getByTestId('detection-overlay')).toBeInTheDocument()
+  })
+
+  it('dragging the frame saves its position; Re-center goes back to the subject', async () => {
+    const calls = mockApi()
+    const { user } = renderApp(REVIEW)
+    const panel = await screen.findByRole('region', { name: 'Review of DSCF1002.RAF' })
+    within(panel).getByTestId('review-photo').getBoundingClientRect = () => rect
+    const frame = within(panel).getByTestId('review-frame')
+    fireEvent.mouseDown(frame, { clientX: 140, clientY: 50 })
+    fireEvent.mouseMove(window, { clientX: 100, clientY: 50 })
+    // Moves while dragging (display only), saved on release.
+    expect(parseFloat(frame.style.left)).toBeCloseTo(25)
+    expect(sent(calls, 'PATCH', '/api/reviews/abcdef123456/items/p002')).toEqual([])
+    fireEvent.mouseUp(window, { clientX: 100, clientY: 50 })
+    await waitFor(() => expect(sent(calls, 'PATCH', '/api/reviews/abcdef123456/items/p002')).toHaveLength(1))
+    expect(sent(calls, 'PATCH', '/api/reviews/abcdef123456/items/p002')[0]).toEqual({ position: { x: 0.5, y: 0.5 } })
+    await user.click(await within(panel).findByRole('button', { name: /Re-center on subject/ }))
+    await waitFor(() => expect(sent(calls, 'PATCH', '/api/reviews/abcdef123456/items/p002')).toHaveLength(2))
+    expect(sent(calls, 'PATCH', '/api/reviews/abcdef123456/items/p002')[1]).toEqual({ position: null })
+  })
+
+  it('the frame follows the zoom slider live and the zoom is saved on release', async () => {
+    const calls = mockApi()
+    const { panel } = await openPhoto('DSCF1005.RAF')
+    await waitFor(() => expect(calls.some((c) => c.path.endsWith('/items/p005/frames'))).toBe(true))
+    const frame = within(panel).getByTestId('review-frame')
+    const slider = within(panel).getByRole('slider', { name: 'Zoom slider' })
+    await waitFor(() => {
+      fireEvent.change(slider, { target: { value: '2' } })
+      // The fake's frame at 2×: a quarter of the photo wide around the crop's center (0.7).
+      expect(frame.style.width).toBe('25%')
+    })
+    expect(sent(calls, 'PATCH', '/api/reviews/abcdef123456/items/p005')).toEqual([])
+    fireEvent.mouseUp(slider)
+    await waitFor(() => expect(sent(calls, 'PATCH', '/api/reviews/abcdef123456/items/p005')).toEqual([{ zoom: 2 }]))
+  })
+
+  it('a review framed on the center has no subject tools', async () => {
+    mockApi({
+      'GET /api/reviews/:id': () => {
+        const review = fx.makeReview()
+        return { ...review, settings: { ...review.settings, aspect: { ...review.settings.aspect, anchor: 'center', zoom: 'off' } } }
+      },
+    })
+    renderApp(REVIEW)
+    const panel = await screen.findByRole('region', { name: 'Review of DSCF1002.RAF' })
+    expect(within(panel).queryByRole('button', { name: /Set subject/ })).not.toBeInTheDocument()
+    expect(within(panel).queryByRole('button', { name: /Use the truck/ })).not.toBeInTheDocument()
+    expect(within(panel).queryByTestId('detection-overlay')).not.toBeInTheDocument()
+  })
+
+  it('the review opened straight from Prepare shows the job until it is ready', async () => {
+    mockApi({
+      'GET /api/reviews/:id': () => Response.json({ detail: 'not found' }, { status: 404 }),
+      'GET /api/jobs': () => [
+        fx.makeJob({ id: 'j0042', kind: 'prepare_export', status: 'running', progress: 0.5, completed: 3, total: 6, review_id: 'abcdef123456' }),
+      ],
+    })
+    renderApp(REVIEW)
+    expect(await screen.findByRole('heading', { name: 'Preparing the review…' })).toBeInTheDocument()
+    expect(screen.getByText(/3 of 6/)).toBeInTheDocument()
+  })
+
+  it('the Prepare dialog frames on the subject unless switched off', async () => {
+    const calls = mockApi()
+    const { user } = renderApp('/library', { selection: ['p001'] })
+    await user.click(await screen.findByRole('button', { name: /Prepare export…/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Prepare 1 photo for export' })
+    const frameOnSubject = await within(dialog).findByRole('switch', { name: 'Frame the crop on the subject' })
+    expect(frameOnSubject).toBeChecked()
+    await user.click(frameOnSubject)
+    await user.type(within(dialog).getByRole('textbox', { name: /Destination/ }), 'C:/Exports/print')
+    const prepare = within(dialog).getByRole('button', { name: 'Prepare' })
+    await waitFor(() => expect(prepare).toBeEnabled())
+    await user.click(prepare)
+    await screen.findByRole('heading', { name: 'Review · instagram-portrait' })
+    const [body] = sent(calls, 'POST', '/api/jobs') as { settings: { aspect: Record<string, unknown> } }[]
+    expect(body!.settings.aspect).toMatchObject({ anchor: 'center', zoom: 'off' })
   })
 })

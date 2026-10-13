@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import type { ApplyAndExportRequest, ApplyStyleRequest } from '../../api/types'
+import type { ApplyStyleRequest, PrepareExportRequest } from '../../api/types'
 import { library } from '../../test/fixtures'
 import { mockApi, renderApp, type ApiCall } from '../../test/render'
 
@@ -12,8 +12,8 @@ async function openWizard(selection: string[]) {
   return { ...utils, calls, dialog: within(dialog) }
 }
 
-describe('Apply & export wizard (full use loop)', () => {
-  it('goes style → export → review → job', async () => {
+describe('Apply style wizard (full use loop)', () => {
+  it('goes style → export → confirm → the review (Phase 6c: it ends in the review)', async () => {
     const { user, calls, dialog } = await openWizard(['p001', 'p002', 'p003'])
     const next = dialog.getByRole('button', { name: 'Next' })
     expect(next).toBeDisabled() // no style chosen yet
@@ -23,6 +23,8 @@ describe('Apply & export wizard (full use loop)', () => {
 
     // Export step: destination required.
     expect(await dialog.findByRole('combobox', { name: 'Export preset' })).toHaveValue('instagram-portrait')
+    // The review frames each photo's subject unless that is switched off.
+    expect(dialog.getByRole('switch', { name: 'Frame the crop on the subject' })).toBeChecked()
     expect(dialog.getByRole('button', { name: 'Next' })).toBeDisabled()
     await user.type(dialog.getByRole('textbox', { name: 'Destination folder' }), 'C:/Exports/ig')
     // The destination is checked and the export planned before Next is allowed.
@@ -30,34 +32,35 @@ describe('Apply & export wizard (full use loop)', () => {
     await waitFor(() => expect(dialog.getByRole('button', { name: 'Next' })).toBeEnabled())
     await user.click(dialog.getByRole('button', { name: 'Next' }))
 
-    // Review.
+    // Confirm.
     expect(dialog.getByText('Moody Forest')).toBeInTheDocument()
     expect(dialog.getByText('Instagram portrait (4:5)')).toBeInTheDocument()
     expect(dialog.getByText(/→ C:\/Exports\/ig/)).toBeInTheDocument()
-    await user.click(dialog.getByRole('button', { name: 'Apply & export' }))
+    await user.click(dialog.getByRole('button', { name: 'Apply & prepare for review' }))
 
     const isJob = (c: ApiCall) => c.method === 'POST' && c.path === '/api/jobs'
     await waitFor(() => expect(calls.some(isJob)).toBe(true))
-    const body = calls.find(isJob)!.body as ApplyAndExportRequest
+    const body = calls.find(isJob)!.body as PrepareExportRequest
     expect(body).toMatchObject({
-      kind: 'apply_and_export',
+      kind: 'prepare_export',
       photo_ids: ['p001', 'p002', 'p003'],
       style_id: 'moody-forest',
       preset_id: 'instagram-portrait',
       destination: 'C:/Exports/ig',
     })
     expect(body.settings.size?.width).toBe(1080)
-    // Lands on the new job.
-    expect(await screen.findByRole('heading', { name: 'New apply_and_export job' })).toBeInTheDocument()
+    expect(body.settings.aspect?.anchor).toBe('subject')
+    // Lands on the review.
+    expect(await screen.findByRole('heading', { name: 'Review · instagram-portrait' })).toBeInTheDocument()
   })
 
   it('can apply a style without exporting', async () => {
     const { user, calls, dialog } = await openWizard(['p001', 'p002'])
     await user.click(await dialog.findByRole('radio', { name: /Warm Film/ }))
     await user.click(dialog.getByRole('button', { name: 'Next' }))
-    await user.click(dialog.getByRole('switch', { name: 'Export after applying the style' }))
+    await user.click(dialog.getByRole('switch', { name: 'Prepare an export after applying the style' }))
     await user.click(dialog.getByRole('button', { name: 'Next' }))
-    expect(dialog.getByText('No export (style is applied only)')).toBeInTheDocument()
+    expect(dialog.getByText('No export (the style is applied only)')).toBeInTheDocument()
     await user.click(dialog.getByRole('button', { name: 'Apply style' }))
     await waitFor(() => expect(calls.some((c) => c.method === 'POST')).toBe(true))
     const body = calls.find((c) => c.method === 'POST')!.body as ApplyStyleRequest
@@ -70,7 +73,7 @@ describe('Apply & export wizard (full use loop)', () => {
     expect(dialog.getByText(/series shot in the same light with changing settings/)).toBeInTheDocument()
     await user.click(dialog.getByRole('switch', { name: 'Even out these photos' }))
     await user.click(dialog.getByRole('button', { name: 'Next' }))
-    await user.click(dialog.getByRole('switch', { name: 'Export after applying the style' }))
+    await user.click(dialog.getByRole('switch', { name: 'Prepare an export after applying the style' }))
     await user.click(dialog.getByRole('button', { name: 'Next' }))
     expect(dialog.getByText(/evened out as a group/)).toBeInTheDocument()
     await user.click(dialog.getByRole('button', { name: 'Apply style' }))

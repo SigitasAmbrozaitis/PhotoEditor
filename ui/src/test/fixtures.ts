@@ -19,6 +19,7 @@ import type {
   StyleDiff,
   StyleSummary,
   StyleVersionInfo,
+  SubjectAnalysis,
   SubjectInfo,
 } from '../api/types'
 
@@ -481,8 +482,10 @@ const reviewItem = (n: number, overrides: Partial<ReviewItem>): ReviewItem => ({
   subject_score: 0.84,
   subject_box: { left: 0.6, top: 0.4, right: 0.8, bottom: 0.55 },
   candidates: [
-    { index: 0, box: { left: 0.6, top: 0.4, right: 0.8, bottom: 0.55 }, kind: 'car', score: 0.84, label: 'car', chosen: true },
+    { index: 0, box: { left: 0.6, top: 0.4, right: 0.8, bottom: 0.55 }, kind: 'car', score: 0.84, label: 'car', recognized: true, chosen: true },
   ],
+  focus: { left: 0.66, top: 0.42, right: 0.72, bottom: 0.5 },
+  position: null,
   crop: { left: 0.45, top: 0, right: 0.95, bottom: 1 },
   zoom: 1,
   auto_zoom: 1,
@@ -516,8 +519,9 @@ export function makeReview(): ExportReview {
       status: 'check',
       reasons: [{ code: 'ambiguous', text: 'another car scores 0.80 (the car: 0.84)' }],
       candidates: [
-        { index: 0, box: { left: 0.6, top: 0.4, right: 0.8, bottom: 0.55 }, kind: 'car', score: 0.84, label: 'car', chosen: true },
-        { index: 1, box: { left: 0.05, top: 0.4, right: 0.25, bottom: 0.55 }, kind: 'car', score: 0.8, label: 'truck', chosen: false },
+        { index: 0, box: { left: 0.6, top: 0.4, right: 0.8, bottom: 0.55 }, kind: 'car', score: 0.84, label: 'car', recognized: true, chosen: true },
+        { index: 1, box: { left: 0.05, top: 0.4, right: 0.25, bottom: 0.55 }, kind: 'car', score: 0.8, label: 'truck', recognized: true, chosen: false },
+        { index: 2, box: { left: 0.4, top: 0.1, right: 0.5, bottom: 0.2 }, kind: 'salient', score: 0.31, label: null, recognized: false, chosen: false },
       ],
     }),
     reviewItem(3, {
@@ -552,9 +556,27 @@ export function makeReview(): ExportReview {
     updated_at: '2026-10-13T10:00:00Z',
     preset_id: 'instagram-portrait',
     style_id: null,
-    settings: presets[0]!.settings,
+    // Framed on each photo's subject, as a review is by default.
+    settings: { ...presets[0]!.settings, aspect: { ...presets[0]!.settings.aspect, anchor: 'subject', zoom: 'auto' } },
     destination: 'C:/Exports/ig',
     items,
     counts: reviewCounts(items),
   }
+}
+
+/** The AI Analysis of a photo in the fake backend: the detected car plus a person and a guess. */
+export const analysis: SubjectAnalysis = {
+  detected: true,
+  source: 'detected',
+  kind: 'car',
+  score: 0.84,
+  box: { left: 0.6, top: 0.4, right: 0.8, bottom: 0.55 },
+  candidates: [
+    { index: 0, box: { left: 0.6, top: 0.4, right: 0.8, bottom: 0.55 }, kind: 'car', score: 0.84, label: 'truck', recognized: true, chosen: true },
+    { index: 1, box: { left: 0.1, top: 0.6, right: 0.2, bottom: 0.9 }, kind: 'person', score: 0.2, label: 'person', recognized: true, chosen: false },
+    { index: 2, box: { left: 0.4, top: 0.1, right: 0.5, bottom: 0.2 }, kind: 'salient', score: 0.12, label: null, recognized: false, chosen: false },
+  ],
+  focus: { left: 0.66, top: 0.42, right: 0.72, bottom: 0.5 },
+  detector: 'yolox_s-test',
+  notes: [],
 }

@@ -44,6 +44,7 @@ export function defaultHandlers(): Record<string, Handler> {
   const destinations: string[] = []
   // Subjects set by hand, per photo id; the others are fx.detectedSubject.
   const manual = new Map<string, SubjectBox>()
+  const detected = new Set<string>()
   const photoIdOf = (path: string) => path.split('/')[3]!
   const subjectOf = (id: string): SubjectInfo => {
     const box = manual.get(id)
@@ -135,6 +136,16 @@ export function defaultHandlers(): Record<string, Handler> {
       return next
     },
     'GET /api/photos/:id/subject': ({ path }) => subjectOf(photoIdOf(path)),
+    // Detected already, except p003 until it is asked to detect.
+    'GET /api/photos/:id/analysis': ({ path, query }) => {
+      const id = photoIdOf(path)
+      if (id === 'p003' && query.get('detect') !== 'true' && !detected.has(id)) {
+        return { ...fx.analysis, detected: false, source: 'none', kind: null, score: null, box: null, candidates: [], notes: ['Not detected yet.'] }
+      }
+      detected.add(id)
+      const box = manual.get(id)
+      return box ? { ...fx.analysis, source: 'manual', kind: null, score: null, box } : fx.analysis
+    },
     'PUT /api/photos/:id/subject': ({ path, body }) => {
       const box = (body as { box: SubjectBox | null }).box
       if (box) manual.set(photoIdOf(path), box)
@@ -280,6 +291,12 @@ export function defaultHandlers(): Record<string, Handler> {
           next = { ...next, zoom, zoom_override: update.zoom ?? null, approved: true }
           next.decode = zoom > item.limits.fast ? 'full' : 'half'
         }
+        if ('position' in update) {
+          const position = update.position ?? null
+          const w = next.crop.right - next.crop.left
+          const left = position ? Math.min(1 - w, Math.max(0, position.x - w / 2)) : item.crop.left
+          next = { ...next, position, approved: true, crop: { ...next.crop, left, right: left + w } }
+        }
         if (update.approved !== undefined && update.approved !== null) next = { ...next, approved: update.approved }
         return next
       })
@@ -313,6 +330,22 @@ export function defaultHandlers(): Record<string, Handler> {
       const items = review.items.filter((i) => !ids.has(i.photo_id))
       review = { ...review, items, counts: fx.reviewCounts(items) }
       return Response.json(newJob('export', [...ids]), { status: 201 })
+    },
+    // The crop at each zoom step: a frame half the photo wide at 1×, shrinking around its center.
+    'GET /api/reviews/:id/items/:pid/frames': ({ path }) => {
+      const photoId = path.split('/')[5]!
+      const item = review?.items.find((i) => i.photo_id === photoId)
+      if (!item) return notFound()
+      const cx = (item.crop.left + item.crop.right) / 2
+      const steps = Math.round((item.limits.quality - 1) / 0.01)
+      return {
+        photo_id: photoId,
+        frames: Array.from({ length: steps + 1 }, (_, i) => {
+          const zoom = 1 + (item.limits.quality - 1) * (i / steps)
+          const half = 0.25 / zoom
+          return { zoom: Math.round(zoom * 10000) / 10000, crop: { left: cx - half, top: 0.5 - 0.5 / zoom, right: cx + half, bottom: 0.5 + 0.5 / zoom } }
+        }),
+      }
     },
     'GET /api/review-settings': () => reviewSettings,
     'PUT /api/review-settings': ({ body }) => {

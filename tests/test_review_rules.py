@@ -194,3 +194,15 @@ def test_found_candidates() -> None:
     # Cropped to the right half of the photo: the boxes at its left edge are gone.
     cropped = Geometry.model_validate({"crop": {"left": 0.5, "top": 0, "right": 1, "bottom": 1}})
     assert [c.index for c in found_candidates(info, cropped, 6000, 4000, None)] == [0]
+
+
+def test_only_the_subjects_kind_is_marked_as_the_subject() -> None:
+    found = [
+        SubjectCandidate(box=SUBJECT, kind=SubjectKind.CAR, score=0.8),
+        SubjectCandidate(box=INSIDE, kind=SubjectKind.FACE, score=0.3),  # the driver, inside the car's box
+    ]
+    info = SubjectInfo(source=SubjectSource.DETECTED, box=SUBJECT, kind=SubjectKind.CAR, candidates=found)
+    shown = found_candidates(info, Geometry(), 6000, 4000, SUBJECT, SubjectKind.CAR)
+    assert [(c.kind, c.chosen) for c in shown] == [(SubjectKind.CAR, True), (SubjectKind.FACE, False)]
+    # A box set by hand has no kind: whatever lies inside it is part of it.
+    assert all(c.chosen for c in found_candidates(info, Geometry(), 6000, 4000, SUBJECT))

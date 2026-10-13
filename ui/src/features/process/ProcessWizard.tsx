@@ -11,8 +11,10 @@ import { PresetPicker } from '../export/PresetPicker'
 import { usePresetSettings } from '../export/usePresetSettings'
 import { ExportSettingsForm } from '../export/ExportSettingsForm'
 import { exportSummary } from '../export/exportSummary'
+import { withSubjectFraming } from '../review/reviewWords'
+import { SubjectFramingSwitch } from '../review/subjectFraming'
 
-const STEPS = ['Style', 'Export', 'Review'] as const
+const STEPS = ['Style', 'Export', 'Confirm'] as const
 type Step = (typeof STEPS)[number]
 
 function StepIndicator({ current }: { current: Step }) {
@@ -39,7 +41,8 @@ function StepIndicator({ current }: { current: Step }) {
   )
 }
 
-/** The full use loop: selected photos → style → export preset → destination → confirm → job. */
+/** The full use loop: selected photos → style → export preset → destination → confirm → the style job, then
+ * the pre-export review (Phase 6c feedback: the wizard ends in the review instead of exporting directly). */
 export function ProcessWizard({
   open,
   onOpenChange,
@@ -61,10 +64,12 @@ export function ProcessWizard({
   const [doExport, setDoExport] = useState(true)
   const [destination, setDestination] = useState('')
   const [customize, setCustomize] = useState(false)
+  const [frameOnSubject, setFrameOnSubject] = useState(true)
 
   const count = photoIds.length
   const style = styles.data?.find((s) => s.id === styleId)
-  const { settings, preset } = exportState
+  const { preset } = exportState
+  const settings = exportState.settings ? withSubjectFraming(exportState.settings, frameOnSubject) : null
   const status = useDestinationStatus(destination)
   const { request: exportRequest, plan } = useExportRequest(photoIds, preset?.id, doExport ? settings : null, status)
   const exportReady = !doExport || (exportRequest !== null && !plan.isError)
@@ -72,20 +77,33 @@ export function ProcessWizard({
 
   const confirm = () => {
     if (!styleId) return
-    const request =
-      doExport && exportRequest
-        ? { ...exportRequest, kind: 'apply_and_export' as const, style_id: styleId, even_out: evenOut }
-        : { kind: 'apply_style' as const, photo_ids: photoIds, style_id: styleId, even_out: evenOut }
-    createJob.mutate(request, {
-      onSuccess: (job) => {
-        onOpenChange(false)
-        void navigate(`/jobs/${job.id}`)
+    if (doExport && exportRequest) {
+      // The style is applied first (its own job), then the photos are framed for the review.
+      const { photo_ids, preset_id, settings: framed, destination: dest } = exportRequest
+      createJob.mutate(
+        { kind: 'prepare_export', photo_ids, preset_id, settings: framed, destination: dest, style_id: styleId, even_out: evenOut },
+        {
+          onSuccess: (job) => {
+            onOpenChange(false)
+            void navigate(`/reviews/${job.review_id}`)
+          },
+        },
+      )
+      return
+    }
+    createJob.mutate(
+      { kind: 'apply_style', photo_ids: photoIds, style_id: styleId, even_out: evenOut },
+      {
+        onSuccess: (job) => {
+          onOpenChange(false)
+          void navigate(`/jobs/${job.id}`)
+        },
       },
-    })
+    )
   }
 
   const back = () => setStep(STEPS[Math.max(0, STEPS.indexOf(step) - 1)] ?? 'Style')
-  const next = () => setStep(STEPS[Math.min(STEPS.length - 1, STEPS.indexOf(step) + 1)] ?? 'Review')
+  const next = () => setStep(STEPS[Math.min(STEPS.length - 1, STEPS.indexOf(step) + 1)] ?? 'Confirm')
 
   return (
     <Dialog
@@ -100,13 +118,13 @@ export function ProcessWizard({
             Cancel
           </Button>
           {step !== 'Style' && <Button onClick={back}>Back</Button>}
-          {step !== 'Review' ? (
+          {step !== 'Confirm' ? (
             <Button variant="primary" disabled={!canNext} onClick={next}>
               Next
             </Button>
           ) : (
             <Button variant="primary" disabled={createJob.isPending || count === 0} onClick={confirm}>
-              {doExport ? 'Apply & export' : 'Apply style'}
+              {doExport ? 'Apply & prepare for review' : 'Apply style'}
             </Button>
           )}
         </>
@@ -154,7 +172,10 @@ export function ProcessWizard({
 
       {step === 'Export' && (
         <div className="flex flex-col gap-4">
-          <Switch label="Export after applying the style" checked={doExport} onCheckedChange={setDoExport} />
+          <Switch label="Prepare an export after applying the style" checked={doExport} onCheckedChange={setDoExport} />
+          <p className="-mt-3 pl-10 text-xs text-muted">
+            The photos are framed as the export will be and the review opens: nothing is written until you export there.
+          </p>
           {doExport &&
             (exportState.presets.data && settings ? (
               <>
@@ -164,6 +185,7 @@ export function ProcessWizard({
                   modified={exportState.modified}
                   onChange={exportState.choosePreset}
                 />
+                <SubjectFramingSwitch settings={settings} on={frameOnSubject} onChange={setFrameOnSubject} />
                 <DestinationField value={destination} onChange={setDestination} status={status} />
                 {exportRequest && <ExportPlanTable plan={plan} />}
                 <button
@@ -173,7 +195,15 @@ export function ProcessWizard({
                 >
                   {customize ? 'Hide export settings' : 'Customize export settings…'}
                 </button>
-                {customize && <ExportSettingsForm value={settings} onChange={exportState.editSettings} />}
+                {customize && (
+                  <ExportSettingsForm
+                    value={settings}
+                    onChange={(next) => {
+                      setFrameOnSubject(next.aspect.anchor === 'subject')
+                      exportState.editSettings(next)
+                    }}
+                  />
+                )}
                 <p className="font-mono text-xs text-muted">{exportSummary(settings, destination)}</p>
               </>
             ) : (
@@ -182,7 +212,7 @@ export function ProcessWizard({
         </div>
       )}
 
-      {step === 'Review' && (
+      {step === 'Confirm' && (
         <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
           <dt className="text-muted">Photos</dt>
           <dd>{count}</dd>
@@ -191,7 +221,7 @@ export function ProcessWizard({
             {style?.name}
             {evenOut && ', evened out as a group'}
           </dd>
-          <dt className="text-muted">Export</dt>
+          <dt className="text-muted">Then</dt>
           <dd>
             {doExport && settings ? (
               <>
@@ -202,7 +232,7 @@ export function ProcessWizard({
                 <p className="font-mono text-xs text-muted">{exportSummary(settings, destination)}</p>
               </>
             ) : (
-              'No export (style is applied only)'
+              'No export (the style is applied only)'
             )}
           </dd>
         </dl>
