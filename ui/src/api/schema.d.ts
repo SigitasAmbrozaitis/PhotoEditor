@@ -759,6 +759,146 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/review-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Review Settings */
+        get: operations["review_settings_api_review_settings_get"];
+        /**
+         * Set Review Settings
+         * @description Save the rules; open reviews are sorted again by them.
+         */
+        put: operations["set_review_settings_api_review_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Reviews */
+        get: operations["list_reviews_api_reviews_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reviews/{review_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Review
+         * @description The review, refreshed against the photos' current edits and subjects.
+         */
+        get: operations["get_review_api_reviews__review_id__get"];
+        put?: never;
+        post?: never;
+        /** Discard Review */
+        delete: operations["discard_review_api_reviews__review_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reviews/{review_id}/items/{photo_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Review Item
+         * @description Set a photo's zoom (null = automatic; a zoom approves it) or approve it.
+         */
+        patch: operations["update_review_item_api_reviews__review_id__items__photo_id__patch"];
+        trace?: never;
+    };
+    "/api/reviews/{review_id}/items/{photo_id}/subject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Review Subject
+         * @description Choose a candidate, draw a box, or go back to the detected subject; saved to the photo's edit, and
+         *     the photo is approved.
+         */
+        put: operations["set_review_subject_api_reviews__review_id__items__photo_id__subject_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reviews/{review_id}/items/{photo_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review Preview
+         * @description The photo framed as the export will frame it (800 px long edge).
+         */
+        get: operations["review_preview_api_reviews__review_id__items__photo_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reviews/{review_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Review
+         * @description Export the approved photos (scope ``approved``) or all but the unusable ones (``all``).
+         */
+        post: operations["export_review_api_reviews__review_id__export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs": {
         parameters: {
             query?: never;
@@ -771,7 +911,8 @@ export interface paths {
         put?: never;
         /**
          * Create Job
-         * @description Apply a style, export, apply then export, or detect subjects.
+         * @description Apply a style, export, apply then export, detect subjects, or prepare an export for review (the job's
+         *     ``review_id`` names the review).
          */
         post: operations["create_job_api_jobs_post"];
         delete?: never;
@@ -1393,6 +1534,40 @@ export interface components {
             settings: components["schemas"]["ExportSettings-Input"];
             /** Destination */
             destination: string;
+        };
+        /**
+         * ExportReview
+         * @description A prepared export: what it will write, photo by photo, and the user's decisions so far.
+         */
+        ExportReview: {
+            /** Id */
+            id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Preset Id */
+            preset_id: string | null;
+            /**
+             * Style Id
+             * @description The style applied before preparing, if any.
+             */
+            style_id: string | null;
+            settings: components["schemas"]["ExportSettings-Output"];
+            /**
+             * Destination
+             * @description The destination folder, absolute.
+             */
+            destination: string;
+            /** Items */
+            items: components["schemas"]["ReviewItem"][];
+            readonly counts: components["schemas"]["ReviewCounts"];
         };
         /**
          * ExportSettings
@@ -2565,6 +2740,282 @@ export interface components {
              */
             path: string;
         };
+        /** ReviewCandidate */
+        ReviewCandidate: {
+            /**
+             * Index
+             * @description Position in the photo's detected candidates (to choose it).
+             */
+            index: number;
+            /** @description Normalized to the edited photo. */
+            box: components["schemas"]["SubjectBox"];
+            kind: components["schemas"]["SubjectKind"];
+            /** Score */
+            score: number;
+            /** Label */
+            label: string | null;
+            /**
+             * Chosen
+             * @description This candidate is the subject the crop frames.
+             * @default false
+             */
+            chosen: boolean;
+        };
+        /** ReviewCounts */
+        ReviewCounts: {
+            /** Total */
+            total: number;
+            /** Ready */
+            ready: number;
+            /**
+             * Check
+             * @description Check photos not approved yet.
+             */
+            check: number;
+            /**
+             * Approved
+             * @description Check photos the user approved.
+             */
+            approved: number;
+            /** Unusable */
+            unusable: number;
+        };
+        /** ReviewExportRequest */
+        ReviewExportRequest: {
+            /** @default approved */
+            scope: components["schemas"]["ReviewExportScope"];
+        };
+        /**
+         * ReviewExportScope
+         * @enum {string}
+         */
+        ReviewExportScope: "approved" | "all";
+        /** ReviewItem */
+        ReviewItem: {
+            /** Photo Id */
+            photo_id: string;
+            /** Filename */
+            filename: string;
+            status: components["schemas"]["ReviewStatus"];
+            /** Reasons */
+            reasons: components["schemas"]["ReviewReason"][];
+            /**
+             * Approved
+             * @description The user approved this framing (Check photos).
+             * @default false
+             */
+            approved: boolean;
+            /**
+             * Approved Framing
+             * @description The framing the approval was given for; a different one drops it.
+             */
+            approved_framing: string | null;
+            /**
+             * Framing
+             * @description Identifies the framing (crop, output size, subject) to compare.
+             */
+            framing: string;
+            /** @default none */
+            subject: components["schemas"]["SubjectSource"];
+            subject_kind: components["schemas"]["SubjectKind"] | null;
+            /** Subject Score */
+            subject_score: number | null;
+            /** @description Normalized to the edited photo. */
+            subject_box: components["schemas"]["SubjectBox"] | null;
+            /** Candidates */
+            candidates: components["schemas"]["ReviewCandidate"][];
+            /** @description The export's crop, normalized to the edited photo. */
+            crop: components["schemas"]["CropRect-Output"];
+            /**
+             * Zoom
+             * @description The zoom the export uses.
+             */
+            zoom: number;
+            /**
+             * Auto Zoom
+             * @description What automatic zoom chose (1 when it is off or not used).
+             */
+            auto_zoom: number;
+            /**
+             * Zoom Override
+             * @description Set in the review.
+             */
+            zoom_override: number | null;
+            limits: components["schemas"]["ZoomLimits"];
+            decode: components["schemas"]["DecodeUsed"];
+            /**
+             * Width
+             * @description Output width.
+             */
+            width: number;
+            /**
+             * Height
+             * @description Output height.
+             */
+            height: number;
+            /** Warnings */
+            warnings: string[];
+            /**
+             * Revision
+             * @description Changes whenever the framing preview changes (for caching).
+             */
+            revision: string;
+        };
+        /**
+         * ReviewItemUpdate
+         * @description Fields left out stay as they are. ``zoom: null`` goes back to the automatic zoom.
+         */
+        ReviewItemUpdate: {
+            /** Zoom */
+            zoom?: number | null;
+            /** Approved */
+            approved?: boolean | null;
+        };
+        /** ReviewReason */
+        ReviewReason: {
+            code: components["schemas"]["ReviewRule"];
+            /**
+             * Text
+             * @description The reason in words, for this photo.
+             */
+            text: string;
+        };
+        /**
+         * ReviewRule
+         * @enum {string}
+         */
+        ReviewRule: "no_subject" | "uncertain" | "ambiguous" | "cut_off" | "zoom_limit" | "changed" | "unusable";
+        /**
+         * ReviewSettings
+         * @description How strict the review is: which rules put a photo in Check, and their thresholds.
+         */
+        "ReviewSettings-Input": {
+            /**
+             * No Subject
+             * @description Check photos without a recognized subject.
+             * @default true
+             */
+            no_subject: boolean;
+            /**
+             * Uncertain
+             * @description Check detected subjects scoring below min_score.
+             * @default true
+             */
+            uncertain: boolean;
+            /**
+             * Min Score
+             * @description The lowest score trusted without a look.
+             * @default 0.5
+             */
+            min_score: number;
+            /**
+             * Ambiguous
+             * @description Check photos with a rival nearly as good.
+             * @default true
+             */
+            ambiguous: boolean;
+            /**
+             * Ambiguity
+             * @description A rival scoring at least this share of the subject's score makes the photo ambiguous.
+             * @default 0.75
+             */
+            ambiguity: number;
+            /**
+             * Cut Off
+             * @description Check photos whose crop can't hold the whole subject.
+             * @default true
+             */
+            cut_off: boolean;
+            /**
+             * Zoom Limit
+             * @description Check photos whose subject stays too small even at the quality limit.
+             * @default true
+             */
+            zoom_limit: boolean;
+        };
+        /**
+         * ReviewSettings
+         * @description How strict the review is: which rules put a photo in Check, and their thresholds.
+         */
+        "ReviewSettings-Output": {
+            /**
+             * No Subject
+             * @description Check photos without a recognized subject.
+             * @default true
+             */
+            no_subject: boolean;
+            /**
+             * Uncertain
+             * @description Check detected subjects scoring below min_score.
+             * @default true
+             */
+            uncertain: boolean;
+            /**
+             * Min Score
+             * @description The lowest score trusted without a look.
+             * @default 0.5
+             */
+            min_score: number;
+            /**
+             * Ambiguous
+             * @description Check photos with a rival nearly as good.
+             * @default true
+             */
+            ambiguous: boolean;
+            /**
+             * Ambiguity
+             * @description A rival scoring at least this share of the subject's score makes the photo ambiguous.
+             * @default 0.75
+             */
+            ambiguity: number;
+            /**
+             * Cut Off
+             * @description Check photos whose crop can't hold the whole subject.
+             * @default true
+             */
+            cut_off: boolean;
+            /**
+             * Zoom Limit
+             * @description Check photos whose subject stays too small even at the quality limit.
+             * @default true
+             */
+            zoom_limit: boolean;
+        };
+        /**
+         * ReviewStatus
+         * @enum {string}
+         */
+        ReviewStatus: "ready" | "check" | "unusable";
+        /**
+         * ReviewSubjectUpdate
+         * @description Choose a detected candidate (``candidate``), draw a box (``box``, normalized to the edited photo), or
+         *     ``box: null`` to go back to the detected subject.
+         */
+        ReviewSubjectUpdate: {
+            /** Candidate */
+            candidate?: number | null;
+            box?: components["schemas"]["SubjectBox"] | null;
+        };
+        /** ReviewSummary */
+        ReviewSummary: {
+            /** Id */
+            id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Preset Id */
+            preset_id: string | null;
+            /** Destination */
+            destination: string;
+            counts: components["schemas"]["ReviewCounts"];
+        };
         /** RuleChange */
         RuleChange: {
             /** Type */
@@ -3527,6 +3978,19 @@ export interface components {
          * @enum {integer}
          */
         ZoomLevel: 50 | 100;
+        /** ZoomLimits */
+        ZoomLimits: {
+            /**
+             * Fast
+             * @description The highest zoom a half-size decode still covers (fast export).
+             */
+            fast: number;
+            /**
+             * Quality
+             * @description The highest zoom without enlarging (the crop ≥ the output).
+             */
+            quality: number;
+        };
     };
     responses: never;
     parameters: never;
@@ -5045,6 +5509,281 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_settings_api_review_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewSettings-Output"];
+                };
+            };
+        };
+    };
+    set_review_settings_api_review_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewSettings-Input"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewSettings-Output"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reviews_api_reviews_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewSummary"][];
+                };
+            };
+        };
+    };
+    get_review_api_reviews__review_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportReview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discard_review_api_reviews__review_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_review_item_api_reviews__review_id__items__photo_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: string;
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewItemUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportReview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_review_subject_api_reviews__review_id__items__photo_id__subject_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: string;
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewSubjectUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportReview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_preview_api_reviews__review_id__items__photo_id__preview_get: {
+        parameters: {
+            query?: {
+                /** @description The item's revision (cache busting only). */
+                v?: string | null;
+            };
+            header?: never;
+            path: {
+                review_id: string;
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JPEG image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_review_api_reviews__review_id__export_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
             };
             /** @description Validation Error */
             422: {

@@ -1710,7 +1710,7 @@ touched):
   only, force all, the files' crops equal the review's crops, nothing exported twice.
 
 ### API + CLI
-- [ ] **P6c.7** Endpoints: `GET`/`PUT /api/review-settings`; `POST /api/jobs` kind `prepare_export` (an export
+- [x] **P6c.7** Endpoints: `GET`/`PUT /api/review-settings`; `POST /api/jobs` kind `prepare_export` (an export
   request + optional style) → job whose result names the review; `GET /api/reviews`, `GET /api/reviews/{id}`,
   `DELETE /api/reviews/{id}`; `PATCH /api/reviews/{id}/items/{photo_id}` (`zoom`, `approved`);
   `PUT /api/reviews/{id}/items/{photo_id}/subject` (`{candidate}` | `{box}` | `{box: null}`);

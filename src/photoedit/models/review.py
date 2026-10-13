@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Self
+from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
@@ -144,6 +144,14 @@ class ExportReview(_Model):
     settings: ExportSettings
     destination: str = Field(description="The destination folder, absolute.")
     items: list[ReviewItem]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _derived_counts(cls, data: Any) -> Any:
+        # The counts are computed from the items; a review read back from the API carries them.
+        if isinstance(data, dict) and "counts" in data:
+            return {k: v for k, v in data.items() if k != "counts"}
+        return data
 
     @computed_field  # type: ignore[prop-decorator]
     @property

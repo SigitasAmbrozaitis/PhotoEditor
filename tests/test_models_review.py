@@ -147,3 +147,8 @@ def test_prepare_export_request() -> None:
     assert request.style_id is None
     with pytest.raises(ValidationError, match="even_out needs a style"):
         PrepareExportRequest(photo_ids=["a"], settings=ExportSettings(), destination="C:/o", even_out=True)
+
+
+def test_review_read_back_with_its_counts() -> None:
+    review = _review()
+    assert ExportReview.model_validate_json(review.model_dump_json()) == review

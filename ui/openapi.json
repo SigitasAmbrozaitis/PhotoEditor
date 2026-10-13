@@ -2254,6 +2254,411 @@
         }
       }
     },
+    "/api/review-settings": {
+      "get": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Review Settings",
+        "operationId": "review_settings_api_review_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSettings-Output"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Set Review Settings",
+        "description": "Save the rules; open reviews are sorted again by them.",
+        "operationId": "set_review_settings_api_review_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewSettings-Input"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSettings-Output"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reviews": {
+      "get": {
+        "tags": [
+          "review"
+        ],
+        "summary": "List Reviews",
+        "operationId": "list_reviews_api_reviews_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReviewSummary"
+                  },
+                  "type": "array",
+                  "title": "Response List Reviews Api Reviews Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reviews/{review_id}": {
+      "get": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Get Review",
+        "description": "The review, refreshed against the photos' current edits and subjects.",
+        "operationId": "get_review_api_reviews__review_id__get",
+        "parameters": [
+          {
+            "name": "review_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Review Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportReview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Discard Review",
+        "operationId": "discard_review_api_reviews__review_id__delete",
+        "parameters": [
+          {
+            "name": "review_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Review Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reviews/{review_id}/items/{photo_id}": {
+      "patch": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Update Review Item",
+        "description": "Set a photo's zoom (null = automatic; a zoom approves it) or approve it.",
+        "operationId": "update_review_item_api_reviews__review_id__items__photo_id__patch",
+        "parameters": [
+          {
+            "name": "review_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Review Id"
+            }
+          },
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewItemUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportReview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reviews/{review_id}/items/{photo_id}/subject": {
+      "put": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Set Review Subject",
+        "description": "Choose a candidate, draw a box, or go back to the detected subject; saved to the photo's edit, and\nthe photo is approved.",
+        "operationId": "set_review_subject_api_reviews__review_id__items__photo_id__subject_put",
+        "parameters": [
+          {
+            "name": "review_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Review Id"
+            }
+          },
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewSubjectUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportReview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reviews/{review_id}/items/{photo_id}/preview": {
+      "get": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Review Preview",
+        "description": "The photo framed as the export will frame it (800 px long edge).",
+        "operationId": "review_preview_api_reviews__review_id__items__photo_id__preview_get",
+        "parameters": [
+          {
+            "name": "review_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Review Id"
+            }
+          },
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          },
+          {
+            "name": "v",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The item's revision (cache busting only).",
+              "title": "V"
+            },
+            "description": "The item's revision (cache busting only)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "JPEG image",
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reviews/{review_id}/export": {
+      "post": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Export Review",
+        "description": "Export the approved photos (scope ``approved``) or all but the unusable ones (``all``).",
+        "operationId": "export_review_api_reviews__review_id__export_post",
+        "parameters": [
+          {
+            "name": "review_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Review Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewExportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/jobs": {
       "get": {
         "tags": [
@@ -2283,7 +2688,7 @@
           "jobs"
         ],
         "summary": "Create Job",
-        "description": "Apply a style, export, apply then export, or detect subjects.",
+        "description": "Apply a style, export, apply then export, detect subjects, or prepare an export for review (the job's\n``review_id`` names the review).",
         "operationId": "create_job_api_jobs_post",
         "requestBody": {
           "content": {
@@ -3634,6 +4039,82 @@
           "destination"
         ],
         "title": "ExportRequest"
+      },
+      "ExportReview": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]{12}$",
+            "title": "Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "preset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset Id"
+          },
+          "style_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style Id",
+            "description": "The style applied before preparing, if any."
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ExportSettings-Output"
+          },
+          "destination": {
+            "type": "string",
+            "title": "Destination",
+            "description": "The destination folder, absolute."
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ReviewCounts",
+            "readOnly": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "created_at",
+          "updated_at",
+          "preset_id",
+          "style_id",
+          "settings",
+          "destination",
+          "items",
+          "counts"
+        ],
+        "title": "ExportReview",
+        "description": "A prepared export: what it will write, photo by photo, and the user's decisions so far."
       },
       "ExportSettings-Input": {
         "properties": {
@@ -6132,6 +6613,561 @@
         ],
         "title": "RevealRequest"
       },
+      "ReviewCandidate": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Index",
+            "description": "Position in the photo's detected candidates (to choose it)."
+          },
+          "box": {
+            "$ref": "#/components/schemas/SubjectBox",
+            "description": "Normalized to the edited photo."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SubjectKind"
+          },
+          "score": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Score"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "chosen": {
+            "type": "boolean",
+            "title": "Chosen",
+            "description": "This candidate is the subject the crop frames.",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "index",
+          "box",
+          "kind",
+          "score",
+          "label",
+          "chosen"
+        ],
+        "title": "ReviewCandidate"
+      },
+      "ReviewCounts": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total"
+          },
+          "ready": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Ready"
+          },
+          "check": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Check",
+            "description": "Check photos not approved yet."
+          },
+          "approved": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Approved",
+            "description": "Check photos the user approved."
+          },
+          "unusable": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Unusable"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "total",
+          "ready",
+          "check",
+          "approved",
+          "unusable"
+        ],
+        "title": "ReviewCounts"
+      },
+      "ReviewExportRequest": {
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/ReviewExportScope",
+            "default": "approved"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ReviewExportRequest"
+      },
+      "ReviewExportScope": {
+        "type": "string",
+        "enum": [
+          "approved",
+          "all"
+        ],
+        "title": "ReviewExportScope"
+      },
+      "ReviewItem": {
+        "properties": {
+          "photo_id": {
+            "type": "string",
+            "title": "Photo Id"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReviewStatus"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewReason"
+            },
+            "type": "array",
+            "title": "Reasons"
+          },
+          "approved": {
+            "type": "boolean",
+            "title": "Approved",
+            "description": "The user approved this framing (Check photos).",
+            "default": false
+          },
+          "approved_framing": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved Framing",
+            "description": "The framing the approval was given for; a different one drops it."
+          },
+          "framing": {
+            "type": "string",
+            "title": "Framing",
+            "description": "Identifies the framing (crop, output size, subject) to compare."
+          },
+          "subject": {
+            "$ref": "#/components/schemas/SubjectSource",
+            "default": "none"
+          },
+          "subject_kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubjectKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "subject_score": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Score"
+          },
+          "subject_box": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubjectBox"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Normalized to the edited photo."
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewCandidate"
+            },
+            "type": "array",
+            "title": "Candidates"
+          },
+          "crop": {
+            "$ref": "#/components/schemas/CropRect-Output",
+            "description": "The export's crop, normalized to the edited photo."
+          },
+          "zoom": {
+            "type": "number",
+            "minimum": 1.0,
+            "title": "Zoom",
+            "description": "The zoom the export uses."
+          },
+          "auto_zoom": {
+            "type": "number",
+            "minimum": 1.0,
+            "title": "Auto Zoom",
+            "description": "What automatic zoom chose (1 when it is off or not used)."
+          },
+          "zoom_override": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 20.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zoom Override",
+            "description": "Set in the review."
+          },
+          "limits": {
+            "$ref": "#/components/schemas/ZoomLimits"
+          },
+          "decode": {
+            "$ref": "#/components/schemas/DecodeUsed"
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Width",
+            "description": "Output width."
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Height",
+            "description": "Output height."
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "revision": {
+            "type": "string",
+            "title": "Revision",
+            "description": "Changes whenever the framing preview changes (for caching)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "photo_id",
+          "filename",
+          "status",
+          "reasons",
+          "approved",
+          "approved_framing",
+          "framing",
+          "subject",
+          "subject_kind",
+          "subject_score",
+          "subject_box",
+          "candidates",
+          "crop",
+          "zoom",
+          "auto_zoom",
+          "zoom_override",
+          "limits",
+          "decode",
+          "width",
+          "height",
+          "warnings",
+          "revision"
+        ],
+        "title": "ReviewItem"
+      },
+      "ReviewItemUpdate": {
+        "properties": {
+          "zoom": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 20.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zoom"
+          },
+          "approved": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ReviewItemUpdate",
+        "description": "Fields left out stay as they are. ``zoom: null`` goes back to the automatic zoom."
+      },
+      "ReviewReason": {
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ReviewRule"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "The reason in words, for this photo."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "code",
+          "text"
+        ],
+        "title": "ReviewReason"
+      },
+      "ReviewRule": {
+        "type": "string",
+        "enum": [
+          "no_subject",
+          "uncertain",
+          "ambiguous",
+          "cut_off",
+          "zoom_limit",
+          "changed",
+          "unusable"
+        ],
+        "title": "ReviewRule"
+      },
+      "ReviewSettings-Input": {
+        "properties": {
+          "no_subject": {
+            "type": "boolean",
+            "title": "No Subject",
+            "description": "Check photos without a recognized subject.",
+            "default": true
+          },
+          "uncertain": {
+            "type": "boolean",
+            "title": "Uncertain",
+            "description": "Check detected subjects scoring below min_score.",
+            "default": true
+          },
+          "min_score": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Min Score",
+            "description": "The lowest score trusted without a look.",
+            "default": 0.5
+          },
+          "ambiguous": {
+            "type": "boolean",
+            "title": "Ambiguous",
+            "description": "Check photos with a rival nearly as good.",
+            "default": true
+          },
+          "ambiguity": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.1,
+            "title": "Ambiguity",
+            "description": "A rival scoring at least this share of the subject's score makes the photo ambiguous.",
+            "default": 0.75
+          },
+          "cut_off": {
+            "type": "boolean",
+            "title": "Cut Off",
+            "description": "Check photos whose crop can't hold the whole subject.",
+            "default": true
+          },
+          "zoom_limit": {
+            "type": "boolean",
+            "title": "Zoom Limit",
+            "description": "Check photos whose subject stays too small even at the quality limit.",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ReviewSettings",
+        "description": "How strict the review is: which rules put a photo in Check, and their thresholds."
+      },
+      "ReviewSettings-Output": {
+        "properties": {
+          "no_subject": {
+            "type": "boolean",
+            "title": "No Subject",
+            "description": "Check photos without a recognized subject.",
+            "default": true
+          },
+          "uncertain": {
+            "type": "boolean",
+            "title": "Uncertain",
+            "description": "Check detected subjects scoring below min_score.",
+            "default": true
+          },
+          "min_score": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Min Score",
+            "description": "The lowest score trusted without a look.",
+            "default": 0.5
+          },
+          "ambiguous": {
+            "type": "boolean",
+            "title": "Ambiguous",
+            "description": "Check photos with a rival nearly as good.",
+            "default": true
+          },
+          "ambiguity": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.1,
+            "title": "Ambiguity",
+            "description": "A rival scoring at least this share of the subject's score makes the photo ambiguous.",
+            "default": 0.75
+          },
+          "cut_off": {
+            "type": "boolean",
+            "title": "Cut Off",
+            "description": "Check photos whose crop can't hold the whole subject.",
+            "default": true
+          },
+          "zoom_limit": {
+            "type": "boolean",
+            "title": "Zoom Limit",
+            "description": "Check photos whose subject stays too small even at the quality limit.",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "no_subject",
+          "uncertain",
+          "min_score",
+          "ambiguous",
+          "ambiguity",
+          "cut_off",
+          "zoom_limit"
+        ],
+        "title": "ReviewSettings",
+        "description": "How strict the review is: which rules put a photo in Check, and their thresholds."
+      },
+      "ReviewStatus": {
+        "type": "string",
+        "enum": [
+          "ready",
+          "check",
+          "unusable"
+        ],
+        "title": "ReviewStatus"
+      },
+      "ReviewSubjectUpdate": {
+        "properties": {
+          "candidate": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate"
+          },
+          "box": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubjectBox"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ReviewSubjectUpdate",
+        "description": "Choose a detected candidate (``candidate``), draw a box (``box``, normalized to the edited photo), or\n``box: null`` to go back to the detected subject."
+      },
+      "ReviewSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "preset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset Id"
+          },
+          "destination": {
+            "type": "string",
+            "title": "Destination"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ReviewCounts"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "id",
+          "created_at",
+          "updated_at",
+          "preset_id",
+          "destination",
+          "counts"
+        ],
+        "title": "ReviewSummary"
+      },
       "RuleChange": {
         "properties": {
           "type": {
@@ -8280,6 +9316,29 @@
         ],
         "title": "ZoomLevel",
         "description": "Zoom view levels in percent of the photo's full size."
+      },
+      "ZoomLimits": {
+        "properties": {
+          "fast": {
+            "type": "number",
+            "minimum": 1.0,
+            "title": "Fast",
+            "description": "The highest zoom a half-size decode still covers (fast export)."
+          },
+          "quality": {
+            "type": "number",
+            "minimum": 1.0,
+            "title": "Quality",
+            "description": "The highest zoom without enlarging (the crop ≥ the output)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "fast",
+          "quality"
+        ],
+        "title": "ZoomLimits"
       }
     }
   }
