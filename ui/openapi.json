@@ -6765,7 +6765,7 @@
           "framing": {
             "type": "string",
             "title": "Framing",
-            "description": "Identifies the framing (crop, output size, subject) to compare."
+            "description": "Identifies the framing (the crop and the output size) to compare."
           },
           "subject": {
             "$ref": "#/components/schemas/SubjectSource",

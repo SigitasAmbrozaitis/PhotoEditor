@@ -2812,7 +2812,7 @@ export interface components {
             approved_framing: string | null;
             /**
              * Framing
-             * @description Identifies the framing (crop, output size, subject) to compare.
+             * @description Identifies the framing (the crop and the output size) to compare.
              */
             framing: string;
             /** @default none */
