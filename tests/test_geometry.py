@@ -21,7 +21,7 @@ from photoedit.core.geometry import (
     sub_crop,
     turned_size,
 )
-from photoedit.models.adjustments import CropRect, Geometry, GeometryChange
+from photoedit.models.adjustments import CropRect, Geometry, GeometryChange, QuarterTurn
 
 W, H = 6240, 4160  # X-T3 landscape
 FULL = CropRect()
@@ -274,3 +274,35 @@ def test_source_map_frames_the_same_content_at_every_decode_size(size: tuple[int
     ]
     for got, want in zip(normalized, expected, strict=True):
         assert got == pytest.approx(want, abs=1e-3)  # 1365 isn't exactly 2048 × 2/3
+
+
+@pytest.mark.parametrize("rotate", [0, 90, 180, 270])
+@pytest.mark.parametrize("flip", [False, True])
+def test_crop_box_to_upright_inverts_subject_in_crop(rotate: QuarterTurn, flip: bool) -> None:
+    from photoedit.core.geometry import crop_box_to_upright, subject_in_crop
+    from photoedit.models.subject import SubjectBox
+
+    geometry = Geometry(
+        rotate=rotate, flip_horizontal=flip, crop=CropRect(left=0.1, top=0.2, right=0.9, bottom=0.95)
+    )
+    box = SubjectBox(left=0.3, top=0.35, right=0.5, bottom=0.6)
+    edited = subject_in_crop(box, geometry, 6240, 4160)
+    assert edited is not None
+    back = crop_box_to_upright(edited, geometry, 6240, 4160)
+    assert back is not None
+    for name in ("left", "top", "right", "bottom"):
+        assert getattr(back, name) == pytest.approx(getattr(box, name), abs=1e-9)
+
+
+def test_crop_box_to_upright_straightened_holds_the_box() -> None:
+    from photoedit.core.geometry import crop_box_to_upright, subject_in_crop
+    from photoedit.models.subject import SubjectBox
+
+    geometry = Geometry(angle=5, crop=CropRect(left=0.1, top=0.1, right=0.9, bottom=0.9))
+    edited = SubjectBox(left=0.4, top=0.4, right=0.6, bottom=0.6)
+    upright = crop_box_to_upright(edited, geometry, 6240, 4160)
+    assert upright is not None
+    again = subject_in_crop(upright, geometry, 6240, 4160)
+    assert again is not None  # the bounding box grows each way round, so it holds the original box
+    assert again.left <= edited.left and again.right >= edited.right
+    assert again.top <= edited.top and again.bottom >= edited.bottom

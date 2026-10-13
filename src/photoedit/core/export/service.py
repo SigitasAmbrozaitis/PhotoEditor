@@ -16,7 +16,7 @@ import subprocess
 import sys
 import threading
 from collections import Counter
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from concurrent.futures import Executor, ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -271,7 +271,8 @@ class Exporter:
         finished: Callable[[list[str]], None] | None = None,
     ) -> Job:
         """Export the photos as a job. ``zooms`` replaces the automatic zoom of some photos (a review's
-        decisions); ``finished`` gets the ids of the photos written once the job is done."""
+        decisions). ``finished`` gets the ids of the photos written (or skipped as already there) when the
+        job ends, also when it was cancelled or failed."""
         prepared = self._prepare(photo_ids, settings, destination, preset_id, zooms)
         dest = prepared.destination
         self._remember(dest)
@@ -299,6 +300,7 @@ class Exporter:
             if item.collision == CollisionStatus.SKIP:
                 with self._lock:
                     outcomes["skipped"] += 1
+                    written_ids.append(item.photo.id)
                 return ItemResult(photo_id=item.photo.id, output_path=str(target), message="exists, skipped")
             try:
                 if item.error:
@@ -324,13 +326,15 @@ class Exporter:
             )
 
         def finish() -> str:
-            if finished is not None:
-                finished(list(written_ids))
             parts = [f"{outcomes['exported']} exported"]
             parts += [f"{outcomes[k]} {k}" for k in ("skipped", "failed") if outcomes[k]]
             return f"{', '.join(parts)} → {dest}"
 
         def cleanup() -> None:
+            if finished is not None:
+                with self._lock:
+                    done = list(written_ids)
+                finished(done)
             with pool_lock:
                 for executor in pool:
                     executor.shutdown(wait=True, cancel_futures=True)
@@ -369,14 +373,7 @@ class Exporter:
         if not photo_ids:
             raise InvalidRequestError("no photos to export")
         dest = self._destination(destination)
-        photos = sorted(
-            {pid: self._library.photo(pid) for pid in photo_ids}.values(),
-            key=lambda p: (
-                p.captured_at is None,
-                p.captured_at.isoformat() if p.captured_at else "",
-                p.path.name.lower(),
-            ),
-        )
+        photos = in_export_order({pid: self._library.photo(pid) for pid in photo_ids}.values())
         found = self.subjects_of(photos) if frames_subjects(settings) else {}
         zooms = zooms or {}
         framings = [self.frame(p, settings, found.get(p.id), zoom=zooms.get(p.id)) for p in photos]
@@ -448,7 +445,9 @@ class Exporter:
             own_crop=own_crop,
         )
 
-    def subjects_of(self, photos: Sequence[CatalogPhoto]) -> dict[str, tuple[SubjectInfo | None, str | None]]:
+    def subjects_of(
+        self, photos: Sequence[CatalogPhoto], *, detect: bool = True
+    ) -> dict[str, tuple[SubjectInfo | None, str | None]]:
         """Each photo's subject and, if there is none to use, why. Detections not stored yet run here, a few
         at a time, and are stored, so the export itself reuses them."""
         subjects = self._subjects
@@ -459,7 +458,7 @@ class Exporter:
             if not photo.path.is_file():
                 return None, None  # reported as the item's error
             try:
-                return subjects.subject(photo), None
+                return subjects.subject(photo, detect=detect), None
             except Exception as exc:  # one photo's failure must not stop the plan; it says so and centers
                 return None, f"subject detection failed ({exc}): centered"
 
@@ -506,6 +505,18 @@ class Exporter:
             copyright=item.copyright,
             creator=settings.metadata.creator or self._settings.export_creator,
         )
+
+
+def in_export_order(photos: Iterable[CatalogPhoto]) -> list[CatalogPhoto]:
+    """Capture time, then file name (photos without a date last): the order of an export's {seq}."""
+    return sorted(
+        photos,
+        key=lambda p: (
+            p.captured_at is None,
+            p.captured_at.isoformat() if p.captured_at else "",
+            p.path.name.lower(),
+        ),
+    )
 
 
 def frames_subjects(settings: ExportSettings) -> bool:

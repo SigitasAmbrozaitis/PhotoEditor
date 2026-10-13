@@ -402,3 +402,23 @@ def subject_in_crop(box: SubjectBox, geometry: Geometry, width: float, height: f
     if right - left < MIN_BOX_SIZE or bottom - top < MIN_BOX_SIZE:
         return None
     return SubjectBox(left=left, top=top, right=right, bottom=bottom)
+
+
+def crop_box_to_upright(
+    box: SubjectBox, geometry: Geometry, width: float, height: float
+) -> SubjectBox | None:
+    """The inverse of ``subject_in_crop``: ``box`` (normalized to the edited photo) as a box of the upright
+    photo. Exact for flips and quarter turns; when straightened, the bounding box of its turned corners, cut
+    to the photo. None when (almost) nothing of it is left."""
+    crop = geometry.crop
+    frame_w, frame_h = turned_size(width, height, geometry.rotate)
+    crop_w, crop_h = crop.right - crop.left, crop.bottom - crop.top
+    xs = [(crop.left + x * crop_w) * frame_w for x in (box.left, box.right, box.right, box.left)]
+    ys = [(crop.top + y * crop_h) * frame_h for y in (box.top, box.top, box.bottom, box.bottom)]
+    corners = np.array([xs, ys, [1.0] * 4])
+    mapped = np.linalg.inv(upright_to_frame(geometry, width, height)) @ corners
+    left, right = max(0.0, float(mapped[0].min())), min(1.0, float(mapped[0].max()))
+    top, bottom = max(0.0, float(mapped[1].min())), min(1.0, float(mapped[1].max()))
+    if right - left < MIN_BOX_SIZE or bottom - top < MIN_BOX_SIZE:
+        return None
+    return SubjectBox(left=left, top=top, right=right, bottom=bottom)

@@ -1692,7 +1692,7 @@ touched):
 - [x] **P6c.3** Review rules (`core/review/rules.py`): pure functions from the subject, the framing and
   `ReviewSettings` to reasons. Tests per rule at its threshold's edges (0.49/0.50), manual subjects skipping the
   subject rules, grouped tandems and parts not counting as rivals, rules switched off.
-- [ ] **P6c.4** Review service (`core/review/service.py`, wired as `services.reviews`): `prepare(...)` → job
+- [x] **P6c.4** Review service (`core/review/service.py`, wired as `services.reviews`): `prepare(...)` → job
   creating the review; `get`, `list`, `discard`; `set_zoom(item, zoom | None)` (None = auto);
   `choose_candidate(item, index)` and `set_subject(item, box | None)` (saved to the photo's edit, like the crop
   tool's Set subject, then that photo is re-framed); `approve(item, on)`; `refresh(review)` re-frames every photo
@@ -1700,11 +1700,11 @@ touched):
   `Exporter._prepare` (no second copy of the framing rules). Writes only `workspace/reviews/`. Tests with the
   fake detector: Ready/Check sorting, each fix approving, refresh after a re-edit, persistence across a restart,
   prune, the originals untouched.
-- [ ] **P6c.5** Framing previews: the photo's current edit (style included) with the export crop applied on top
+- [x] **P6c.5** Framing previews: the photo's current edit (style included) with the export crop applied on top
   of its own crop (`sub_crop`), through the normal preview renderer at 800 px long edge, cached by render
   identity like previews. Test: a synthetic photo's preview and its exported file show the same framing (the
   export downscaled to the preview's size matches within a small tolerance).
-- [ ] **P6c.6** Export from a review: `export(review, scope=approved|all)` submits the normal export job with each
+- [x] **P6c.6** Export from a review: `export(review, scope=approved|all)` submits the normal export job with each
   photo's zoom and the framing the review showed (the `Exporter` takes per-photo zoom overrides); `unusable`
   photos are never sent. Exported photos leave the review; the review is deleted when empty. Tests: approved
   only, force all, the files' crops equal the review's crops, nothing exported twice.
