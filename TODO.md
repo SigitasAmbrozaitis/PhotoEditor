@@ -1748,6 +1748,27 @@ touched):
   approvals, export buttons) and `docs/geometry.md` (zoom), README (review CLI).
 - [x] **P6c.15** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e).
 
+### Human test feedback (2026-10-13)
+Decisions in PLAN.md §0 ("Review tweaks"). The first review used Print 5×7: centered framing, so no subjects,
+no candidates, zoom around the photo's center, and Set subject had no effect on the export. More feedback may
+follow from a subject-framed review.
+- [ ] **P6c.16** Prepare dialog: **Frame the crop on the subject** switch shown up front, on by default for any
+  preset with a ratio (sets `aspect.anchor`; off = centered). Set subject / Use detected are hidden in a review
+  that doesn't frame subjects.
+- [ ] **P6c.17** Move the frame: `ReviewItem.position` (the crop's center, normalized to the edited photo; None =
+  framed by the rules). Core places the crop there (rejected if it can't fit), the export uses it, a move
+  approves; `PATCH …/items/{id}` gets `position` (null = back to the rules). Drag the frame in the panel.
+- [ ] **P6c.18** Detection details: the review item carries every candidate (recognized or not, the camera's
+  focus point too), each with kind, label and confidence. The panel's photo shows them by default with the
+  subject and the export frame; **Hide details** (key D) hides them, remembered per browser. Confidence next to
+  the Ready/Check tag on the panel and the cards. Detection runs for every review that frames subjects.
+- [ ] **P6c.19** Live zoom and move: core sends the frame for each zoom step (0.01× up to the quality limit) for
+  the current position; while the slider or the frame is dragged, the panel moves the frame and shows the
+  loaded photo cropped to it; on release the change is saved and the real framing preview replaces it.
+- [ ] **P6c.20** The Apply-style wizard ends in the review: its last step is **Prepare for review** (style +
+  export settings → the Prepare job → the review), replacing the direct apply-and-export.
+- [ ] **P6c.21** Tests (core, API, Vitest, Playwright), docs, full check; human test script updated.
+
 ### 🧑 Human test: Phase 6c
 0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`,
    `uv run photoedit ui`.
