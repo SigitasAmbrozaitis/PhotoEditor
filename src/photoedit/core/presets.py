@@ -30,6 +30,8 @@ def _instagram(width: int, height: int, ratio: str) -> dict[str, Any]:
             "ratio": ratio,
             "orientation": "auto" if ratio == "1:1" else _orientation(width, height),
             "anchor": "subject",
+            # Small cars and cats get closer, as far as the fast half-size decode allows (P6c.2).
+            "zoom": "auto",
         },
         "sharpening": {"target": "screen", "amount": "standard"},
         "metadata": {"policy": "copyright_only", "strip_gps": True},

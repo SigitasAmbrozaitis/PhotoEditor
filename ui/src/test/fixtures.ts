@@ -287,7 +287,7 @@ export const presets: ExportPreset[] = [
         dont_enlarge: false,
         ppi: 72,
       },
-      aspect: { ratio: '4:5', orientation: 'portrait', anchor: 'center' },
+      aspect: { ratio: '4:5', orientation: 'portrait', anchor: 'center', zoom: 'off', subject_fill: 0.4 },
       sharpening: { target: 'screen', amount: 'standard' },
       metadata: { policy: 'copyright_only', strip_gps: true, copyright: null, creator: null, keywords: [] },
       naming: { template: '{original}_ig', on_collision: 'suffix' },
@@ -316,7 +316,7 @@ export const presets: ExportPreset[] = [
         dont_enlarge: true,
         ppi: 72,
       },
-      aspect: { ratio: null, orientation: 'auto', anchor: 'center' },
+      aspect: { ratio: null, orientation: 'auto', anchor: 'center', zoom: 'off', subject_fill: 0.4 },
       sharpening: { target: 'screen', amount: 'standard' },
       metadata: { policy: 'copyright_only', strip_gps: true, copyright: null, creator: null, keywords: [] },
       naming: { template: '{original}_web', on_collision: 'suffix' },
@@ -341,6 +341,7 @@ export function exportPlan(request: ExportRequest): ExportPlan {
       height,
       decode: width <= 3000 ? 'half' : 'full',
       collision: 'new',
+      zoom: 1,
       // With the subject anchor: the first photo frames a detected car, the others have none.
       ...(request.settings.aspect?.anchor === 'subject'
         ? id === request.photo_ids[0]
@@ -385,6 +386,7 @@ export function makeJob(overrides: Partial<Job> = {}): Job {
     preset_id: 'instagram-portrait',
     destination: 'C:/Exports/ig',
     folder: null,
+    review_id: null,
     summary: null,
     items: [
       { photo_id: 'p001', filename: 'DSCF1001.RAF', status: 'done', message: null, output_path: 'C:/Exports/ig/DSCF1001.jpg', ...noOutput },

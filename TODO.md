@@ -1668,24 +1668,26 @@ touched):
   optional style (+ even out), the export preset/settings and the destination, then **Prepare**. The Export
   dialog and the Apply-style wizard stay as they are (direct export).
 
-- [ ] **P6c.0** Detail this phase into items. ⛔ STOP for the user to review it.
+- [x] **P6c.0** Detail this phase into items. ⛔ STOP for the user to review it.
   Decided 2026-10-12 (user): auto zoom capped at the **fast (half-size decode) limit**, the review's slider goes
   to the quality limit; fill target **40 %**; **fixing a Check photo approves it**; the review starts from a
   **separate Prepare export… action** in the Library (Export and the wizard unchanged).
 
 ### Core
-- [ ] **P6c.1** Models (`models/review.py`, `models/export.py`): `AspectSettings.zoom` (`off`|`auto`) and
+- [x] **P6c.1** Models (`models/review.py`, `models/export.py`): `AspectSettings.zoom` (`off`|`auto`) and
   `subject_fill` (0.2–0.9); `ReviewSettings` (rule switches, `min_score`, `ambiguity`, ranges); `ReviewReason`
   (code + text); `ReviewItem` (photo, status `ready`|`check`|`unusable`, reasons, subject source/kind/score/box,
   candidates in the photo's frame, crop normalized to the edited photo, auto zoom, zoom override, zoom limits
   (fast, quality), decode, output size, approved framing); `ExportReview` (id, created, photos, settings, preset,
   destination, items, counts). Old presets and edit files load unchanged; the Instagram presets get `zoom: auto`.
   Tests: validation, ranges, round-trip, old files.
-- [ ] **P6c.2** Export geometry with zoom (`core/export/geometry.py`): `export_geometry(..., zoom)` shrinks the
+- [x] **P6c.2** Export geometry with zoom (`core/export/geometry.py`): `export_geometry(..., zoom)` shrinks the
   subject crop by `zoom` around the subject (P6b.7's rule), capped at the quality limit and where subject +
-  margin fills the crop; the decode follows (half while it still covers the output). `auto_zoom(subject, …)` →
+  margin fills the crop; the decode follows (half while it still covers the output). `zoom_plan(…, subject)` →
   the wanted zoom for `subject_fill`, the fast and quality limits, and whether the quality limit stops it. A photo
-  with its own crop gets zoom 1 under `auto`. Tests with exact numbers: no zoom when the subject is big enough,
+  with its own crop gets zoom 1 under `auto`, and so does one framed on the focus point (a guess, not a subject).
+  The `Exporter` frames every photo through one `frame()` (plans, exports and reviews share it) and takes per-photo
+  zoom overrides. The export form gets a **Zoom in on small subjects** switch and **Subject fills (%)**. Tests with exact numbers: no zoom when the subject is big enough,
   capped at each limit, decode switching at the fast limit, a centered photo never zooms, determinism.
 - [ ] **P6c.3** Review rules (`core/review/rules.py`): pure functions from the subject, the framing and
   `ReviewSettings` to reasons. Tests per rule at its threshold's edges (0.49/0.50), manual subjects skipping the

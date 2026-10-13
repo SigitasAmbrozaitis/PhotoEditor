@@ -2301,6 +2301,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/DetectSubjectsRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/PrepareExportRequest"
                   }
                 ],
                 "title": "Request"
@@ -2670,6 +2673,19 @@
             "$ref": "#/components/schemas/CropAnchor",
             "description": "What the aspect crop frames: the photo's main subject (set by hand or detected; centered when there is none) or the center.",
             "default": "center"
+          },
+          "zoom": {
+            "$ref": "#/components/schemas/AspectZoom",
+            "description": "auto = tighten the subject crop until the subject fills `subject_fill` of it, as far as a half-size decode still covers the output (fast). Needs a ratio and the 'subject' anchor. Photos with a crop of their own are never zoomed automatically.",
+            "default": "off"
+          },
+          "subject_fill": {
+            "type": "number",
+            "maximum": 0.9,
+            "minimum": 0.2,
+            "title": "Subject Fill",
+            "description": "Automatic zoom: the share of the crop's width or height the subject should fill.",
+            "default": 0.4
           }
         },
         "additionalProperties": false,
@@ -2700,6 +2716,19 @@
             "$ref": "#/components/schemas/CropAnchor",
             "description": "What the aspect crop frames: the photo's main subject (set by hand or detected; centered when there is none) or the center.",
             "default": "center"
+          },
+          "zoom": {
+            "$ref": "#/components/schemas/AspectZoom",
+            "description": "auto = tighten the subject crop until the subject fills `subject_fill` of it, as far as a half-size decode still covers the output (fast). Needs a ratio and the 'subject' anchor. Photos with a crop of their own are never zoomed automatically.",
+            "default": "off"
+          },
+          "subject_fill": {
+            "type": "number",
+            "maximum": 0.9,
+            "minimum": 0.2,
+            "title": "Subject Fill",
+            "description": "Automatic zoom: the share of the crop's width or height the subject should fill.",
+            "default": 0.4
           }
         },
         "additionalProperties": false,
@@ -2707,9 +2736,19 @@
         "required": [
           "ratio",
           "orientation",
-          "anchor"
+          "anchor",
+          "zoom",
+          "subject_fill"
         ],
         "title": "AspectSettings"
+      },
+      "AspectZoom": {
+        "type": "string",
+        "enum": [
+          "off",
+          "auto"
+        ],
+        "title": "AspectZoom"
       },
       "CollisionPolicy": {
         "type": "string",
@@ -3457,6 +3496,13 @@
             ],
             "title": "Subject Score",
             "description": "How sure detection is of the subject (none when set by hand)."
+          },
+          "zoom": {
+            "type": "number",
+            "minimum": 1.0,
+            "title": "Zoom",
+            "description": "How much tighter than the largest crop (1 = none).",
+            "default": 1.0
           }
         },
         "additionalProperties": false,
@@ -3472,7 +3518,8 @@
           "warnings",
           "subject",
           "subject_kind",
-          "subject_score"
+          "subject_score",
+          "zoom"
         ],
         "title": "ExportPlanItem"
       },
@@ -4683,6 +4730,18 @@
             "title": "Summary",
             "description": "Outcome in one line, e.g. '67 new, 1 skipped'."
           },
+          "review_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Id",
+            "description": "The review a prepare_export job created."
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/JobItem"
@@ -4709,6 +4768,7 @@
           "destination",
           "folder",
           "summary",
+          "review_id",
           "items"
         ],
         "title": "Job"
@@ -4824,7 +4884,8 @@
           "apply_style",
           "export",
           "apply_and_export",
-          "detect_subjects"
+          "detect_subjects",
+          "prepare_export"
         ],
         "title": "JobKind"
       },
@@ -5711,6 +5772,70 @@
           "style_id"
         ],
         "title": "PhotoStyleRequest"
+      },
+      "PrepareExportRequest": {
+        "properties": {
+          "photo_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10000,
+            "minItems": 1,
+            "title": "Photo Ids"
+          },
+          "kind": {
+            "type": "string",
+            "const": "prepare_export",
+            "title": "Kind",
+            "default": "prepare_export"
+          },
+          "style_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style Id",
+            "description": "Apply this style first; None = keep the edits."
+          },
+          "even_out": {
+            "type": "boolean",
+            "title": "Even Out",
+            "default": false
+          },
+          "preset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset Id"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ExportSettings-Input"
+          },
+          "destination": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Destination"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "photo_ids",
+          "settings",
+          "destination"
+        ],
+        "title": "PrepareExportRequest",
+        "description": "Prepare an export for review (Phase 6c): optionally apply a style first, then frame and sort every\nphoto into Ready and Check. The job's ``review_id`` names the review."
       },
       "Presence-Input": {
         "properties": {

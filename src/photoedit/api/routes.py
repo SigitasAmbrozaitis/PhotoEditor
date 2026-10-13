@@ -7,6 +7,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Body, Depends, Query, Request, Response, status
 
+from photoedit.core.errors import InvalidRequestError
 from photoedit.core.fs import list_dirs
 from photoedit.core.render.pipeline import LATER_PHASE_PARAMETERS
 from photoedit.models import (
@@ -42,7 +43,7 @@ from photoedit.models.export import (
     RevealRequest,
 )
 from photoedit.models.fs import DirListing
-from photoedit.models.job import DetectSubjectsRequest
+from photoedit.models.job import DetectSubjectsRequest, PrepareExportRequest
 from photoedit.models.photo import ZoomInfo, ZoomLevel
 from photoedit.models.style import (
     PhotoStyleRequest,
@@ -478,6 +479,8 @@ def create_job(request: Annotated[JobRequest, Body()], svc: Svc) -> Job:
             svc.exporter.export(request.photo_ids, request.settings, request.destination, request.preset_id)
 
         return svc.styling.apply(request.photo_ids, request.style_id, even_out=request.even_out, then=export)
+    if isinstance(request, PrepareExportRequest):
+        raise InvalidRequestError("preparing an export for review isn't available yet")
     return svc.styling.apply(request.photo_ids, request.style_id, even_out=request.even_out)
 
 

@@ -933,6 +933,17 @@ export interface components {
              * @default center
              */
             anchor: components["schemas"]["CropAnchor"];
+            /**
+             * @description auto = tighten the subject crop until the subject fills `subject_fill` of it, as far as a half-size decode still covers the output (fast). Needs a ratio and the 'subject' anchor. Photos with a crop of their own are never zoomed automatically.
+             * @default off
+             */
+            zoom: components["schemas"]["AspectZoom"];
+            /**
+             * Subject Fill
+             * @description Automatic zoom: the share of the crop's width or height the subject should fill.
+             * @default 0.4
+             */
+            subject_fill: number;
         };
         /** AspectSettings */
         "AspectSettings-Output": {
@@ -951,7 +962,23 @@ export interface components {
              * @default center
              */
             anchor: components["schemas"]["CropAnchor"];
+            /**
+             * @description auto = tighten the subject crop until the subject fills `subject_fill` of it, as far as a half-size decode still covers the output (fast). Needs a ratio and the 'subject' anchor. Photos with a crop of their own are never zoomed automatically.
+             * @default off
+             */
+            zoom: components["schemas"]["AspectZoom"];
+            /**
+             * Subject Fill
+             * @description Automatic zoom: the share of the crop's width or height the subject should fill.
+             * @default 0.4
+             */
+            subject_fill: number;
         };
+        /**
+         * AspectZoom
+         * @enum {string}
+         */
+        AspectZoom: "off" | "auto";
         /**
          * CollisionPolicy
          * @enum {string}
@@ -1309,6 +1336,12 @@ export interface components {
              * @description How sure detection is of the subject (none when set by hand).
              */
             subject_score: number | null;
+            /**
+             * Zoom
+             * @description How much tighter than the largest crop (1 = none).
+             * @default 1
+             */
+            zoom: number;
         };
         /** ExportPreset */
         ExportPreset: {
@@ -1929,6 +1962,11 @@ export interface components {
              * @description Outcome in one line, e.g. '67 new, 1 skipped'.
              */
             summary: string | null;
+            /**
+             * Review Id
+             * @description The review a prepare_export job created.
+             */
+            review_id: string | null;
             /** Items */
             items: components["schemas"]["JobItem"][];
         };
@@ -1962,7 +2000,7 @@ export interface components {
          * JobKind
          * @enum {string}
          */
-        JobKind: "import" | "render" | "apply_style" | "export" | "apply_and_export" | "detect_subjects";
+        JobKind: "import" | "render" | "apply_style" | "export" | "apply_and_export" | "detect_subjects" | "prepare_export";
         /**
          * JobStatus
          * @enum {string}
@@ -2358,6 +2396,36 @@ export interface components {
              * @description None removes the photo's style.
              */
             style_id: string | null;
+        };
+        /**
+         * PrepareExportRequest
+         * @description Prepare an export for review (Phase 6c): optionally apply a style first, then frame and sort every
+         *     photo into Ready and Check. The job's ``review_id`` names the review.
+         */
+        PrepareExportRequest: {
+            /** Photo Ids */
+            photo_ids: string[];
+            /**
+             * Kind
+             * @default prepare_export
+             * @constant
+             */
+            kind: "prepare_export";
+            /**
+             * Style Id
+             * @description Apply this style first; None = keep the edits.
+             */
+            style_id?: string | null;
+            /**
+             * Even Out
+             * @default false
+             */
+            even_out: boolean;
+            /** Preset Id */
+            preset_id?: string | null;
+            settings: components["schemas"]["ExportSettings-Input"];
+            /** Destination */
+            destination: string;
         };
         /** Presence */
         "Presence-Input": {
@@ -5018,7 +5086,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ApplyStyleRequest"] | components["schemas"]["ExportRequest"] | components["schemas"]["ApplyAndExportRequest"] | components["schemas"]["DetectSubjectsRequest"];
+                "application/json": components["schemas"]["ApplyStyleRequest"] | components["schemas"]["ExportRequest"] | components["schemas"]["ApplyAndExportRequest"] | components["schemas"]["DetectSubjectsRequest"] | components["schemas"]["PrepareExportRequest"];
             };
         };
         responses: {

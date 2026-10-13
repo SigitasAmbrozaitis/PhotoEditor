@@ -56,6 +56,7 @@ class _State:
     preset_id: str | None = None
     destination: str | None = None
     folder: str | None = None
+    review_id: str | None = None
     status: JobStatus = JobStatus.QUEUED
     finished_at: datetime | None = None
     summary: str | None = None
@@ -91,6 +92,7 @@ class JobManager:
         folder: str | None = None,
         queue: str | None = None,
         cleanup: Callable[[], None] | None = None,
+        review_id: str | None = None,
     ) -> Job:
         """Queue a job. ``work(i)`` processes item i; ``finish()`` runs last and returns a summary.
 
@@ -108,6 +110,7 @@ class JobManager:
             preset_id=preset_id,
             destination=destination,
             folder=folder,
+            review_id=review_id,
         )
 
         def start() -> None:
@@ -298,6 +301,7 @@ class JobManager:
             preset_id=state.preset_id,
             destination=state.destination,
             folder=state.folder,
+            review_id=state.review_id,
             summary=state.summary,
             items=list(state.items),
         )
