@@ -47,6 +47,7 @@ from photoedit.models.photo import ZoomInfo, ZoomLevel
 from photoedit.models.review import (
     ExportReview,
     ReviewExportRequest,
+    ReviewFrames,
     ReviewItemUpdate,
     ReviewSettings,
     ReviewSubjectUpdate,
@@ -67,7 +68,7 @@ from photoedit.models.style import (
     StyleVersionInfo,
     style_view,
 )
-from photoedit.models.subject import SubjectInfo, SubjectUpdate
+from photoedit.models.subject import SubjectAnalysis, SubjectInfo, SubjectUpdate
 from photoedit.services import Services
 
 JPEG = "image/jpeg"
@@ -177,6 +178,18 @@ def photo_subject(photo_id: str, svc: Svc) -> SubjectInfo:
     """The photo's main subject: the box set by hand, else the detected one (detected now if needed, which
     takes a few seconds the first time)."""
     return svc.subjects.subject(svc.library.photo(photo_id))
+
+
+@router.get("/photos/{photo_id}/analysis", response_model=SubjectAnalysis, tags=["edit"])
+def photo_analysis(
+    photo_id: str,
+    svc: Svc,
+    detect: Annotated[
+        bool, Query(description="Run detection now if it hasn't run yet (a few seconds the first time).")
+    ] = False,
+) -> SubjectAnalysis:
+    """What detection found (subject, candidates, focus point), normalized to the edited photo."""
+    return svc.subjects.analysis(svc.library.photo(photo_id), detect=detect)
 
 
 @router.put("/photos/{photo_id}/subject", response_model=SubjectInfo, tags=["edit"])
@@ -510,6 +523,12 @@ def set_review_subject(
     """Choose a candidate, draw a box, or go back to the detected subject; saved to the photo's edit, and
     the photo is approved."""
     return svc.reviews.set_subject(review_id, photo_id, request)
+
+
+@router.get("/reviews/{review_id}/items/{photo_id}/frames", response_model=ReviewFrames, tags=["review"])
+def review_frames(review_id: str, photo_id: str, svc: Svc) -> ReviewFrames:
+    """The photo's export crop at each zoom step, for moving the frame while the zoom slider is dragged."""
+    return svc.reviews.frames(review_id, photo_id)
 
 
 @router.get(

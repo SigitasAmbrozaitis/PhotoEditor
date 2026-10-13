@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import secrets
 import threading
@@ -26,22 +27,25 @@ from pydantic import ValidationError
 
 from photoedit.core.catalog import CatalogPhoto
 from photoedit.core.errors import InvalidRequestError, NotFoundError
-from photoedit.core.export.geometry import ZOOM_TOLERANCE
+from photoedit.core.export.geometry import ZOOM_TOLERANCE, Box
 from photoedit.core.export.geometry import warnings as geometry_warnings
 from photoedit.core.export.service import Exporter, Framing, frames_subjects, in_export_order
-from photoedit.core.geometry import crop_box_to_upright, subject_in_crop
+from photoedit.core.geometry import crop_box_to_upright
 from photoedit.core.jobs import ItemResult, ItemSpec, JobManager
 from photoedit.core.library import Library
-from photoedit.core.review.rules import reasons, visible_candidates
+from photoedit.core.review.rules import reasons
 from photoedit.core.styling import Styling
+from photoedit.core.subject.analysis import focus_box, found_candidates
 from photoedit.core.subject.service import Subjects
 from photoedit.models import Job, JobKind
 from photoedit.models.adjustments import CropRect
 from photoedit.models.export import ExportSettings
 from photoedit.models.review import (
     ExportReview,
+    FramePosition,
     ReviewCandidate,
     ReviewExportScope,
+    ReviewFrames,
     ReviewItem,
     ReviewItemUpdate,
     ReviewReason,
@@ -50,6 +54,7 @@ from photoedit.models.review import (
     ReviewStatus,
     ReviewSubjectUpdate,
     ReviewSummary,
+    ZoomFrame,
     ZoomLimits,
 )
 from photoedit.models.subject import SubjectInfo, SubjectSource
@@ -61,6 +66,9 @@ KEEP_DAYS = 30
 PREVIEW_LONG_EDGE = 800
 # Photos prepared at once: like a detection job (each holds a half-size decode at its peak).
 PREPARE_THREADS = 6
+# Zoom steps sent for the slider: about 0.01× apart, at most this many.
+FRAME_STEP = 0.01
+MAX_FRAMES = 400
 _ID = re.compile(r"^[a-z0-9]{12}$")
 _ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
 
@@ -254,15 +262,18 @@ class Reviews:
     # ---- decisions
 
     def update_item(self, review_id: str, photo_id: str, update: ReviewItemUpdate) -> ExportReview:
-        """Change a photo's zoom (``None`` = automatic) or approval. A zoom is a decision, so it approves."""
+        """Change a photo's zoom (``None`` = automatic), the crop's position (``None`` = placed by the rules)
+        or approval. A zoom or a position is a decision, so it approves the photo."""
         with self._lock:
             review = self.get(review_id)
             item = self._item(review, photo_id)
             if item.status == ReviewStatus.UNUSABLE:
                 raise InvalidRequestError(f"{item.filename} can't be exported: {item.reasons[0].text}")
             approve = update.approved
-            if "zoom" in update.model_fields_set:
-                zoom = update.zoom
+            given = update.model_fields_set
+            if "zoom" in given or "position" in given:
+                zoom = update.zoom if "zoom" in given else item.zoom_override
+                position = update.position if "position" in given else item.position
                 if zoom is not None and zoom > item.limits.quality + ZOOM_TOLERANCE:
                     raise InvalidRequestError(
                         f"{item.filename} can zoom up to {item.limits.quality:.2f}×: past that the crop has "
@@ -271,7 +282,13 @@ class Reviews:
                 photo = self._library.photo(photo_id)
                 found = self._found(photo, review.settings, detect=False)
                 item = self._build(
-                    photo, review.settings, self.settings(), found, zoom_override=zoom, previous=item
+                    photo,
+                    review.settings,
+                    self.settings(),
+                    found,
+                    zoom_override=zoom,
+                    position=position,
+                    previous=item,
                 )
                 approve = True if approve is None else approve
             if approve is not None:
@@ -281,7 +298,7 @@ class Reviews:
     def set_subject(self, review_id: str, photo_id: str, update: ReviewSubjectUpdate) -> ExportReview:
         """Choose a detected candidate, draw a box (normalized to the edited photo), or go back to the
         detected subject. It is saved to the photo's edit (like the crop tool's Set subject) and approves the
-        photo."""
+        photo. The crop is placed on the new subject again (a position dragged before is dropped)."""
         with self._lock:
             review = self.get(review_id)
             item = self._item(review, photo_id)
@@ -316,6 +333,29 @@ class Reviews:
             )
             return self._replace(review, _approved(fresh, True))
 
+    def frames(self, review_id: str, photo_id: str) -> ReviewFrames:
+        """The photo's crop at each zoom step from 1 to its quality limit (about 0.01× apart), for its current
+        subject and position: what the review shows while the zoom slider is dragged."""
+        review = self.get(review_id)
+        item = self._item(review, photo_id)
+        if item.status == ReviewStatus.UNUSABLE:
+            raise InvalidRequestError(f"{item.filename} can't be exported: {item.reasons[0].text}")
+        photo = self._library.photo(photo_id)
+        found = self._found(photo, review.settings, detect=False)
+        quality = item.limits.quality
+        steps = max(1, min(MAX_FRAMES, math.ceil((quality - 1) / FRAME_STEP)))
+        zooms = [1 + (quality - 1) * i / steps for i in range(steps + 1)]
+        position = (item.position.x, item.position.y) if item.position else None
+        geometries = self._exporter.zoom_frames(photo, review.settings, found, zooms, position=position)
+        width, height = photo.edited_width or photo.width, photo.edited_height or photo.height
+        return ReviewFrames(
+            photo_id=photo_id,
+            frames=[
+                ZoomFrame(zoom=round(zoom, 4), crop=_normalized(g.crop, width, height))
+                for zoom, g in zip(zooms, geometries, strict=True)
+            ],
+        )
+
     # ---- export
 
     def export(self, review_id: str, scope: ReviewExportScope) -> Job:
@@ -349,6 +389,7 @@ class Reviews:
                 review.destination,
                 review.preset_id,
                 zooms={i.photo_id: i.zoom for i in chosen},
+                positions={i.photo_id: (i.position.x, i.position.y) for i in chosen if i.position},
                 finished=finished,
             )
             self._exporting.setdefault(review_id, set()).update(ids)
@@ -388,23 +429,33 @@ class Reviews:
         found: Found | None,
         *,
         zoom_override: float | None = None,
+        position: FramePosition | None = None,
         previous: ReviewItem | None = None,
     ) -> ReviewItem:
-        """The photo framed by ``settings`` (with the review's zoom, if any), sorted by ``rules``. An approval
-        in ``previous`` holds while the framing is the one approved."""
+        """The photo framed by ``settings`` (with the review's zoom and position, if any), sorted by
+        ``rules``. An approval in ``previous`` holds while the framing is the one approved."""
         unusable = None
         edit = self._library.edit(photo.id)
         if not photo.path.is_file():
             unusable = f"the original is no longer at {photo.path}"
         elif edit.style_error is not None:
             unusable = f"{edit.style_error}; fix the style or remove it from this photo"
-        framing = self._exporter.frame(photo, settings, found, zoom=zoom_override)
+        framing = self._exporter.frame(
+            photo,
+            settings,
+            found,
+            zoom=zoom_override,
+            position=(position.x, position.y) if position is not None else None,
+        )
         info = found[0] if found is not None else None
         candidates: list[ReviewCandidate] = []
+        focus = None
         if info is not None and framing.source is not None:
             geometry = edit.adjustments.geometry
-            mapped = [subject_in_crop(c.box, geometry, photo.width, photo.height) for c in info.candidates]
-            candidates = visible_candidates(info.candidates, mapped, framing.box)
+            candidates = found_candidates(info, geometry, photo.width, photo.height, framing.box)
+            focus = focus_box(
+                self._library.with_af_point(photo).af_point, geometry, photo.width, photo.height
+            )
         why = reasons(framing, candidates, settings, rules, unusable=unusable)
         key = _framing_key(framing)
         approved_framing = previous.approved_framing if previous is not None else None
@@ -416,7 +467,6 @@ class Reviews:
         status = ReviewStatus.UNUSABLE if unusable else ReviewStatus.CHECK if why else ReviewStatus.READY
         geometry_ = framing.geometry
         width, height = photo.edited_width or photo.width, photo.edited_height or photo.height
-        box = geometry_.crop
         warnings = geometry_warnings(geometry_)
         if framing.note and all(r.text != framing.note for r in why):
             warnings.append(framing.note)
@@ -433,12 +483,9 @@ class Reviews:
             subject_score=framing.score,
             subject_box=framing.box,
             candidates=candidates,
-            crop=CropRect(
-                left=box.left / width,
-                top=box.top / height,
-                right=(box.left + box.width) / width,
-                bottom=(box.top + box.height) / height,
-            ),
+            focus=focus,
+            position=position,
+            crop=_normalized(geometry_.crop, width, height),
             zoom=geometry_.zoom,
             auto_zoom=framing.auto_zoom,
             zoom_override=zoom_override,
@@ -467,7 +514,13 @@ class Reviews:
             found = self._found(photo, review.settings, detect=False)
             items.append(
                 self._build(
-                    photo, review.settings, rules, found, zoom_override=item.zoom_override, previous=item
+                    photo,
+                    review.settings,
+                    rules,
+                    found,
+                    zoom_override=item.zoom_override,
+                    position=item.position,
+                    previous=item,
                 )
             )
         return review.model_copy(update={"items": items})
@@ -524,6 +577,15 @@ class Reviews:
         data = json.loads(review.model_dump_json(exclude={"counts"}))
         text = json.dumps(data, indent=1, ensure_ascii=False) + "\n"
         self._guard.write_atomic(self._path(review.id), text.encode("utf-8"))
+
+
+def _normalized(box: Box, width: int, height: int) -> CropRect:
+    return CropRect(
+        left=box.left / width,
+        top=box.top / height,
+        right=(box.left + box.width) / width,
+        bottom=(box.top + box.height) / height,
+    )
 
 
 def _framing_key(framing: Framing) -> str:

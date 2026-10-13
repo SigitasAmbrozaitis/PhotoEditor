@@ -219,3 +219,50 @@ def test_suggest_crop_reports_capped_zoom_and_uses_the_manual_box(library: Libra
     assert result.zoom < 10 and result.warnings == [
         f"zoom stopped at {result.zoom:.2f}×, where the subject fills the crop"
     ]
+
+
+def test_analysis_maps_what_was_found_into_the_edited_photo(library: Library, tmp_path: Path) -> None:
+    from photoedit.models.adjustments import CropRect, GeometryChange
+
+    finder = FakeFinder(
+        SubjectCandidate(box=CAR_BOX, kind=SubjectKind.CAR, score=0.9, label="truck"),
+        SubjectCandidate(
+            box=SubjectBox(left=0.05, top=0.1, right=0.2, bottom=0.3), kind=SubjectKind.PERSON, score=0.8
+        ),
+    )
+    service = subjects(library, tmp_path, finder)
+    photo = _photo(library, "focused")
+    before = service.analysis(photo)
+    assert (before.detected, before.source, finder.calls) == (False, SubjectSource.NONE, 0)
+    assert before.focus is not None and before.focus.center == pytest.approx((0.75, 0.25), abs=0.01)
+
+    found = service.analysis(photo, detect=True)
+    assert (found.detected, found.source, found.kind, found.box) == (True, "detected", "car", CAR_BOX)
+    assert [(c.kind, c.label, c.recognized, c.chosen) for c in found.candidates][:2] == [
+        ("car", "truck", True, True),
+        ("person", None, True, False),
+    ]
+    # Stored: asking again doesn't detect again.
+    assert service.analysis(photo).detected and finder.calls == 1
+
+    # Cropped to the right half: boxes are in the edited photo, the person is outside it.
+    library.set_geometry(photo.id, GeometryChange(crop=CropRect(left=0.5, right=1)))
+    cropped = service.analysis(library.photo(photo.id))
+    assert cropped.box is not None and cropped.box.left == pytest.approx(0.2)
+    assert "person" not in [c.kind for c in cropped.candidates]
+    assert cropped.focus is not None and cropped.focus.center[0] == pytest.approx(0.5, abs=0.02)
+
+
+def test_detect_job_summary(library: Library, tmp_path: Path) -> None:
+    service = subjects(
+        library, tmp_path, FakeFinder(SubjectCandidate(box=CAR_BOX, kind=SubjectKind.CAR, score=0.9))
+    )
+    job = library.jobs.wait(
+        service.detect_job([_photo(library, "wide").id, _photo(library, "focused").id]).id, 60
+    )
+    assert job.summary == "2 car"
+    empty = subjects(library, tmp_path, FakeFinder(), identity="none")
+    job = library.jobs.wait(
+        empty.detect_job([_photo(library, "wide").id, _photo(library, "focused").id]).id, 60
+    )
+    assert sorted(job.summary.split(", ")) == ["1 focus point only", "1 no subject"]  # type: ignore[union-attr]

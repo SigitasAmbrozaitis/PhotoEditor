@@ -64,6 +64,8 @@ ZOOM_SOURCES = frozenset({SubjectSource.DETECTED, SubjectSource.MANUAL})
 MAX_DETECTIONS = 8
 
 type ExecutorFactory = Callable[[int], Executor]
+# A crop's center set by hand, normalized to the edited photo.
+type Position = tuple[float, float]
 
 
 def auto_workers(*, cpus: int | None = None, available: int | None = None) -> int:
@@ -256,9 +258,10 @@ class Exporter:
         preset_id: str | None = None,
         *,
         zooms: Mapping[str, float] | None = None,
+        positions: Mapping[str, Position] | None = None,
     ) -> ExportPlan:
         """What ``export`` would write. Nothing is written."""
-        return self._prepare(photo_ids, settings, destination, preset_id, zooms).plan()
+        return self._prepare(photo_ids, settings, destination, preset_id, zooms, positions).plan()
 
     def export(
         self,
@@ -268,12 +271,14 @@ class Exporter:
         preset_id: str | None = None,
         *,
         zooms: Mapping[str, float] | None = None,
+        positions: Mapping[str, Position] | None = None,
         finished: Callable[[list[str]], None] | None = None,
     ) -> Job:
-        """Export the photos as a job. ``zooms`` replaces the automatic zoom of some photos (a review's
-        decisions). ``finished`` gets the ids of the photos written (or skipped as already there) when the
-        job ends, also when it was cancelled or failed."""
-        prepared = self._prepare(photo_ids, settings, destination, preset_id, zooms)
+        """Export the photos as a job. ``zooms`` replaces the automatic zoom of some photos and ``positions``
+        puts their crops where someone dragged them (a review's decisions). ``finished`` gets the ids of the
+        photos written (or skipped as already there) when the job ends, also when it was cancelled or
+        failed."""
+        prepared = self._prepare(photo_ids, settings, destination, preset_id, zooms, positions)
         dest = prepared.destination
         self._remember(dest)
         with self._lock:
@@ -369,14 +374,18 @@ class Exporter:
         destination: str,
         preset_id: str | None,
         zooms: Mapping[str, float] | None = None,
+        positions: Mapping[str, Position] | None = None,
     ) -> _Prepared:
         if not photo_ids:
             raise InvalidRequestError("no photos to export")
         dest = self._destination(destination)
         photos = in_export_order({pid: self._library.photo(pid) for pid in photo_ids}.values())
         found = self.subjects_of(photos) if frames_subjects(settings) else {}
-        zooms = zooms or {}
-        framings = [self.frame(p, settings, found.get(p.id), zoom=zooms.get(p.id)) for p in photos]
+        zooms, positions = zooms or {}, positions or {}
+        framings = [
+            self.frame(p, settings, found.get(p.id), zoom=zooms.get(p.id), position=positions.get(p.id))
+            for p in photos
+        ]
         existing = {p.name.lower() for p in dest.iterdir() if p.is_file()} if dest.is_dir() else set()
         fields = [
             NameFields(
@@ -414,24 +423,24 @@ class Exporter:
         found: tuple[SubjectInfo | None, str | None] | None,
         *,
         zoom: float | None = None,
+        position: Position | None = None,
     ) -> Framing:
         """How ``settings`` frame ``photo``: its subject (``found``, from ``subjects_of``; used only when the
-        settings frame subjects), the zoom (``zoom``, else the automatic one) and the export geometry."""
-        width, height = _edited_size(photo)
-        raw = is_raw(photo.path)
-        own = self._library.edit(photo.id).adjustments.geometry
-        own_crop = own.crop != CropRect()
-        framed = _Framed()
-        if frames_subjects(settings):
-            framed = self._framed(photo, own, *(found or (None, None)))
-        # Zoom only toward a subject detection or a person named; the focus point is a guess.
-        trusted = framed.box if framed.source in ZOOM_SOURCES else None
-        plan = zoom_plan(width, height, settings, is_raw=raw, subject=trusted)
+        settings frame subjects), the zoom (``zoom``, else the automatic one), where its crop was put by hand
+        (``position``, normalized to the edited photo) and the export geometry."""
+        inputs = self._inputs(photo, settings, found)
+        width, height, raw, framed, own_crop, plan = inputs
         auto = 1.0
-        if settings.aspect.zoom == AspectZoom.AUTO and trusted is not None and not own_crop:
+        if settings.aspect.zoom == AspectZoom.AUTO and framed.source in ZOOM_SOURCES and not own_crop:
             auto = plan.auto
         geometry = export_geometry(
-            width, height, settings, is_raw=raw, subject=framed.box, zoom=auto if zoom is None else zoom
+            width,
+            height,
+            settings,
+            is_raw=raw,
+            subject=framed.box,
+            zoom=auto if zoom is None else zoom,
+            position=position,
         )
         return Framing(
             geometry=geometry,
@@ -444,6 +453,44 @@ class Exporter:
             note=framed.note,
             own_crop=own_crop,
         )
+
+    def zoom_frames(
+        self,
+        photo: CatalogPhoto,
+        settings: ExportSettings,
+        found: tuple[SubjectInfo | None, str | None] | None,
+        zooms: Sequence[float],
+        *,
+        position: Position | None = None,
+    ) -> list[ExportGeometry]:
+        """The export geometry of ``photo`` at each of ``zooms`` (as ``frame`` would give it): what a review
+        shows while its zoom slider moves."""
+        width, height, raw, framed, _, _ = self._inputs(photo, settings, found)
+        return [
+            export_geometry(
+                width, height, settings, is_raw=raw, subject=framed.box, zoom=zoom, position=position
+            )
+            for zoom in zooms
+        ]
+
+    def _inputs(
+        self,
+        photo: CatalogPhoto,
+        settings: ExportSettings,
+        found: tuple[SubjectInfo | None, str | None] | None,
+    ) -> tuple[int, int, bool, _Framed, bool, ZoomPlan]:
+        """What framing a photo needs: its edited size, whether it is a RAW, its subject in the edited photo,
+        whether the user cropped it, and its zoom limits."""
+        width, height = _edited_size(photo)
+        raw = is_raw(photo.path)
+        own = self._library.edit(photo.id).adjustments.geometry
+        framed = _Framed()
+        if frames_subjects(settings):
+            framed = self._framed(photo, own, *(found or (None, None)))
+        # Zoom only toward a subject detection or a person named; the focus point is a guess.
+        trusted = framed.box if framed.source in ZOOM_SOURCES else None
+        plan = zoom_plan(width, height, settings, is_raw=raw, subject=trusted)
+        return width, height, raw, framed, own.crop != CropRect(), plan
 
     def subjects_of(
         self, photos: Sequence[CatalogPhoto], *, detect: bool = True

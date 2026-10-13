@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 
 from photoedit.models.adjustments import CropRect
 from photoedit.models.export import DecodeUsed, ExportSettings
-from photoedit.models.subject import SubjectBox, SubjectKind, SubjectSource
+from photoedit.models.subject import FoundCandidate, SubjectBox, SubjectKind, SubjectSource
 
 # The highest zoom anyone may ask for; each photo's own quality limit is usually far below it.
 MAX_ZOOM = 20.0
@@ -68,13 +68,16 @@ class ReviewStatus(StrEnum):
     UNUSABLE = "unusable"
 
 
-class ReviewCandidate(_Model):
-    index: int = Field(ge=0, description="Position in the photo's detected candidates (to choose it).")
-    box: SubjectBox = Field(description="Normalized to the edited photo.")
-    kind: SubjectKind
-    score: float = Field(ge=0, le=1)
-    label: str | None = None
-    chosen: bool = Field(default=False, description="This candidate is the subject the crop frames.")
+# The review lists what detection found in the same shape as the Photo view's analysis.
+ReviewCandidate = FoundCandidate
+
+
+class FramePosition(_Model):
+    """Where the crop's center was put by hand, normalized to the edited photo. The crop sits as close to it
+    as the photo allows at any zoom."""
+
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
 
 
 class ZoomLimits(_Model):
@@ -96,7 +99,13 @@ class ReviewItem(_Model):
     subject_kind: SubjectKind | None = None
     subject_score: float | None = Field(default=None, ge=0, le=1)
     subject_box: SubjectBox | None = Field(default=None, description="Normalized to the edited photo.")
-    candidates: list[ReviewCandidate] = Field(default_factory=list)
+    candidates: list[ReviewCandidate] = Field(default_factory=list, description="Best first.")
+    focus: SubjectBox | None = Field(
+        default=None, description="Where the camera focused (a small box), normalized to the edited photo."
+    )
+    position: FramePosition | None = Field(
+        default=None, description="The crop's center, set by hand in the review; none = placed by the rules."
+    )
     crop: CropRect = Field(description="The export's crop, normalized to the edited photo.")
     zoom: float = Field(ge=1, description="The zoom the export uses.")
     auto_zoom: float = Field(ge=1, description="What automatic zoom chose (1 when it is off or not used).")
@@ -169,17 +178,19 @@ class ReviewSummary(_Model):
 
 
 class ReviewItemUpdate(_Model):
-    """Fields left out stay as they are. ``zoom: null`` goes back to the automatic zoom."""
+    """Fields left out stay as they are. ``zoom: null`` goes back to the automatic zoom, ``position: null``
+    to the frame placed by the rules. A zoom or a position is a decision, so it approves the photo."""
 
     model_config = ConfigDict(extra="forbid")
 
     zoom: float | None = Field(default=None, ge=1, le=MAX_ZOOM)
+    position: FramePosition | None = None
     approved: bool | None = None
 
     @model_validator(mode="after")
     def _something(self) -> Self:
         if not self.model_fields_set:
-            raise ValueError("give zoom or approved")
+            raise ValueError("give zoom, position or approved")
         if "approved" in self.model_fields_set and self.approved is None:
             raise ValueError("approved must be true or false")
         return self
@@ -211,3 +222,16 @@ class ReviewExportScope(StrEnum):
 
 class ReviewExportRequest(_Model):
     scope: ReviewExportScope = ReviewExportScope.APPROVED
+
+
+class ZoomFrame(_Model):
+    zoom: float = Field(ge=1)
+    crop: CropRect = Field(description="The export's crop at this zoom, normalized to the edited photo.")
+
+
+class ReviewFrames(_Model):
+    """The export's crop at each zoom step from 1 to the quality limit, for the item's current subject and
+    position: the review moves the frame along these while the zoom slider is dragged."""
+
+    photo_id: str
+    frames: list[ZoomFrame]

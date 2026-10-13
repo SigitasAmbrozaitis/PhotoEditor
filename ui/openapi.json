@@ -698,6 +698,61 @@
         }
       }
     },
+    "/api/photos/{photo_id}/analysis": {
+      "get": {
+        "tags": [
+          "edit"
+        ],
+        "summary": "Photo Analysis",
+        "description": "What detection found (subject, candidates, focus point), normalized to the edited photo.",
+        "operationId": "photo_analysis_api_photos__photo_id__analysis_get",
+        "parameters": [
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          },
+          {
+            "name": "detect",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Run detection now if it hasn't run yet (a few seconds the first time).",
+              "default": false,
+              "title": "Detect"
+            },
+            "description": "Run detection now if it hasn't run yet (a few seconds the first time)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubjectAnalysis"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/photos/{photo_id}/suggest-crop": {
       "post": {
         "tags": [
@@ -2523,6 +2578,58 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ExportReview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/reviews/{review_id}/items/{photo_id}/frames": {
+      "get": {
+        "tags": [
+          "review"
+        ],
+        "summary": "Review Frames",
+        "description": "The photo's export crop at each zoom step, for moving the frame while the zoom slider is dragged.",
+        "operationId": "review_frames_api_reviews__review_id__items__photo_id__frames_get",
+        "parameters": [
+          {
+            "name": "review_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Review Id"
+            }
+          },
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewFrames"
                 }
               }
             }
@@ -4477,6 +4584,90 @@
           "decode"
         ],
         "title": "FileSettings"
+      },
+      "FoundCandidate": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Index",
+            "description": "Position in the photo's detected candidates (to choose it)."
+          },
+          "box": {
+            "$ref": "#/components/schemas/SubjectBox",
+            "description": "Normalized to the edited photo."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SubjectKind"
+          },
+          "score": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "description": "How likely this is the photo's main subject."
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "recognized": {
+            "type": "boolean",
+            "title": "Recognized",
+            "description": "A detector named it (car, cat…); false for guesses (stands out, sharp).",
+            "default": true
+          },
+          "chosen": {
+            "type": "boolean",
+            "title": "Chosen",
+            "description": "Part of the subject the photo is framed on.",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "index",
+          "box",
+          "kind",
+          "score",
+          "label",
+          "recognized",
+          "chosen"
+        ],
+        "title": "FoundCandidate",
+        "description": "One thing detection found, mapped into the edited photo (after its own crop)."
+      },
+      "FramePosition": {
+        "properties": {
+          "x": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "X"
+          },
+          "y": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Y"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "x",
+          "y"
+        ],
+        "title": "FramePosition",
+        "description": "Where the crop's center was put by hand, normalized to the edited photo. The crop sits as close to it\nas the photo allows at any zoom."
       },
       "Geometry-Input": {
         "properties": {
@@ -6613,57 +6804,6 @@
         ],
         "title": "RevealRequest"
       },
-      "ReviewCandidate": {
-        "properties": {
-          "index": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Index",
-            "description": "Position in the photo's detected candidates (to choose it)."
-          },
-          "box": {
-            "$ref": "#/components/schemas/SubjectBox",
-            "description": "Normalized to the edited photo."
-          },
-          "kind": {
-            "$ref": "#/components/schemas/SubjectKind"
-          },
-          "score": {
-            "type": "number",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Score"
-          },
-          "label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Label"
-          },
-          "chosen": {
-            "type": "boolean",
-            "title": "Chosen",
-            "description": "This candidate is the subject the crop frames.",
-            "default": false
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "index",
-          "box",
-          "kind",
-          "score",
-          "label",
-          "chosen"
-        ],
-        "title": "ReviewCandidate"
-      },
       "ReviewCounts": {
         "properties": {
           "total": {
@@ -6723,6 +6863,29 @@
           "all"
         ],
         "title": "ReviewExportScope"
+      },
+      "ReviewFrames": {
+        "properties": {
+          "photo_id": {
+            "type": "string",
+            "title": "Photo Id"
+          },
+          "frames": {
+            "items": {
+              "$ref": "#/components/schemas/ZoomFrame"
+            },
+            "type": "array",
+            "title": "Frames"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "photo_id",
+          "frames"
+        ],
+        "title": "ReviewFrames",
+        "description": "The export's crop at each zoom step from 1 to the quality limit, for the item's current subject and\nposition: the review moves the frame along these while the zoom slider is dragged."
       },
       "ReviewItem": {
         "properties": {
@@ -6807,10 +6970,33 @@
           },
           "candidates": {
             "items": {
-              "$ref": "#/components/schemas/ReviewCandidate"
+              "$ref": "#/components/schemas/FoundCandidate"
             },
             "type": "array",
-            "title": "Candidates"
+            "title": "Candidates",
+            "description": "Best first."
+          },
+          "focus": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubjectBox"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the camera focused (a small box), normalized to the edited photo."
+          },
+          "position": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FramePosition"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The crop's center, set by hand in the review; none = placed by the rules."
           },
           "crop": {
             "$ref": "#/components/schemas/CropRect-Output",
@@ -6888,6 +7074,8 @@
           "subject_score",
           "subject_box",
           "candidates",
+          "focus",
+          "position",
           "crop",
           "zoom",
           "auto_zoom",
@@ -6916,6 +7104,16 @@
             ],
             "title": "Zoom"
           },
+          "position": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FramePosition"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "approved": {
             "anyOf": [
               {
@@ -6931,7 +7129,7 @@
         "additionalProperties": false,
         "type": "object",
         "title": "ReviewItemUpdate",
-        "description": "Fields left out stay as they are. ``zoom: null`` goes back to the automatic zoom."
+        "description": "Fields left out stay as they are. ``zoom: null`` goes back to the automatic zoom, ``position: null``\nto the frame placed by the rules. A zoom or a position is a decision, so it approves the photo."
       },
       "ReviewReason": {
         "properties": {
@@ -8375,6 +8573,104 @@
         "title": "StyleView",
         "description": "API response for a style: the stored style plus derived, read-only information."
       },
+      "SubjectAnalysis": {
+        "properties": {
+          "detected": {
+            "type": "boolean",
+            "title": "Detected",
+            "description": "False until detection has run for this photo (with these models)."
+          },
+          "source": {
+            "$ref": "#/components/schemas/SubjectSource"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubjectKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "box": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubjectBox"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The subject, normalized to the edited photo; none when outside its crop."
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/FoundCandidate"
+            },
+            "type": "array",
+            "title": "Candidates",
+            "description": "Best first."
+          },
+          "focus": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubjectBox"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the camera focused (a small box), normalized to the edited photo."
+          },
+          "detector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detector"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "detected",
+          "source",
+          "kind",
+          "score",
+          "box",
+          "candidates",
+          "focus",
+          "detector",
+          "notes"
+        ],
+        "title": "SubjectAnalysis",
+        "description": "What detection found in a photo, in the edited photo's coordinates (the picture the user sees)."
+      },
       "SubjectBox": {
         "properties": {
           "left": {
@@ -9248,6 +9544,26 @@
         ],
         "title": "WhiteBalanceRule",
         "description": "White balance relative to each photo, instead of a fixed Kelvin value."
+      },
+      "ZoomFrame": {
+        "properties": {
+          "zoom": {
+            "type": "number",
+            "minimum": 1.0,
+            "title": "Zoom"
+          },
+          "crop": {
+            "$ref": "#/components/schemas/CropRect-Output",
+            "description": "The export's crop at this zoom, normalized to the edited photo."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "zoom",
+          "crop"
+        ],
+        "title": "ZoomFrame"
       },
       "ZoomInfo": {
         "properties": {

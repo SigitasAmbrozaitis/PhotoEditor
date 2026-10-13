@@ -12,28 +12,14 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from photoedit.core.export.service import Framing
+from photoedit.core.subject.analysis import is_part
 from photoedit.core.subject.choose import UNRECOGNIZED
 from photoedit.models.export import AspectZoom, ExportSettings
 from photoedit.models.review import ReviewCandidate, ReviewReason, ReviewRule, ReviewSettings
-from photoedit.models.subject import SubjectBox, SubjectCandidate, SubjectSource
+from photoedit.models.subject import SubjectBox, SubjectSource
 
-# A candidate with at least this share of its area inside the subject's box is part of it (the driver in
-# the car, the second car of a tandem the chooser grouped, a face of the person).
-PART_OF = 0.5
 # Scores are stored to 6 decimals; a threshold met to within this counts as met (0.75 × 0.8 is 0.6000…01).
 _EPS = 1e-9
-
-
-def overlap(box: SubjectBox, other: SubjectBox) -> float:
-    """The share of ``box``'s area inside ``other``."""
-    width = max(0.0, min(box.right, other.right) - max(box.left, other.left))
-    height = max(0.0, min(box.bottom, other.bottom) - max(box.top, other.top))
-    area = (box.right - box.left) * (box.bottom - box.top)
-    return width * height / area if area > 0 else 0.0
-
-
-def is_part(candidate: SubjectBox, subject: SubjectBox) -> bool:
-    return overlap(candidate, subject) >= PART_OF
 
 
 def rivals(
@@ -47,28 +33,6 @@ def rivals(
     ]
 
 
-def visible_candidates(
-    found: Sequence[SubjectCandidate], mapped: Sequence[SubjectBox | None], subject: SubjectBox | None
-) -> list[ReviewCandidate]:
-    """The recognized candidates (``found``, best first) that are inside the edited photo (``mapped``: each
-    one's box in it, or None), marked when they are part of the ``subject``."""
-    out = []
-    for index, (candidate, box) in enumerate(zip(found, mapped, strict=True)):
-        if box is None or candidate.kind in UNRECOGNIZED:
-            continue
-        out.append(
-            ReviewCandidate(
-                index=index,
-                box=box,
-                kind=candidate.kind,
-                score=candidate.score,
-                label=candidate.label,
-                chosen=subject is not None and is_part(box, subject),
-            )
-        )
-    return out
-
-
 def reasons(
     framing: Framing,
     candidates: Sequence[ReviewCandidate],
@@ -79,8 +43,8 @@ def reasons(
 ) -> list[ReviewReason]:
     """Why the photo framed as ``framing`` needs a look; empty when it is Ready.
 
-    ``candidates`` are the photo's visible candidates (``visible_candidates``). ``unusable`` says why the
-    photo can't be exported at all: then that is the only reason.
+    ``candidates`` are the photo's candidates in the edited photo (``found_candidates``). ``unusable``
+    says why the photo can't be exported at all: then that is the only reason.
     """
     if unusable is not None:
         return [ReviewReason(code=ReviewRule.UNUSABLE, text=unusable)]

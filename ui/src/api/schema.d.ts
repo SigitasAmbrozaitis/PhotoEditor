@@ -253,6 +253,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photos/{photo_id}/analysis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Photo Analysis
+         * @description What detection found (subject, candidates, focus point), normalized to the edited photo.
+         */
+        get: operations["photo_analysis_api_photos__photo_id__analysis_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photos/{photo_id}/suggest-crop": {
         parameters: {
             query?: never;
@@ -852,6 +872,26 @@ export interface paths {
          *     the photo is approved.
          */
         put: operations["set_review_subject_api_reviews__review_id__items__photo_id__subject_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reviews/{review_id}/items/{photo_id}/frames": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review Frames
+         * @description The photo's export crop at each zoom step, for moving the frame while the zoom slider is dragged.
+         */
+        get: operations["review_frames_api_reviews__review_id__items__photo_id__frames_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -1772,6 +1812,50 @@ export interface components {
              * @default auto
              */
             decode: components["schemas"]["DecodeSize"];
+        };
+        /**
+         * FoundCandidate
+         * @description One thing detection found, mapped into the edited photo (after its own crop).
+         */
+        FoundCandidate: {
+            /**
+             * Index
+             * @description Position in the photo's detected candidates (to choose it).
+             */
+            index: number;
+            /** @description Normalized to the edited photo. */
+            box: components["schemas"]["SubjectBox"];
+            kind: components["schemas"]["SubjectKind"];
+            /**
+             * Score
+             * @description How likely this is the photo's main subject.
+             */
+            score: number;
+            /** Label */
+            label: string | null;
+            /**
+             * Recognized
+             * @description A detector named it (car, cat…); false for guesses (stands out, sharp).
+             * @default true
+             */
+            recognized: boolean;
+            /**
+             * Chosen
+             * @description Part of the subject the photo is framed on.
+             * @default false
+             */
+            chosen: boolean;
+        };
+        /**
+         * FramePosition
+         * @description Where the crop's center was put by hand, normalized to the edited photo. The crop sits as close to it
+         *     as the photo allows at any zoom.
+         */
+        FramePosition: {
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
         };
         /**
          * Geometry
@@ -2740,27 +2824,6 @@ export interface components {
              */
             path: string;
         };
-        /** ReviewCandidate */
-        ReviewCandidate: {
-            /**
-             * Index
-             * @description Position in the photo's detected candidates (to choose it).
-             */
-            index: number;
-            /** @description Normalized to the edited photo. */
-            box: components["schemas"]["SubjectBox"];
-            kind: components["schemas"]["SubjectKind"];
-            /** Score */
-            score: number;
-            /** Label */
-            label: string | null;
-            /**
-             * Chosen
-             * @description This candidate is the subject the crop frames.
-             * @default false
-             */
-            chosen: boolean;
-        };
         /** ReviewCounts */
         ReviewCounts: {
             /** Total */
@@ -2790,6 +2853,17 @@ export interface components {
          * @enum {string}
          */
         ReviewExportScope: "approved" | "all";
+        /**
+         * ReviewFrames
+         * @description The export's crop at each zoom step from 1 to the quality limit, for the item's current subject and
+         *     position: the review moves the frame along these while the zoom slider is dragged.
+         */
+        ReviewFrames: {
+            /** Photo Id */
+            photo_id: string;
+            /** Frames */
+            frames: components["schemas"]["ZoomFrame"][];
+        };
         /** ReviewItem */
         ReviewItem: {
             /** Photo Id */
@@ -2822,8 +2896,15 @@ export interface components {
             subject_score: number | null;
             /** @description Normalized to the edited photo. */
             subject_box: components["schemas"]["SubjectBox"] | null;
-            /** Candidates */
-            candidates: components["schemas"]["ReviewCandidate"][];
+            /**
+             * Candidates
+             * @description Best first.
+             */
+            candidates: components["schemas"]["FoundCandidate"][];
+            /** @description Where the camera focused (a small box), normalized to the edited photo. */
+            focus: components["schemas"]["SubjectBox"] | null;
+            /** @description The crop's center, set by hand in the review; none = placed by the rules. */
+            position: components["schemas"]["FramePosition"] | null;
             /** @description The export's crop, normalized to the edited photo. */
             crop: components["schemas"]["CropRect-Output"];
             /**
@@ -2863,11 +2944,13 @@ export interface components {
         };
         /**
          * ReviewItemUpdate
-         * @description Fields left out stay as they are. ``zoom: null`` goes back to the automatic zoom.
+         * @description Fields left out stay as they are. ``zoom: null`` goes back to the automatic zoom, ``position: null``
+         *     to the frame placed by the rules. A zoom or a position is a decision, so it approves the photo.
          */
         ReviewItemUpdate: {
             /** Zoom */
             zoom?: number | null;
+            position?: components["schemas"]["FramePosition"] | null;
             /** Approved */
             approved?: boolean | null;
         };
@@ -3518,6 +3601,34 @@ export interface components {
             samples_stale: boolean;
         };
         /**
+         * SubjectAnalysis
+         * @description What detection found in a photo, in the edited photo's coordinates (the picture the user sees).
+         */
+        SubjectAnalysis: {
+            /**
+             * Detected
+             * @description False until detection has run for this photo (with these models).
+             */
+            detected: boolean;
+            source: components["schemas"]["SubjectSource"];
+            kind: components["schemas"]["SubjectKind"] | null;
+            /** Score */
+            score: number | null;
+            /** @description The subject, normalized to the edited photo; none when outside its crop. */
+            box: components["schemas"]["SubjectBox"] | null;
+            /**
+             * Candidates
+             * @description Best first.
+             */
+            candidates: components["schemas"]["FoundCandidate"][];
+            /** @description Where the camera focused (a small box), normalized to the edited photo. */
+            focus: components["schemas"]["SubjectBox"] | null;
+            /** Detector */
+            detector: string | null;
+            /** Notes */
+            notes: string[];
+        };
+        /**
          * SubjectBox
          * @description A box in normalized coordinates (0..1): of the upright photo, unless a field says otherwise.
          */
@@ -3944,6 +4055,13 @@ export interface components {
              * @description Tint (fixed mode only).
              */
             tint: number | null;
+        };
+        /** ZoomFrame */
+        ZoomFrame: {
+            /** Zoom */
+            zoom: number;
+            /** @description The export's crop at this zoom, normalized to the edited photo. */
+            crop: components["schemas"]["CropRect-Output"];
         };
         /**
          * ZoomInfo
@@ -4449,6 +4567,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SubjectInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    photo_analysis_api_photos__photo_id__analysis_get: {
+        parameters: {
+            query?: {
+                /** @description Run detection now if it hasn't run yet (a few seconds the first time). */
+                detect?: boolean;
+            };
+            header?: never;
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectAnalysis"];
                 };
             };
             /** @description Validation Error */
@@ -5713,6 +5865,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExportReview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_frames_api_reviews__review_id__items__photo_id__frames_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                review_id: string;
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewFrames"];
                 };
             };
             /** @description Validation Error */

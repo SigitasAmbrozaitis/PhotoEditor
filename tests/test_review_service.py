@@ -438,3 +438,66 @@ def test_nothing_is_exported_twice(env: Env, monkeypatch: pytest.MonkeyPatch) ->
     assert env.run(first).status == JobStatus.DONE
     assert env.run(second).status == JobStatus.DONE
     assert len(list(env.out.iterdir())) == 5
+
+
+# ---- moving the frame and live zoom (P6c.17, P6c.19)
+
+
+def test_a_dragged_position_moves_the_crop_and_approves(env: Env) -> None:
+    from photoedit.models.review import FramePosition
+
+    review = env.prepare()
+    pid = env.ids()["e_small.jpg"]
+    review = env.reviews.update_item(
+        review.id, pid, ReviewItemUpdate(zoom=2, position=FramePosition(x=0.2, y=0.3))
+    )
+    item = _item(review, "e_small.jpg")
+    assert item.approved and item.position == FramePosition(x=0.2, y=0.3)
+    # A 100 px square (200 / 2) centered on (64, 60) of the 320 × 200 photo.
+    assert (item.crop.left, item.crop.top) == (pytest.approx(14 / 320), pytest.approx(10 / 200))
+    assert item.crop.right - item.crop.left == pytest.approx(100 / 320)
+    # The zoom changes around the position; too far toward an edge, the crop stops there.
+    review = env.reviews.update_item(review.id, pid, ReviewItemUpdate(zoom=1))
+    assert _item(review, "e_small.jpg").crop.left == 0.0
+    # Survives a refresh, and back to the rules with null.
+    assert _item(env.reviews.get(review.id), "e_small.jpg").position == FramePosition(x=0.2, y=0.3)
+    review = env.reviews.update_item(review.id, pid, ReviewItemUpdate.model_validate({"position": None}))
+    assert _item(review, "e_small.jpg").position is None
+
+
+def test_choosing_a_subject_drops_a_dragged_position(env: Env) -> None:
+    from photoedit.models.review import FramePosition
+
+    review = env.prepare()
+    pid = env.ids()["c_two_cats.jpg"]
+    env.reviews.update_item(review.id, pid, ReviewItemUpdate(position=FramePosition(x=0.5, y=0.5)))
+    review = env.reviews.set_subject(review.id, pid, ReviewSubjectUpdate(candidate=1))
+    assert _item(review, "c_two_cats.jpg").position is None
+
+
+def test_the_export_uses_the_dragged_position(env: Env) -> None:
+    from photoedit.models.review import FramePosition
+
+    review = env.prepare()
+    pid = env.ids()["e_small.jpg"]
+    # Zoom 2 on the top-left corner: blue only, the red car (in the middle) is outside.
+    env.reviews.update_item(review.id, pid, ReviewItemUpdate(zoom=2, position=FramePosition(x=0, y=0)))
+    job = env.run(env.reviews.export(review.id, ReviewExportScope.APPROVED))
+    assert job.status == JobStatus.DONE, job
+    with Image.open(env.out / "e_small.jpg") as exported:
+        pixels = np.asarray(exported.convert("RGB"), dtype=np.float32)
+    assert pixels[..., 2].mean() > 150 and pixels[..., 0].mean() < 80
+
+
+def test_zoom_frames_follow_the_slider(env: Env) -> None:
+    review = env.prepare()
+    pid = env.ids()["e_small.jpg"]
+    frames = env.reviews.frames(review.id, pid).frames
+    # 1× to the quality limit (5×), about 0.01× apart, and each is what the export would use at that zoom.
+    assert (frames[0].zoom, frames[-1].zoom) == (1.0, 5.0)
+    assert len(frames) == 401
+    widths = [f.crop.right - f.crop.left for f in frames]
+    assert widths == sorted(widths, reverse=True)
+    at_two = next(f for f in frames if f.zoom == 2.0)
+    review = env.reviews.update_item(review.id, pid, ReviewItemUpdate(zoom=2))
+    assert _item(review, "e_small.jpg").crop == at_two.crop

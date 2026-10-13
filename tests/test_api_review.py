@@ -200,3 +200,21 @@ def test_export_and_discard(client: TestClient, tmp_path: Path) -> None:
     assert first not in {i.photo_id for i in left.items}
     assert client.delete(f"/api/reviews/{review.id}").status_code == 204
     assert client.get("/api/reviews").json() == []
+
+
+def test_position_and_zoom_frames(client: TestClient, tmp_path: Path) -> None:
+    review = _prepare(client, tmp_path)
+    pid = review.items[0].photo_id
+    r = client.patch(f"/api/reviews/{review.id}/items/{pid}", json={"position": {"x": 0.3, "y": 0.5}})
+    assert r.status_code == 200, r.text
+    item = next(i for i in r.json()["items"] if i["photo_id"] == pid)
+    assert (item["position"], item["approved"]) == ({"x": 0.3, "y": 0.5}, True)
+    assert (
+        client.patch(f"/api/reviews/{review.id}/items/{pid}", json={"position": {"x": 2, "y": 0}}).status_code
+        == 422
+    )
+    r = client.get(f"/api/reviews/{review.id}/items/{pid}/frames")
+    assert r.status_code == 200, r.text
+    frames = r.json()["frames"]
+    assert frames[0]["zoom"] == 1 and frames[-1]["zoom"] == item["limits"]["quality"]
+    assert client.get(f"/api/reviews/{review.id}/items/nope/frames").status_code == 404

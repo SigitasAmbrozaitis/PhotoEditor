@@ -263,3 +263,17 @@ def test_original_size_exports_cannot_zoom() -> None:
     plan = zoom_plan(*LANDSCAPE, settings, is_raw=True, subject=_box(0.5, 0.5, 0.05, 0.05))
     assert plan.quality == plan.fast == 1.0
     assert plan.limited
+
+
+def test_a_position_places_the_crop_as_close_as_the_photo_allows() -> None:
+    settings, subject = _preset("instagram-portrait"), _box(0.3, 0.5, 0.1, 0.1)
+    # Zoom 2 (1664 × 2080) centered on (0.7, 0.4) of the photo: the subject no longer places it.
+    g = export_geometry(*LANDSCAPE, settings, is_raw=True, subject=subject, zoom=2, position=(0.7, 0.4))
+    assert g.crop == Box(left=round(0.7 * 6240 - 832), top=round(0.4 * 4160 - 1040), width=1664, height=2080)
+    assert g.subject_cut is None
+    # Too far right or down for the crop: it stops at the edges.
+    edge = export_geometry(*LANDSCAPE, settings, is_raw=True, zoom=2, position=(1.0, 1.0))
+    assert (edge.crop.left + edge.crop.width, edge.crop.top + edge.crop.height) == (6240, 4160)
+    # Zoom 1: the full-height crop can only move sideways.
+    wide = export_geometry(*LANDSCAPE, settings, is_raw=True, position=(0.2, 0.9))
+    assert (wide.crop.left, wide.crop.top, wide.crop.height) == (0, 0, 4160)

@@ -6,10 +6,12 @@ import pytest
 
 from photoedit.core.export.geometry import Box, ExportGeometry, ZoomPlan
 from photoedit.core.export.service import Framing
-from photoedit.core.review.rules import is_part, overlap, reasons, rivals, visible_candidates
+from photoedit.core.review.rules import reasons, rivals
+from photoedit.core.subject.analysis import found_candidates, is_part, overlap
+from photoedit.models.adjustments import Geometry
 from photoedit.models.export import DecodeUsed, ExportSettings
 from photoedit.models.review import ReviewCandidate, ReviewRule, ReviewSettings
-from photoedit.models.subject import SubjectBox, SubjectCandidate, SubjectKind, SubjectSource
+from photoedit.models.subject import SubjectBox, SubjectCandidate, SubjectInfo, SubjectKind, SubjectSource
 
 SUBJECT = SubjectBox(left=0.4, top=0.4, right=0.6, bottom=0.6)
 FAR = SubjectBox(left=0.0, top=0.0, right=0.1, bottom=0.1)
@@ -176,16 +178,19 @@ def test_overlap_and_parts() -> None:
     assert rivals(SUBJECT, 0.8, [_candidate(FAR, 0.6)], 0.75) == [_candidate(FAR, 0.6)]
 
 
-def test_visible_candidates() -> None:
+def test_found_candidates() -> None:
     found = [
         SubjectCandidate(box=SUBJECT, kind=SubjectKind.CAR, score=0.8, label="car"),
         SubjectCandidate(box=FAR, kind=SubjectKind.SALIENT, score=0.5),
         SubjectCandidate(box=FAR, kind=SubjectKind.PERSON, score=0.3, label="person"),
-        SubjectCandidate(box=FAR, kind=SubjectKind.ANIMAL, score=0.2),
     ]
-    mapped = [SUBJECT, FAR, FAR, None]  # the animal is outside the photo's crop
-    shown = visible_candidates(found, mapped, SUBJECT)
-    assert [(c.index, c.kind, c.chosen) for c in shown] == [
-        (0, SubjectKind.CAR, True),
-        (2, SubjectKind.PERSON, False),
+    info = SubjectInfo(source=SubjectSource.DETECTED, box=SUBJECT, candidates=found)
+    shown = found_candidates(info, Geometry(), 6000, 4000, SUBJECT)
+    assert [(c.index, c.kind, c.recognized, c.chosen) for c in shown] == [
+        (0, SubjectKind.CAR, True, True),
+        (1, SubjectKind.SALIENT, False, False),
+        (2, SubjectKind.PERSON, True, False),
     ]
+    # Cropped to the right half of the photo: the boxes at its left edge are gone.
+    cropped = Geometry.model_validate({"crop": {"left": 0.5, "top": 0, "right": 1, "bottom": 1}})
+    assert [c.index for c in found_candidates(info, cropped, 6000, 4000, None)] == [0]

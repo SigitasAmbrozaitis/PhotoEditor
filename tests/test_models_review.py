@@ -113,7 +113,7 @@ def test_item_update_rules() -> None:
     assert ReviewItemUpdate.model_validate({"zoom": None}).model_fields_set == {"zoom"}
     assert ReviewItemUpdate(zoom=2.0).zoom == 2.0
     assert ReviewItemUpdate(approved=False).approved is False
-    with pytest.raises(ValidationError, match="give zoom or approved"):
+    with pytest.raises(ValidationError, match="give zoom, position or approved"):
         ReviewItemUpdate()
     with pytest.raises(ValidationError, match="approved must be true or false"):
         ReviewItemUpdate.model_validate({"approved": None})

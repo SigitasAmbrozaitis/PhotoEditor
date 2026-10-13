@@ -206,12 +206,15 @@ def export_geometry(
     is_raw: bool,
     subject: SubjectBox | None = None,
     zoom: float = 1.0,
+    position: tuple[float, float] | None = None,
 ) -> ExportGeometry:
     """Crop, output size and decode size for a photo of ``width`` × ``height`` (upright, full size).
 
     With the ``subject`` anchor, the aspect crop frames ``subject`` (normalized to the photo); without a
     subject it is centered. ``zoom`` (≥ 1) tightens the crop around the subject (or the center), up to the
-    quality limit and to where the subject plus margin fills the crop.
+    quality limit and to where the subject plus margin fills the crop. ``position`` (x, y, normalized to the
+    photo) is where someone put the crop's center by hand: the crop sits as close to it as the photo allows,
+    and the subject no longer places it.
     """
     if width < 1 or height < 1:
         raise InvalidRequestError(f"photo size {width}×{height} is not valid")
@@ -225,6 +228,11 @@ def export_geometry(
     used = 1.0
     if (out_w, out_h) == (width, height) and zoom <= 1:
         crop = Box(0, 0, width, height)
+    elif position is not None:
+        crop_w, crop_h = _zoomed(width, height, out_w / out_h, zoom)
+        left = min(width - crop_w, max(0, _round(position[0] * width - crop_w / 2)))
+        top = min(height - crop_h, max(0, _round(position[1] * height - crop_h / 2)))
+        crop, used = Box(left, top, crop_w, crop_h), zoom
     elif subject is not None and settings.aspect.anchor == CropAnchor.SUBJECT and ratio is not None:
         crop, cut, used = _framing(width, height, out_w / out_h, subject, zoom)
     else:
