@@ -1,6 +1,6 @@
 /**
  * Smoke test of the full use loop against the real backend, on synthetic photos (scripts/e2e_setup.py):
- * open a folder → import → select photos → apply style → export preset → destination → confirm → job finishes,
+ * open a folder → import → select photos → apply style → export preset → destination → review → files written,
  * then styles end to end (create from a photo, apply with "even out", edit, revert, delete), and real exports
  * with a custom preset. Styles live in output/e2e/styles (seeded with "E2E Moody"), exports in
  * output/e2e/exports. Screenshots of every screen go to output/screenshots/ for a quick visual review.
@@ -46,7 +46,7 @@ test('open a folder and import it', async ({ page }) => {
   await shot(page, '03-library-imported')
 })
 
-test('full use loop: select → apply style → export → job done', async ({ page }) => {
+test('full use loop: select → apply style → export settings → review → export → files', async ({ page }) => {
   await page.goto('/library')
   const tiles = page.getByRole('listbox', { name: 'Photos' }).getByRole('option')
   await expect(tiles).toHaveCount(PHOTO_COUNT)
@@ -58,7 +58,7 @@ test('full use loop: select → apply style → export → job done', async ({ p
   await expect(page.getByText(/5 selected/)).toBeVisible()
   await shot(page, '04-library-selected')
 
-  // Apply & export wizard.
+  // Apply style wizard.
   await page.getByRole('button', { name: /Apply style/ }).click()
   const dialog = page.getByRole('dialog', { name: 'Apply style to 5 photos' })
   await dialog.getByRole('radio', { name: /E2E Moody/ }).click()
@@ -71,27 +71,26 @@ test('full use loop: select → apply style → export → job done', async ({ p
   await expect(dialog.getByRole('table', { name: 'Export plan' }).getByRole('row')).toHaveCount(6)
   await shot(page, '06-wizard-export')
   await dialog.getByRole('button', { name: 'Next' }).click()
-  await shot(page, '07-wizard-review')
-  await dialog.getByRole('button', { name: 'Apply & export' }).click()
+  await shot(page, '07-wizard-confirm')
+  await dialog.getByRole('button', { name: 'Apply & prepare for review' }).click()
 
-  // Lands on the job, which progresses to done.
+  // The wizard ends in the review: it shows the style and Prepare jobs' progress, then the photos.
+  await expect(page).toHaveURL(/\/reviews\/[a-z0-9]{12}$/)
+  await expect(page.getByRole('heading', { name: 'Review · instagram-portrait' })).toBeVisible({ timeout: 60_000 })
+  // Nothing on the synthetic photos is recognized: all five are in Check.
+  await expect(page.getByRole('region', { name: 'Check' }).getByRole('button', { name: /^E2E_/ })).toHaveCount(5)
+  await shot(page, '08-wizard-review')
+
+  // Export them as the tool framed them (asks first), and real files are written.
+  await page.getByRole('button', { name: 'Force Export All (5)' }).click()
+  await page.getByRole('dialog', { name: 'Export 5 photos without a look?' }).getByRole('button', { name: 'Force Export All (5)' }).click()
   await expect(page).toHaveURL(/\/jobs\/j\d+$/)
-  await expect(page.getByRole('heading', { name: /Apply E2E Moody to 5 photos/ })).toBeVisible()
-  await shot(page, '08-job-running')
-  await expect(page.getByRole('progressbar', { name: 'Job progress' })).toHaveAttribute('aria-valuenow', '100', {
-    timeout: 15_000,
-  })
-  await expect(page.getByText('5 of 5 (100%)')).toBeVisible()
-  await shot(page, '09-job-done')
-
-  // The export job starts after the style is applied, and writes real files.
-  await page.getByRole('link', { name: /Export 5 photos \(instagram-portrait\)/ }).click()
   await expect(page.getByRole('progressbar', { name: 'Job progress' })).toHaveAttribute('aria-valuenow', '100', {
     timeout: 60_000,
   })
   await expect(page.getByText(/5 exported →/)).toBeVisible()
   await expect(page.getByText(/^1080×1350 · \d+ KB$/)).toHaveCount(5)
-  await shot(page, '09b-export-job-done')
+  await shot(page, '09-export-job-done')
   const written = readdirSync(`${EXPORTS}/wizard`)
   expect(written).toHaveLength(5)
   expect(written.every((name) => /^E2E_\d{4}_ig\.jpg$/.test(name))).toBe(true)
@@ -210,7 +209,7 @@ test('styles: save as style → apply with even out → edit → revert → dele
   await wizard.getByRole('radio', { name: /E2E Look/ }).click()
   await wizard.getByRole('switch', { name: 'Even out these photos' }).click()
   await wizard.getByRole('button', { name: 'Next' }).click()
-  await wizard.getByRole('switch', { name: 'Export after applying the style' }).click()
+  await wizard.getByRole('switch', { name: 'Prepare an export after applying the style' }).click()
   await wizard.getByRole('button', { name: 'Next' }).click()
   await expect(wizard.getByText(/evened out as a group/)).toBeVisible()
   await wizard.getByRole('button', { name: 'Apply style' }).click()
@@ -399,6 +398,19 @@ test('subject: set by hand → suggest 4:5 → apply; grid; Instagram export fra
   expect(readdirSync(`${EXPORTS}/subject`)).toHaveLength(1)
 })
 
+test('AI Analysis tab: what detection found, with the subject set by hand', async ({ page }) => {
+  await page.goto('/library')
+  await page.getByRole('listbox', { name: 'Photos' }).getByRole('option', { name: 'E2E_0004.JPG' }).dblclick()
+  await page.getByRole('tab', { name: 'AI Analysis' }).click()
+  const panel = page.getByTestId('analysis-panel')
+  await expect(panel.getByTestId('analysis-subject')).toHaveText('set by hand', { timeout: 30_000 })
+  await expect(page.getByTestId('detection-overlay')).toBeVisible()
+  await shot(page, '22b-ai-analysis')
+  await page.keyboard.press('d')
+  await expect(page.getByTestId('detection-overlay')).toHaveCount(0)
+  await page.keyboard.press('d')
+})
+
 test('review: prepare an Instagram export → fix a Check photo → Export Approved → Export All', async ({ page }) => {
   await page.goto('/library')
   const tiles = page.getByRole('listbox', { name: 'Photos' })
@@ -418,7 +430,7 @@ test('review: prepare an Instagram export → fix a Check photo → Export Appro
   // hand and it was cropped to 4:5 in the subject test.
   const check = page.getByRole('region', { name: 'Check' })
   await expect(check.getByRole('button', { name: /^E2E_000/ })).toHaveCount(2)
-  await expect(check.getByText('No subject')).toHaveCount(2)
+  await expect(check.getByText('No subject', { exact: true })).toHaveCount(2)
   await expect(page.getByRole('region', { name: 'Ready' }).getByRole('button', { name: 'E2E_0004.JPG' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Export Approved (1)' })).toBeEnabled()
   await shot(page, '23-review')
@@ -447,12 +459,23 @@ test('review: prepare an Instagram export → fix a Check photo → Export Appro
   await page.getByRole('link', { name: /Reviews/ }).click()
   await page.getByRole('list', { name: 'Open reviews' }).getByRole('link').first().click()
   await expect(page.getByRole('region', { name: 'Check' }).getByRole('button', { name: /^E2E_000/ })).toHaveCount(1)
-  for (const name of ['E2E_0007.JPG']) {
-    await page.getByRole('button', { name, exact: true }).click()
-    await expect(page.getByRole('region', { name: `Review of ${name}` })).toBeVisible()
-    await page.keyboard.press('a')
-    await expect(page.getByRole('region', { name: `Review of ${name}` }).getByRole('button', { name: 'Unapprove' })).toBeVisible()
+  // The last one: zoom in, then drag the frame aside. Both are decisions, so it is approved.
+  await page.getByRole('button', { name: 'E2E_0007.JPG', exact: true }).click()
+  const last = page.getByRole('region', { name: 'Review of E2E_0007.JPG' })
+  await expect(last.getByRole('img', { name: 'E2E_0007.JPG', exact: true })).toHaveJSProperty('complete', true, {
+    timeout: 15_000,
+  })
+  const zoom = last.getByRole('spinbutton', { name: 'Zoom' })
+  if (await zoom.isVisible()) {
+    await zoom.fill('1.0')
   }
+  const frame = (await last.getByTestId('review-frame').boundingBox())!
+  await page.mouse.move(frame.x + frame.width / 2, frame.y + frame.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(frame.x + frame.width / 2 - 60, frame.y + frame.height / 2, { steps: 5 })
+  await page.mouse.up()
+  await expect(last.getByRole('button', { name: /Re-center on subject/ })).toBeVisible({ timeout: 15_000 })
+  await expect(last.getByRole('button', { name: 'Unapprove' })).toBeVisible()
   await shot(page, '25-review-approved')
   await page.getByRole('button', { name: 'Export All (1)' }).click()
   await expect(page.getByText(/1 exported →/)).toBeVisible({ timeout: 60_000 })

@@ -216,7 +216,11 @@ class Renderer:
 
     def prune(self, photo_id: str, keep: set[str]) -> int:
         """Delete cached renders of ``photo_id`` whose edit revision isn't in ``keep``. Returns files
-        removed."""
+        removed.
+
+        A render still open elsewhere (Windows refuses to delete a file the browser is being sent) is left
+        for a later prune: stale renders are only clutter, and the edit that made them stale must not fail.
+        """
         folder = self._root / photo_id
         if not folder.is_dir():
             return 0
@@ -224,7 +228,10 @@ class Renderer:
         for file in folder.iterdir():
             if file.name.split("-", 1)[0] not in keep:
                 self._guard.assert_writable(file)
-                file.unlink(missing_ok=True)
+                try:
+                    file.unlink(missing_ok=True)
+                except PermissionError:
+                    continue
                 removed += 1
         return removed
 
