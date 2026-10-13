@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -125,10 +126,26 @@ class PathGuard:
         temp = target.with_name(f".{target.name}.{os.getpid()}-{threading.get_ident()}.tmp")
         try:
             temp.write_bytes(data)
-            temp.replace(target)
+            _replace(temp, target)
         finally:
             temp.unlink(missing_ok=True)
         return target
+
+
+# Windows refuses to replace a file another thread has open for reading (a thumbnail job reading an edit file
+# while it is saved). Readers hold files for milliseconds, so the rename is tried again for up to ~1 s.
+_REPLACE_TRIES = 8
+
+
+def _replace(source: Path, target: Path) -> None:
+    for attempt in range(_REPLACE_TRIES):
+        try:
+            source.replace(target)
+            return
+        except PermissionError:
+            if attempt == _REPLACE_TRIES - 1:
+                raise
+            time.sleep(0.005 * 2**attempt)
 
 
 def guard_from_settings(settings: Settings) -> PathGuard:

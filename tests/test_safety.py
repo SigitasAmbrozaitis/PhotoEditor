@@ -242,3 +242,28 @@ def test_revoke_and_protected_root_of(tmp_path: Path) -> None:
     guard.revoke(out)  # revoking twice is harmless
     assert guard.protected_root_of(photos / "sub" / "x.jpg") == photos.resolve()
     assert guard.protected_root_of(out) is None
+
+
+def test_write_atomic_retries_a_target_briefly_open_elsewhere(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    guard = PathGuard(writable_roots=[tmp_path])
+    target = tmp_path / "edit.json"
+    real = Path.replace
+    fails = {"left": 2}
+
+    def busy(self: Path, other: Path) -> Path:
+        if fails["left"]:
+            fails["left"] -= 1
+            raise PermissionError(32, "The process cannot access the file", str(other))
+        return real(self, other)
+
+    monkeypatch.setattr(Path, "replace", busy)
+    guard.write_atomic(target, b"new")
+    assert target.read_bytes() == b"new"
+    assert [p.name for p in tmp_path.iterdir()] == ["edit.json"]  # no temp file left
+
+    fails["left"] = 100  # held open for good: the error comes through
+    with pytest.raises(PermissionError):
+        guard.write_atomic(target, b"newer")
+    assert target.read_bytes() == b"new"
