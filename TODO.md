@@ -1767,6 +1767,11 @@ follow from a subject-framed review.
   loaded photo cropped to it; on release the change is saved and the real framing preview replaces it.
 - [ ] **P6c.20** The Apply-style wizard ends in the review: its last step is **Prepare for review** (style +
   export settings → the Prepare job → the review), replacing the direct apply-and-export.
+- [ ] **P6c.22** **AI Analysis** tab in the Photo view (next to Adjust, Info): the stored detection (subject:
+  source, kind, confidence; every candidate best first with label and confidence, cues marked as guesses; notes),
+  **Detect now** when not detected yet, **Set subject** (opens the crop tool's drawing), **Use detected**. While
+  the tab is open the boxes are drawn on the photo (Hide details, D, shared with the review). The Detect subjects
+  job ends with a summary ("168 car, 6 aircraft, 6 focus point only, …").
 - [ ] **P6c.21** Tests (core, API, Vitest, Playwright), docs, full check; human test script updated.
 
 ### 🧑 Human test: Phase 6c
