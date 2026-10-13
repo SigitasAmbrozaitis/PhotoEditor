@@ -1772,7 +1772,7 @@ follow from a subject-framed review.
   **Detect now** when not detected yet, **Set subject** (opens the crop tool's drawing), **Use detected**. While
   the tab is open the boxes are drawn on the photo (Hide details, D, shared with the review). The Detect subjects
   job ends with a summary ("168 car, 6 aircraft, 6 focus point only, …").
-- [ ] **P6c.21** Tests (core, API, Vitest, Playwright), docs, full check; human test script updated.
+- [x] **P6c.21** Tests (core, API, Vitest, Playwright), docs, full check; human test script updated.
 
 ### 🧑 Human test: Phase 6c (round 2, after the feedback)
 0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`,
