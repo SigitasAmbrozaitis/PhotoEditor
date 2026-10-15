@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import hashlib
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 from PIL import Image
 
@@ -15,7 +16,7 @@ from photoedit.core import color
 from photoedit.core.cache import ImageCache
 from photoedit.core.catalog import Catalog, CatalogPhoto, FolderRecord, path_key, photo_id
 from photoedit.core.decode import DecodeError, embedded_jpeg, is_raw, oriented_image, read_raw_info
-from photoedit.core.edits import EditStore, EffectiveEdit
+from photoedit.core.edits import EditStore, EffectiveEdit, merge_patch
 from photoedit.core.errors import InvalidRequestError, NotFoundError
 from photoedit.core.geometry import apply_change, check_geometry, edited_size, is_identity, sub_crop
 from photoedit.core.jobs import ItemResult, ItemSpec, JobManager
@@ -393,6 +394,13 @@ class Library:
         result = self.edits.save(photo, adjustments)
         self.record_edit(photo, result)
         return result
+
+    def update_edit(self, photo_id: str, patch: Mapping[str, Any]) -> EffectiveEdit:
+        """Change only the values in ``patch`` (nested, e.g. ``{"tone": {"exposure": 0.3}}``; ``None`` = back
+        to the style's or default value) and save. Nothing is written when any value is rejected."""
+        current = self.edit(photo_id)
+        base = current.base or self.edits.default(self.photo(photo_id)).adjustments
+        return self.save_edit(photo_id, merge_patch(current.adjustments, base, patch))
 
     def set_geometry(self, photo_id: str, change: GeometryChange) -> EffectiveEdit:
         """Apply a geometry change (flips and turns carry the crop along; angle and aspect changes shrink the

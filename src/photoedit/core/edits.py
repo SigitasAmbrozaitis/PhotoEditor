@@ -12,7 +12,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Literal
@@ -288,6 +288,38 @@ def apply_overrides(base: AdjustmentParams, overrides: dict[str, Any]) -> Adjust
         raise InvalidRequestError(f"invalid edit at {where}: {error['msg']}") from exc
     except ValueError as exc:
         raise InvalidRequestError(str(exc)) from exc
+
+
+def merge_patch(
+    current: AdjustmentParams, base: AdjustmentParams, patch: Mapping[str, Any]
+) -> AdjustmentParams:
+    """``current`` with a nested patch of only the values to change (``{"tone": {"exposure": 0.3}}``),
+    validated as a whole. ``None`` puts a value back to ``base`` (the photo's values before its own tweaks:
+    the defaults, or its style's). Unknown names and bad values raise naming the parameter."""
+    if not patch:
+        raise InvalidRequestError("nothing to change: the patch is empty")
+    data = current.model_dump(by_alias=True, mode="json")
+    _merge(data, base.model_dump(by_alias=True, mode="json"), patch, "")
+    try:
+        return AdjustmentParams.model_validate(data)
+    except ValidationError as exc:
+        problems = "; ".join(
+            f"{'.'.join(str(p) for p in error['loc'])}: {error['msg']}" for error in exc.errors()[:5]
+        )
+        raise InvalidRequestError(f"invalid edit: {problems}") from exc
+
+
+def _merge(node: dict[str, Any], base: dict[str, Any], patch: Mapping[str, Any], prefix: str) -> None:
+    for key, value in patch.items():
+        name = f"{prefix}{key}"
+        if key not in node:
+            raise InvalidRequestError(f"unknown parameter '{name}'")
+        if value is None:
+            node[key] = copy.deepcopy(base[key])
+        elif isinstance(value, Mapping) and isinstance(node[key], dict):
+            _merge(node[key], base[key], value, f"{name}.")
+        else:
+            node[key] = copy.deepcopy(value)
 
 
 def revision(style_id: str | None, overrides: dict[str, Any], styled: AdjustmentParams | None = None) -> str:

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
 
 from photoedit.core.catalog import CatalogPhoto
-from photoedit.core.edits import EditStore, apply_overrides, differences, source_defaults
+from photoedit.core.edits import EditStore, apply_overrides, differences, merge_patch, source_defaults
 from photoedit.core.errors import InvalidRequestError
 from photoedit.core.render.pipeline import UnsupportedParameterError
 from photoedit.core.scan import SourceKind
@@ -145,3 +146,39 @@ def test_differences_and_apply_round_trip() -> None:
     diff = differences(AdjustmentParams(), edited)
     assert "color_grading.global.hue" in diff  # serialized with the alias
     assert apply_overrides(AdjustmentParams(), diff) == edited
+
+
+# ----------------------------------------------------------------- partial edits (P7.5)
+
+
+def test_merge_patch_changes_only_the_given_values() -> None:
+    current = AdjustmentParams.model_validate({"tone": {"exposure": 0.5, "contrast": 20}})
+    patch = {"tone": {"exposure": 1.0}, "hsl": {"red": {"hue": -10}}}
+    merged = merge_patch(current, AdjustmentParams(), patch)
+    assert merged.tone.exposure == 1.0 and merged.tone.contrast == 20
+    assert merged.hsl.red.hue == -10 and merged.hsl.red.saturation == 0
+    assert current.tone.exposure == 0.5  # the input is not changed
+
+
+def test_merge_patch_null_goes_back_to_the_base_value() -> None:
+    base = AdjustmentParams.model_validate({"tone": {"contrast": 30}})  # e.g. what the style sets
+    current = AdjustmentParams.model_validate({"tone": {"contrast": -10, "exposure": 0.7}})
+    merged = merge_patch(current, base, {"tone": {"contrast": None}})
+    assert (merged.tone.contrast, merged.tone.exposure) == (30, 0.7)
+    whole = merge_patch(current, base, {"tone": None})
+    assert whole.tone == base.tone
+
+
+@pytest.mark.parametrize(
+    ("patch", "message"),
+    [
+        ({}, "nothing to change"),
+        ({"tone": {"exposur": 1}}, "unknown parameter 'tone.exposur'"),
+        ({"bogus": 1}, "unknown parameter 'bogus'"),
+        ({"tone": {"exposure": 9}}, "tone.exposure: Input should be less than or equal to 5"),
+        ({"tone": 3}, "invalid edit: tone"),
+    ],
+)
+def test_merge_patch_rejects_with_the_parameter_named(patch: dict[str, object], message: str) -> None:
+    with pytest.raises(InvalidRequestError, match=re.escape(message)):
+        merge_patch(AdjustmentParams(), AdjustmentParams(), patch)

@@ -370,6 +370,20 @@ def test_draft_render_shows_unsaved_adjustments_and_writes_nothing(env: Env) -> 
         env.library.render_draft(pid, later, 256)
 
 
+def test_update_edit_saves_only_the_patch_and_nothing_on_error(env: Env) -> None:
+    fill_folder(env.photos)
+    env.run_import()
+    pid = env.library.list_photos(sort=PhotoSort.NAME).items[0].id
+    env.library.update_edit(pid, {"tone": {"exposure": 0.5}})
+    edit = env.library.update_edit(pid, {"presence": {"saturation": -40}})
+    assert (edit.adjustments.tone.exposure, edit.adjustments.presence.saturation) == (0.5, -40)
+    assert edit.overridden == ["presence.saturation", "tone.exposure"]
+    with pytest.raises(InvalidRequestError, match=r"presence\.vibrance"):
+        env.library.update_edit(pid, {"tone": {"exposure": 1}, "presence": {"vibrance": 500}})
+    assert env.library.edit(pid).revision == edit.revision
+    assert env.library.update_edit(pid, {"tone": {"exposure": None}}).overridden == ["presence.saturation"]
+
+
 # ----------------------------------------------------------------- geometry (Phase 6a)
 
 
