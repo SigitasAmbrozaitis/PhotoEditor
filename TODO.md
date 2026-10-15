@@ -1822,7 +1822,7 @@ edit?)`), numeric image analysis (histogram, clipping, color cast: only the tone
 partial edits (the API saves the full `AdjustmentParams`), and any change notification: the UI only refetches
 after its own mutations (plus job polling).
 
-**Design** (to confirm in P7.1):
+**Design** (confirmed in P7.1):
 - **One process.** The MCP server lives **inside the `photoedit ui` server**, at `http://127.0.0.1:8765/mcp`
   (MCP Streamable HTTP transport), and calls the same `Services` as the HTTP routes. So the AI and the UI share
   the catalog, caches, the job queue (one export at a time stays true) and the change events, with no second
@@ -1851,7 +1851,8 @@ after its own mutations (plus job polling).
 - [ ] **P7.0** Detail this phase into items. ⛔ STOP for the user to review it.
 
 ### Decisions to confirm at phase start (ask the user)
-- [ ] **P7.1** Confirm with the user and record in PLAN.md §0:
+- [x] **P7.1** Confirmed 2026-10-15 (all recommendations; recorded in PLAN.md §0): inside `photoedit ui`, any
+  named export folder, no deletes from the AI, Claude's notes yes. The proposals as asked:
   - **Where the MCP server runs** (recommended: **inside `photoedit ui`**, HTTP at `/mcp`, see the design).
     Alternatives: (b) a separate `photoedit mcp` process that Claude Code starts on its own (stdio, always
     available) with its own `Services`; the UI then learns about changes through a change log in the catalog
@@ -1893,7 +1894,7 @@ after its own mutations (plus job polling).
   pixels, in OKLab), saturation and share of pixels per hue band (the 8 HSL bands), plus the stored tone stats
   (black/white/middle stops, neutral white balance) and the subject analysis. Deterministic. Tests on synthetic
   images with exact expected values (a gray ramp, a clipped patch, a tinted gray, a pure-red patch).
-- [ ] **P7.7** Claude's notes (if confirmed in P7.1): `EditFile.note` (≤ 2000 chars, outside the adjustments,
+- [ ] **P7.7** Claude's notes: `EditFile.note` (≤ 2000 chars, outside the adjustments,
   so the revision and previews don't change), `Library.set_note(photo, text | None)`, in `PhotoDetail` and
   `SubjectAnalysis`. Old edit files load unchanged. Tests: round-trip, too long rejected, revision unchanged.
 - [ ] **P7.8** Change events (`core/events.py`): a thread-safe `EventBus` (subscribe → queue, publish, bounded
@@ -1948,7 +1949,7 @@ after its own mutations (plus job polling).
   presets, reviews, jobs, library); the open Photo view reloads its preview when its photo changes. Events
   with origin `ai` show an activity toast with the summary and a link (photo, style, review or job). Events from
   this browser's own mutations are not toasted.
-- [ ] **P7.17** AI Analysis tab: shows **Claude's note** (if P7.7 is confirmed) above the detection, with when it
+- [ ] **P7.17** AI Analysis tab: shows **Claude's note** above the detection, with when it
   was written; the user can clear it.
 
 ### Tests + docs
