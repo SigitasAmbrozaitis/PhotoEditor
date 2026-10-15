@@ -36,11 +36,6 @@ def origin(value: Origin) -> Iterator[None]:
         _origin.reset(token)
 
 
-def set_origin(value: Origin) -> None:
-    """Attribute the rest of this context's changes to ``value`` (a front-end's entry point, e.g. the CLI)."""
-    _origin.set(value)
-
-
 class Subscription:
     def __init__(self, bus: EventBus, limit: int, notify: Callable[[], None] | None) -> None:
         self._bus = bus

@@ -74,10 +74,6 @@ def _root(
     ] = False,
 ) -> None:
     """PhotoEditor command-line interface."""
-    from photoedit.core.events import set_origin
-    from photoedit.models.events import Origin
-
-    set_origin(Origin.CLI)
 
 
 @app.command()
@@ -1325,4 +1321,9 @@ def main() -> None:
     for stream in (sys.stdout, sys.stderr):
         if not stream.isatty() and hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
-    app()
+    from photoedit.core.events import origin
+    from photoedit.models.events import Origin
+
+    # Scoped, not set on the thread: in-process callers (tests' CliRunner) must not stay "cli" afterwards.
+    with origin(Origin.CLI):
+        app()
