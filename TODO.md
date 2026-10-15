@@ -12,7 +12,7 @@ Derived from [PLAN.md](PLAN.md) v0.3. This checklist is written for an AI to fol
 - ⛔ **STOP** = halt and wait for the user. Never continue past a STOP without the user's explicit go-ahead.
 - 🧑 **Human test** = steps the user runs by hand at the end of a phase, with the expected result for each step.
 - If something is ambiguous or the plan seems wrong, **ask**. Don't guess. Plan changes go into PLAN.md first.
-- **Phases 0–6c and 3b (deferred, at the end) are detailed.** Later phases are an outline and get detailed at the start of each phase. Writing that detail is the first item in each phase.
+- **Phases 0–7 and 3b (deferred, at the end) are detailed.** Later phases are an outline and get detailed at the start of each phase. Writing that detail is the first item in each phase.
 - Golden rules: originals are read-only; never write outside `C:\Work\PhotoEditing` (except export destinations the user
   chose); commit as `SigitasAmbrozaitis`.
 
@@ -1808,12 +1808,187 @@ follow from a subject-framed review.
 **Approved 2026-10-15.** The user tested both rounds ("Look great"). Next: Phase 7 (MCP server), detailed
 at the start of its own session (P7.0).
 
-## Phase 7: MCP server (outline)
-- [ ] **P7.0** Detail this phase. ⛔ STOP for review.
-- [ ] MCP server exposing the core API (PLAN 4.4), including `render_preview` returning images.
-- [ ] Register it with Claude Code. The UI auto-refreshes when the AI changes something.
-- [ ] MCP tests: valid and invalid input for every tool.
-- 🧑 Human test (end-to-end via Claude Code) + ⛔ STOP.
+## Phase 7: MCP server (detailed 2026-10-15)
+
+Goal (PLAN §5): in Claude Code, "apply style X to folder Y and export for Instagram to Z" works end to end, and
+the open UI follows what the AI changes without a reload. Claude can **see** the photos (preview images), read
+numbers about them (analysis), change edits, styles and presets within the models' ranges, run exports and
+reviews, and leave notes the user can read in the AI Analysis tab. Branch `phase-7-mcp` from `main`.
+
+What there is to build on: every action already exists in `core` behind `Services` (the HTTP routes are thin
+wrappers), all inputs are Pydantic models with ranges, long work runs as jobs. Missing: a way to address photos
+by name (the CLI has a private `_find_photos`), a render of an **unsaved** edit (PLAN 4.4's `render_preview(id,
+edit?)`), numeric image analysis (histogram, clipping, color cast: only the tone anchors and the subject exist),
+partial edits (the API saves the full `AdjustmentParams`), and any change notification: the UI only refetches
+after its own mutations (plus job polling).
+
+**Design** (to confirm in P7.1):
+- **One process.** The MCP server lives **inside the `photoedit ui` server**, at `http://127.0.0.1:8765/mcp`
+  (MCP Streamable HTTP transport), and calls the same `Services` as the HTTP routes. So the AI and the UI share
+  the catalog, caches, the job queue (one export at a time stays true) and the change events, with no second
+  process writing the same files. Claude Code connects by URL (`.mcp.json` in the repo, type `http`). The cost:
+  `photoedit ui` must be running when a Claude Code session starts (otherwise Claude Code shows the server as
+  failed; start it, then reconnect in `/mcp`).
+- **Tools are thin** (golden rule 4): each one translates arguments into a core call and the result into
+  structured output plus a short text summary. Inputs reuse the API's Pydantic models, so Claude sees the same
+  ranges and gets the same validation messages. Core errors become MCP **tool errors** with the message (not
+  crashes): not found, invalid, conflict (a style changed since `expected_version`), write refused.
+- **Photos by name**: tools take photo references: the id (or a unique prefix of 8+ characters), a file name
+  (`DSCF5437` or `DSCF5437.RAF`), or `folder/name` when a name exists in several folders. Ambiguous or unknown
+  references are errors that list the matches. Bulk tools also take a `folder` (all its photos).
+- **Seeing**: `render_preview` returns a JPEG image (default 1024 px long edge, at most 1600), optionally of an
+  unsaved edit (nothing written). `contact_sheet` returns one labeled grid for a series (judging consistency).
+  `analyze_photo` returns numbers measured on the rendered photo.
+- **Live UI**: core publishes a change event for every write (photo edit, subject, style, preset, review, job,
+  library), tagged with its origin (`ui`, `ai`, `cli`). The server streams them at `GET /api/events`
+  (server-sent events); the UI refetches what changed and shows a small activity toast for AI changes ("Claude
+  applied *Moody* to 24 photos", with a link).
+- **Safety**: the tool can't write anywhere `PathGuard` refuses; exports go only to the destination the call
+  names (Claude Code shows it in the tool's permission prompt, which is the user's explicit choice), never into a
+  protected photo folder. The `/mcp` endpoint answers only on 127.0.0.1 and rejects browser cross-origin requests
+  (DNS-rebinding protection).
+
+- [ ] **P7.0** Detail this phase into items. ⛔ STOP for the user to review it.
+
+### Decisions to confirm at phase start (ask the user)
+- [ ] **P7.1** Confirm with the user and record in PLAN.md §0:
+  - **Where the MCP server runs** (recommended: **inside `photoedit ui`**, HTTP at `/mcp`, see the design).
+    Alternatives: (b) a separate `photoedit mcp` process that Claude Code starts on its own (stdio, always
+    available) with its own `Services`; the UI then learns about changes through a change log in the catalog
+    (polled), two processes write the same catalog and edit files, and the "one export at a time" queue isn't
+    shared. (c) `photoedit mcp` (stdio) as a client of the HTTP API that starts `photoedit ui` in the
+    background when it isn't running: always available and one process for the state, but every tool goes
+    through a second translation layer (MCP → HTTP → core).
+  - **Export destinations from the AI**: (recommended) any folder the call names, checked like the UI's (never a
+    protected photo folder; Claude Code's permission prompt shows it); or only `output/` and recently used
+    destinations unless the user adds one in the UI.
+  - **Deleting from the AI** (style, preset, review): (recommended) **not exposed** in Phase 7; the AI can
+    remove a style from photos and reset edits (both reversible), and deletes stay in the UI and CLI.
+  - **Claude's notes**: a per-photo note (text, ≤ 2000 characters) the AI can write, stored in the photo's edit
+    file next to the manual subject (no pixels change), shown in the **AI Analysis** tab (P6c left room for it).
+
+### Dependencies
+- [ ] **P7.2** Add the official MCP Python SDK (`mcp`, 2.3.x, `uv add`). Spike first: a `ping` tool and an image
+  tool mounted into the FastAPI app at `/mcp`, called from a test through the SDK's HTTP client; confirm the
+  SDK's API for structured output, image content, tool errors and transport security (Host/Origin checks) before
+  writing the tools. Record what was found in `docs/mcp.md`.
+
+### Core
+- [ ] **P7.3** Photo references (`core/library.py`): `Library.resolve(ref)` and `resolve_many(refs, folder=None)`
+  as described in the design; errors list the matches (at most 10). The CLI's `_find_photos` switches to it.
+  Tests: id, prefix, name with and without extension, `folder/name`, ambiguous, unknown, a folder.
+- [ ] **P7.4** Draft render (`Library.render_draft(photo, adjustments | None, size, before=False)`): the photo with
+  the given adjustments (validated like a save: later-phase parameters rejected) or its current edit, through
+  the normal renderer; nothing saved, nothing cached on disk. (P3b.2 reuses it later.) Tests: equals the saved
+  edit's preview when the adjustments are the same, no files written, invalid params rejected.
+- [ ] **P7.5** Partial edits (`Library.update_edit(photo, patch)`): a JSON patch of only the fields to change
+  (e.g. `{"tone": {"exposure": 0.3}}`) merged over the photo's current own adjustments, then validated as a whole
+  `AdjustmentParams`; unknown keys and out-of-range values are rejected with the field path. A `null` sets a
+  field back to its default. Tests: merge, nested merge, reset by null, unknown key, out of range, nothing
+  written on error.
+- [ ] **P7.6** Image analysis (`core/analysis.py`, `models/analysis.py`): `analyze(photo, adjustments=None)` →
+  measured on the rendered photo (the current edit, or the draft adjustments) at a fixed working size:
+  luminance histogram (32 bins) and percentiles (1, 5, 50, 95, 99), clipped shadows/highlights (% of pixels,
+  per channel too), mean and median luminance, contrast (p95 − p5), color cast (mean a/b of near-neutral
+  pixels, in OKLab), saturation and share of pixels per hue band (the 8 HSL bands), plus the stored tone stats
+  (black/white/middle stops, neutral white balance) and the subject analysis. Deterministic. Tests on synthetic
+  images with exact expected values (a gray ramp, a clipped patch, a tinted gray, a pure-red patch).
+- [ ] **P7.7** Claude's notes (if confirmed in P7.1): `EditFile.note` (≤ 2000 chars, outside the adjustments,
+  so the revision and previews don't change), `Library.set_note(photo, text | None)`, in `PhotoDetail` and
+  `SubjectAnalysis`. Old edit files load unchanged. Tests: round-trip, too long rejected, revision unchanged.
+- [ ] **P7.8** Change events (`core/events.py`): a thread-safe `EventBus` (subscribe → queue, publish, bounded
+  queues so a stalled listener can't block a write). Event = kind (`photos`, `photo_edit`, `subject`, `style`,
+  `preset`, `review`, `job`, `library`), the ids involved, origin, a short summary. Core services publish after
+  each successful write; job state changes publish (not every item's progress tick: at most a few per second).
+  The origin comes from a context variable each front-end sets (`ui` for the HTTP routes, `ai` for MCP tools,
+  `cli`). Tests: every write path publishes once with the right ids, origin propagates into job threads, a
+  slow subscriber drops old events instead of blocking.
+
+### MCP server
+- [ ] **P7.9** Skeleton (`mcp/server.py`): `build_server(services)` registers the tools; mounted in `create_app` at
+  `/mcp` (only when the services are built, so `photoedit openapi` stays side-effect free); Host/Origin checks
+  allow only localhost. Server **instructions** (sent to Claude on connect): what the tool is, the golden rules
+  that bind the AI (originals read-only, ranges are enforced, deterministic), the usual workflow (look → change
+  → look again; apply a style → contact sheet → export plan → export; Check photos go to a review), and that
+  long work returns a job to wait on with `get_job`. One error mapping for every tool. Tests: tools listed,
+  every tool has a description and an input schema, errors become tool errors.
+- [ ] **P7.10** Library + seeing tools: `library_status` (folders, current folder, counts, engine identity,
+  running jobs), `import_folder` (job), `list_photos` (folder, style, rating, paging; compact rows: id, name,
+  folder, capture time, camera/lens/exposure, style, edited, subject kind), `get_photo` (EXIF, style, own
+  adjustments, geometry, subject, stats, note), `render_preview` (photo, optional draft adjustments, size,
+  `before`) → image, `contact_sheet` (≤ 24 photos, size) → image with file names, `analyze_photo` (photo,
+  optional draft adjustments). Tests: valid and invalid input for each, images decode as JPEG at the asked size.
+- [ ] **P7.11** Edit tools: `update_adjustments` (photo(s), patch; same patch for several photos),
+  `set_adjustments` (full set), `reset_adjustments`, `set_geometry` (`GeometryChange`), `suggest_crop` (ratio,
+  placement, zoom; nothing saved), `get_subject` / `set_subject` (box or null), `detect_subjects` (job),
+  `set_note` (P7.7). Tests: valid and invalid for each (out of range, later-phase parameter, crop outside the
+  photo, unknown photo).
+- [ ] **P7.12** Style tools: `list_styles`, `get_style` (optionally a version), `create_style`,
+  `create_style_from_photo`, `update_style` (with `expected_version`), `update_style_from_photo`,
+  `duplicate_style`, `apply_style` (photos or folder, style or null, even out; job), `style_report`,
+  `style_history`, `style_diff`, `revert_style`, `render_style_samples` (job). Tests: valid and invalid for
+  each, a version conflict, the style's photos follow an update.
+- [ ] **P7.13** Export, review and job tools: `list_export_presets`, `get_export_preset`,
+  `create_export_preset` / `update_export_preset` (custom presets only), `plan_export` (dry run),
+  `export_photos` (job), `prepare_export` (job → review id), `list_reviews`, `get_review`, `update_review_item`
+  (zoom, position, approve), `set_review_subject`, `review_preview` → image, `export_review` (scope),
+  `get_review_settings` / `set_review_settings`, `list_jobs`, `get_job` (optional `wait_seconds` ≤ 120: returns
+  when the job ends or the time is up, with its progress), `cancel_job`. Tests: valid and invalid for each, an
+  export into a protected photo folder refused, `get_job` waiting and timing out.
+- [ ] **P7.14** Registration: `.mcp.json` at the repo root (`photoedit`, type `http`, `http://127.0.0.1:8765/mcp`);
+  `photoedit mcp check` (CLI) says whether the server is up at the configured host/port and lists the tools, and
+  prints the `.mcp.json` entry for another port. Test with `CliRunner` against a test server.
+
+### API + UI
+- [ ] **P7.15** `GET /api/events`: server-sent events from the bus (JSON per event, a heartbeat every 15 s,
+  closes cleanly at shutdown). The event model is in OpenAPI (a documented schema route) so the TS types are
+  generated. Regenerate `openapi.json` + `schema.d.ts`. Tests: events arrive in order, origin and ids correct.
+- [ ] **P7.16** UI live updates (`hooks/useLiveUpdates.ts`, mounted once in the app): an `EventSource` that
+  reconnects with backoff; each event kind invalidates its queries (photos, photo, subject/analysis, styles,
+  presets, reviews, jobs, library); the open Photo view reloads its preview when its photo changes. Events
+  with origin `ai` show an activity toast with the summary and a link (photo, style, review or job). Events from
+  this browser's own mutations are not toasted.
+- [ ] **P7.17** AI Analysis tab: shows **Claude's note** (if P7.7 is confirmed) above the detection, with when it
+  was written; the user can clear it.
+
+### Tests + docs
+- [ ] **P7.18** Cross-cutting MCP tests: every tool's structured output validates against its declared schema;
+  a whole session through the SDK client (import a folder of synthetic photos → preview → update → apply style
+  → plan → export → files written only in the chosen `tmp_path` destination) with the originals' hashes
+  unchanged; `render_preview` is deterministic (same bytes twice); AI writes publish events with origin `ai`.
+- [ ] **P7.19** UI tests: Vitest for `useLiveUpdates` (fake `EventSource`: invalidations per kind, the toast only
+  for `ai`, reconnect) and the note in the AI Analysis tab. Playwright: with the UI open on a photo, a change made
+  through the API by another client (origin `ai`) updates the preview and the Library without a reload, and the
+  toast appears (screenshot).
+- [ ] **P7.20** Docs: `docs/mcp.md` (setup, `.mcp.json`, starting the server, every tool with an example, the
+  workflow, limits), README (MCP section), CLAUDE.md (a short "using the photoedit MCP tools" section: what to
+  do when the server isn't connected).
+- [ ] **P7.21** Full check (pytest incl. golden, ruff, format, mypy, npm test/lint/build, e2e) and the human test
+  script below updated.
+
+### 🧑 Human test: Phase 7
+0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`,
+   `uv run photoedit ui`. `uv run photoedit mcp check` says the server is up and lists the tools.
+1. Start a **new** Claude Code session in `C:\Work\PhotoEditing` and approve the `photoedit` MCP server (from
+   `.mcp.json`). Ask "what's in my photo library?" → Claude lists the folders and counts.
+2. Keep the UI open on a photo (e.g. DSCF5437). Ask Claude to show it to you and describe it → it shows the
+   preview and talks about what it sees.
+3. "Make it a bit warmer and lift the shadows" → Claude changes only those values (it may preview first); the UI's
+   photo updates within a second or two without a reload, and a toast says Claude edited it.
+4. "Analyze it: is anything clipped, is there a color cast?" → numbers that fit the photo. Ask Claude to write a
+   note → it appears in the AI Analysis tab.
+5. "Apply style *X* to folder 2026-08-11 and export it for Instagram to `C:\Work\PhotoEditing\output\mcp-test`" →
+   Claude applies the style (Library thumbnails change live), shows a contact sheet, plans and exports (Claude
+   Code asks before the export with the destination shown); the Jobs page shows the progress live; the files
+   are there.
+6. "Prepare an Instagram export of the rally photos for review" → the review appears under **Reviews**; Claude
+   says which photos are in Check and why. Approve one in the UI → Claude sees it on its next look.
+7. Ask for something out of range ("exposure +20") or impossible ("export into the photo folder") → Claude reports
+   the tool's clear error, and nothing changed.
+8. The photo folders are unchanged. **Give feedback** on what Claude could and couldn't do, the toasts, and
+   anything the tools should offer.
+
+### ⛔ STOP: user approves Phase 7
 
 ## Phase 8: AI style creation (outline)
 - [ ] ⛔ **STOP FIRST: ask the user for style samples** (finished photos and/or RAW + edited pairs).
