@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from photoedit.core.catalog import CatalogPhoto
 from photoedit.core.errors import InvalidRequestError, NotFoundError
+from photoedit.core.events import EventBus
 from photoedit.core.geometry import check_geometry, is_identity
 from photoedit.core.render.pipeline import check_supported
 from photoedit.core.scan import SourceKind
@@ -28,6 +29,7 @@ from photoedit.core.style_rules import RuleInputs, resolve, rule_parameters
 from photoedit.core.styles import StyleLibrary
 from photoedit.models import AdjustmentParams, GroupReference, RuleResult, Style
 from photoedit.models.adjustments import Geometry
+from photoedit.models.events import EventKind
 from photoedit.models.photo import PhotoNote
 from photoedit.models.subject import SubjectBox
 from photoedit.safety import PathGuard
@@ -101,7 +103,9 @@ class EditStore:
         *,
         styles: StyleLibrary | None = None,
         inputs: InputsProvider | None = None,
+        events: EventBus | None = None,
     ) -> None:
+        self._events = events or EventBus()
         self._dir = edits_dir
         self._guard = guard
         self._styles = styles
@@ -237,10 +241,8 @@ class EditStore:
 
     def reset(self, photo_id: str) -> None:
         """Forget the photo's edit entirely (style, group, tweaks, subject and note)."""
-        path = self.path(photo_id)
-        if path.exists():
-            self._guard.assert_writable(path)
-            path.unlink()
+        self._delete(photo_id)
+        self._events.publish(EventKind.PHOTO_EDIT, [photo_id])
 
     # ---- internals
 
@@ -251,12 +253,19 @@ class EditStore:
             and record.subject is None
             and record.note is None
         ):
-            self.reset(record.photo_id)
+            self._delete(record.photo_id)
         else:
             # Leave out keys that are unset, so files look as they did before groups, subjects and notes.
             unset = {name for name in ("group", "subject", "note") if getattr(record, name) is None}
             data = record.model_dump_json(indent=2, exclude=unset or None)
             self._guard.write_atomic(self.path(record.photo_id), data.encode("utf-8"))
+        self._events.publish(EventKind.PHOTO_EDIT, [record.photo_id])
+
+    def _delete(self, photo_id: str) -> None:
+        path = self.path(photo_id)
+        if path.exists():
+            self._guard.assert_writable(path)
+            path.unlink()
 
     def _library(self) -> StyleLibrary:
         if self._styles is None:

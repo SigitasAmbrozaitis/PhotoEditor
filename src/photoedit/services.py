@@ -6,6 +6,7 @@ from photoedit.config import Settings
 from photoedit.core.analysis import Analyzer
 from photoedit.core.cache import ImageCache
 from photoedit.core.catalog import Catalog
+from photoedit.core.events import EventBus
 from photoedit.core.export.presets import PresetLibrary
 from photoedit.core.export.service import ExecutorFactory, Exporter
 from photoedit.core.jobs import JobManager
@@ -23,10 +24,11 @@ class Services:
     def __init__(self, settings: Settings, *, export_executor: ExecutorFactory | None = None) -> None:
         self.settings = settings
         self.guard: PathGuard = guard_from_settings(settings)
-        self.jobs = JobManager()
+        self.events = EventBus()
+        self.jobs = JobManager(events=self.events)
         self.catalog = Catalog(settings.workspace_dir / CATALOG_FILE, self.guard)
         self.cache = ImageCache(settings.cache_dir, self.guard)
-        self.styles = StyleLibrary(settings.styles_dir, self.guard)
+        self.styles = StyleLibrary(settings.styles_dir, self.guard, events=self.events)
         self.library = Library(
             self.catalog,
             self.cache,
@@ -38,7 +40,7 @@ class Services:
         self.styling = Styling(self.library, self.styles, self.jobs, self.guard)
         self.subjects = Subjects(self.library, settings.cache_dir)
         self.analysis = Analyzer(self.library, lambda: self.subjects)
-        self.presets = PresetLibrary(settings.presets_dir, self.guard)
+        self.presets = PresetLibrary(settings.presets_dir, self.guard, events=self.events)
         self.exporter = Exporter(
             self.library,
             self.jobs,

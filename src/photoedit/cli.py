@@ -74,6 +74,10 @@ def _root(
     ] = False,
 ) -> None:
     """PhotoEditor command-line interface."""
+    from photoedit.core.events import set_origin
+    from photoedit.models.events import Origin
+
+    set_origin(Origin.CLI)
 
 
 @app.command()

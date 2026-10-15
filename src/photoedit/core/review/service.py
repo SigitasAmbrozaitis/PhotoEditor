@@ -39,6 +39,7 @@ from photoedit.core.subject.analysis import focus_box, found_candidates
 from photoedit.core.subject.service import Subjects
 from photoedit.models import Job, JobKind
 from photoedit.models.adjustments import CropRect
+from photoedit.models.events import EventKind
 from photoedit.models.export import ExportSettings
 from photoedit.models.review import (
     ExportReview,
@@ -124,6 +125,7 @@ class Reviews:
         with self._lock:
             text = settings.model_dump_json(indent=2) + "\n"
             self._guard.write_atomic(self._settings_path, text.encode("utf-8"))
+            self._jobs.events.publish(EventKind.REVIEW)
             for review_id in self._ids():
                 try:
                     self.get(review_id)
@@ -251,6 +253,7 @@ class Reviews:
                 raise NotFoundError(f"review '{review_id}' not found")
             self._guard.assert_writable(path)
             path.unlink()
+            self._jobs.events.publish(EventKind.REVIEW, [review_id])
 
     def preview(self, review_id: str, photo_id: str) -> bytes:
         """The photo's framing preview: its edit cut to the export's crop."""
@@ -579,6 +582,7 @@ class Reviews:
         data = json.loads(review.model_dump_json(exclude={"counts"}))
         text = json.dumps(data, indent=1, ensure_ascii=False) + "\n"
         self._guard.write_atomic(self._path(review.id), text.encode("utf-8"))
+        self._jobs.events.publish(EventKind.REVIEW, [review.id])
 
 
 def _normalized(box: Box, width: int, height: int) -> CropRect:

@@ -50,6 +50,7 @@ from photoedit.core.subject.model_files import (
 from photoedit.core.subject.suggest import suggest
 from photoedit.models import Job, JobKind
 from photoedit.models.crop import CropSuggestion, CropSuggestionRequest
+from photoedit.models.events import EventKind
 from photoedit.models.subject import (
     SubjectAnalysis,
     SubjectBox,
@@ -219,6 +220,7 @@ class Subjects:
                 return stored
             found = self.detect(photo)
             self._library.catalog.set_subject(photo.id, identity, found)
+            self._library.jobs.events.publish(EventKind.SUBJECT, [photo.id])
             return found
 
     def detect(self, photo: CatalogPhoto) -> SubjectInfo:

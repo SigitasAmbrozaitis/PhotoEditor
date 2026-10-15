@@ -50,6 +50,7 @@ from photoedit.models import (
     SortOrder,
 )
 from photoedit.models.adjustments import CropRect, Geometry, GeometryChange
+from photoedit.models.events import EventKind
 from photoedit.models.photo import PhotoNote, ZoomInfo, ZoomLevel
 from photoedit.safety import PathGuard
 
@@ -86,7 +87,7 @@ class Library:
         self.styles = styles
         # Edits live next to the catalog in the workspace unless told otherwise.
         self.edits = edits or EditStore(
-            catalog.path.parent / "edits", guard, styles=styles, inputs=self.rule_inputs
+            catalog.path.parent / "edits", guard, styles=styles, inputs=self.rule_inputs, events=jobs.events
         )
         self.renderer = renderer or Renderer(cache.root, guard, remember_stats=catalog.set_photo_stats)
         self.cache = cache
@@ -133,6 +134,7 @@ class Library:
                 FolderRecord(path=root, include_subfolders=include_subfolders, last_imported_at=self._clock())
             )
             self.render_thumbnails([pid for pid, _ in outcomes.values()])
+            self.jobs.events.publish(EventKind.LIBRARY, [root.as_posix()])
             return _summary(
                 Counter(o for _, o in outcomes.values()), len(scan.photos), len(scan.skipped), missing
             )
@@ -252,6 +254,7 @@ class Library:
         if record is None:
             raise NotFoundError(f"folder '{folder}' has not been imported yet")
         self.catalog.set_state(CURRENT_FOLDER, str(record.path))
+        self.jobs.events.publish(EventKind.LIBRARY, [record.path.as_posix()])
         return self.info()
 
     def _current(self) -> FolderRecord | None:

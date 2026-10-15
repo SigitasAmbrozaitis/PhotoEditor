@@ -21,8 +21,10 @@ from typing import Any, Literal
 from pydantic import ValidationError
 
 from photoedit.core.errors import ConflictError, InvalidRequestError, NotFoundError
+from photoedit.core.events import EventBus
 from photoedit.core.render.pipeline import check_supported
 from photoedit.models import AdjustmentParams, Style
+from photoedit.models.events import EventKind
 from photoedit.models.style import (
     STYLE_ID_PATTERN,
     STYLE_SCHEMA_VERSION,
@@ -59,7 +61,10 @@ class StyleListing:
 
 
 class StyleLibrary:
-    def __init__(self, root: Path, guard: PathGuard, *, clock: Clock | None = None) -> None:
+    def __init__(
+        self, root: Path, guard: PathGuard, *, clock: Clock | None = None, events: EventBus | None = None
+    ) -> None:
+        self._events = events or EventBus()
         self.root = root
         self._guard = guard
         self._clock: Clock = clock or (lambda: datetime.now(UTC))
@@ -160,6 +165,7 @@ class StyleLibrary:
                 raise NotFoundError(f"style '{style_id}' not found")
             self._guard.assert_writable(folder)
             shutil.rmtree(folder)
+        self._events.publish(EventKind.STYLE, [style_id])
 
     # ---- history
 
@@ -247,6 +253,7 @@ class StyleLibrary:
             self._guard.write_atomic(folder / HISTORY_DIR / f"v{style.version}.json", data)
         self._guard.write_atomic(folder / STYLE_FILE, data)
         self._guard.write_atomic(folder / README_FILE, readme(style).encode("utf-8"))
+        self._events.publish(EventKind.STYLE, [style.id])
 
 
 def slugify(name: str) -> str:

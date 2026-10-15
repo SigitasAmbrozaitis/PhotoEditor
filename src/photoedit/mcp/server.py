@@ -14,6 +14,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from photoedit import __version__
 from photoedit.core.errors import InvalidRequestError, NotFoundError
+from photoedit.core.events import origin
+from photoedit.models.events import Origin
 from photoedit.safety import WriteNotAllowedError
 from photoedit.services import Services
 
@@ -38,13 +40,15 @@ class Pong(BaseModel):
 
 
 def _core_errors[**P, R](fn: Callable[P, R]) -> Callable[P, R]:
-    """Core errors become tool errors carrying their message. Anything else is a crash, which the SDK reports
-    to the model only as "Error executing tool" (its text stays in the server log)."""
+    """Runs a tool as the AI (so the UI can say "Claude changed…"), with core errors as tool errors carrying
+    their message. Anything else is a crash, which the SDK reports to the model only as "Error executing
+    tool" (its text stays in the server log)."""
 
     @functools.wraps(fn)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
         try:
-            return fn(*args, **kwargs)
+            with origin(Origin.AI):
+                return fn(*args, **kwargs)
         except (NotFoundError, InvalidRequestError, WriteNotAllowedError, ValidationError) as exc:
             raise ToolError(str(exc)) from exc
 

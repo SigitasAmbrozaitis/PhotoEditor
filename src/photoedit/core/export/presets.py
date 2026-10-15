@@ -13,8 +13,10 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from photoedit.core.errors import ConflictError, InvalidRequestError, NotFoundError
+from photoedit.core.events import EventBus
 from photoedit.core.presets import BUILTIN_PRESETS
 from photoedit.core.styles import slugify
+from photoedit.models.events import EventKind
 from photoedit.models.export import ExportPreset, PresetCreate, PresetDuplicate, PresetUpdate
 from photoedit.safety import PathGuard
 
@@ -23,8 +25,14 @@ _SUFFIX = ".json"
 
 class PresetLibrary:
     def __init__(
-        self, folder: Path, guard: PathGuard, builtins: tuple[ExportPreset, ...] = BUILTIN_PRESETS
+        self,
+        folder: Path,
+        guard: PathGuard,
+        builtins: tuple[ExportPreset, ...] = BUILTIN_PRESETS,
+        *,
+        events: EventBus | None = None,
     ) -> None:
+        self._events = events or EventBus()
         self._folder = folder
         self._guard = guard
         self._builtins = {p.id: p for p in builtins}
@@ -92,6 +100,7 @@ class PresetLibrary:
             raise NotFoundError(f"export preset '{preset_id}' not found")
         self._guard.assert_writable(path)
         path.unlink()
+        self._events.publish(EventKind.PRESET, [preset_id])
 
     # ---- internals
 
@@ -135,6 +144,7 @@ class PresetLibrary:
         data = preset.model_dump(mode="json", exclude={"builtin", "error"})
         text = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
         self._guard.write_atomic(self._path(preset.id), text.encode("utf-8"))
+        self._events.publish(EventKind.PRESET, [preset.id])
 
     def _free_id(self, base: str) -> str:
         taken = set(self._builtins)

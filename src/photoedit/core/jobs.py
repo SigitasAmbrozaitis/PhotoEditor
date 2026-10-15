@@ -6,8 +6,10 @@ when the work is I/O or native code that releases the GIL). A failing item is re
 
 from __future__ import annotations
 
+import contextvars
 import itertools
 import threading
+import time
 from collections import deque
 from collections.abc import Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -15,9 +17,13 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from photoedit.core.errors import NotFoundError
+from photoedit.core.events import EventBus, current_origin
 from photoedit.models import Job, JobItem, JobKind, JobStatus
+from photoedit.models.events import EventKind, Origin
 
 type Clock = Callable[[], datetime]
+
+PROGRESS_EVENT_INTERVAL = 0.25  # s: at most a few progress events per second and job
 
 
 class JobNotFoundError(NotFoundError):
@@ -57,7 +63,9 @@ class _State:
     destination: str | None = None
     folder: str | None = None
     review_id: str | None = None
+    origin: Origin = Origin.UI
     status: JobStatus = JobStatus.QUEUED
+    last_event: float = 0.0
     finished_at: datetime | None = None
     summary: str | None = None
     cancel: threading.Event = field(default_factory=threading.Event)
@@ -67,8 +75,11 @@ class _State:
 class JobManager:
     """Runs jobs on a small thread pool (``max_jobs`` at a time; the rest wait as QUEUED)."""
 
-    def __init__(self, *, max_jobs: int = 2, clock: Clock | None = None) -> None:
+    def __init__(
+        self, *, max_jobs: int = 2, clock: Clock | None = None, events: EventBus | None = None
+    ) -> None:
         self._clock: Clock = clock or (lambda: datetime.now(UTC))
+        self.events = events or EventBus()
         self._pool = ThreadPoolExecutor(max_workers=max_jobs, thread_name_prefix="job")
         self._jobs: dict[str, _State] = {}
         self._lock = threading.Lock()
@@ -111,10 +122,13 @@ class JobManager:
             destination=destination,
             folder=folder,
             review_id=review_id,
+            origin=current_origin(),
         )
+        # The work runs in the starter's context, so what it changes is attributed to the starter (UI, AI…).
+        context = contextvars.copy_context()
 
         def start() -> None:
-            self._pool.submit(self._run, state, work, max(1, parallel), finish, queue, cleanup)
+            self._pool.submit(context.run, self._run, state, work, max(1, parallel), finish, queue, cleanup)
 
         with self._lock:
             self._jobs[state.id] = state
@@ -126,6 +140,7 @@ class JobManager:
                 self._busy.add(queue)
         if not wait:
             start()
+        self._publish(state)
         return self.get(state.id)
 
     def list(self) -> list[Job]:
@@ -217,13 +232,16 @@ class JobManager:
             with self._lock:
                 if not state.cancel.is_set():
                     state.status = JobStatus.RUNNING
+            self._publish(state)
             if parallel == 1:
                 for index in range(len(state.items)):
                     self._run_item(state, work, index)
             else:
                 with ThreadPoolExecutor(max_workers=parallel, thread_name_prefix=f"{state.id}-item") as items:
+                    # One context copy per item: a context can't be entered by two threads at once.
                     futures: list[Future[None]] = [
-                        items.submit(self._run_item, state, work, i) for i in range(len(state.items))
+                        items.submit(contextvars.copy_context().run, self._run_item, state, work, i)
+                        for i in range(len(state.items))
                     ]
                     for future in futures:
                         future.result()
@@ -248,6 +266,7 @@ class JobManager:
         except Exception as exc:
             with self._lock:
                 self._set_item(state, index, status=JobStatus.FAILED, message=str(exc) or type(exc).__name__)
+            self._progress(state)
             return
         with self._lock:
             item = state.items[index]
@@ -263,6 +282,7 @@ class JobManager:
                 output_height=result.output_height,
                 warnings=list(result.warnings),
             )
+        self._progress(state)
 
     def _set_item(self, state: _State, index: int, **changes: object) -> None:
         state.items[index] = state.items[index].model_copy(update=changes)
@@ -281,6 +301,22 @@ class JobManager:
             state.summary = error or summary
             state.finished_at = self._clock()
         state.done.set()
+        self._publish(state)
+
+    def _progress(self, state: _State) -> None:
+        now = time.monotonic()
+        with self._lock:
+            if now - state.last_event < PROGRESS_EVENT_INTERVAL:
+                return
+            state.last_event = now
+        self._publish(state)
+
+    def _publish(self, state: _State) -> None:
+        with self._lock:
+            summary = f"{state.title}: {state.status.value}" + (
+                f" ({state.summary})" if state.summary else ""
+            )
+        self.events.publish(EventKind.JOB, [state.id], summary=summary, source=state.origin)
 
     def _view(self, state: _State) -> Job:
         total = len(state.items)
