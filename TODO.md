@@ -1805,6 +1805,9 @@ follow from a subject-framed review.
 
 ### ⛔ STOP: user approves Phase 6c
 
+**Approved 2026-10-15.** The user tested both rounds ("Look great"). Next: Phase 7 (MCP server), detailed
+at the start of its own session (P7.0).
+
 ## Phase 7: MCP server (outline)
 - [ ] **P7.0** Detail this phase. ⛔ STOP for review.
 - [ ] MCP server exposing the core API (PLAN 4.4), including `render_preview` returning images.
