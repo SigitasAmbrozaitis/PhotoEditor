@@ -9,6 +9,7 @@ from photoedit.core.export.presets import PresetLibrary
 from photoedit.core.export.service import ExecutorFactory, Exporter
 from photoedit.core.jobs import JobManager
 from photoedit.core.library import Library
+from photoedit.core.review.service import Reviews
 from photoedit.core.styles import StyleLibrary
 from photoedit.core.styling import Styling
 from photoedit.core.subject.service import Subjects
@@ -43,6 +44,15 @@ class Services:
             settings,
             executor_factory=export_executor,
             subjects=self.subjects,
+        )
+        self.reviews = Reviews(
+            self.library,
+            self.exporter,
+            self.subjects,
+            self.styling,
+            self.jobs,
+            self.guard,
+            settings.workspace_dir,
         )
 
     def close(self) -> None:

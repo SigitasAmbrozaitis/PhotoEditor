@@ -95,3 +95,35 @@ class SubjectUpdate(_Model):
     """Set the photo's subject by hand (upright coordinates), or ``null`` to use the detected one."""
 
     box: SubjectBox | None
+
+
+class FoundCandidate(_Model):
+    """One thing detection found, mapped into the edited photo (after its own crop)."""
+
+    index: int = Field(ge=0, description="Position in the photo's detected candidates (to choose it).")
+    box: SubjectBox = Field(description="Normalized to the edited photo.")
+    kind: SubjectKind
+    score: float = Field(ge=0, le=1, description="How likely this is the photo's main subject.")
+    label: str | None = None
+    recognized: bool = Field(
+        default=True, description="A detector named it (car, cat…); false for guesses (stands out, sharp)."
+    )
+    chosen: bool = Field(default=False, description="Part of the subject the photo is framed on.")
+
+
+class SubjectAnalysis(_Model):
+    """What detection found in a photo, in the edited photo's coordinates (the picture the user sees)."""
+
+    detected: bool = Field(description="False until detection has run for this photo (with these models).")
+    source: SubjectSource
+    kind: SubjectKind | None = None
+    score: float | None = Field(default=None, ge=0, le=1)
+    box: SubjectBox | None = Field(
+        default=None, description="The subject, normalized to the edited photo; none when outside its crop."
+    )
+    candidates: list[FoundCandidate] = Field(default_factory=list, description="Best first.")
+    focus: SubjectBox | None = Field(
+        default=None, description="Where the camera focused (a small box), normalized to the edited photo."
+    )
+    detector: str | None = None
+    notes: list[str] = Field(default_factory=list)

@@ -7,15 +7,19 @@ import type {
   ExportPlan,
   ExportPreset,
   ExportRequest,
+  ExportReview,
   Job,
   LibraryFolder,
   LibraryInfo,
   Photo,
   PhotoDetail,
+  ReviewCounts,
+  ReviewItem,
   Style,
   StyleDiff,
   StyleSummary,
   StyleVersionInfo,
+  SubjectAnalysis,
   SubjectInfo,
 } from '../api/types'
 
@@ -287,7 +291,7 @@ export const presets: ExportPreset[] = [
         dont_enlarge: false,
         ppi: 72,
       },
-      aspect: { ratio: '4:5', orientation: 'portrait', anchor: 'center' },
+      aspect: { ratio: '4:5', orientation: 'portrait', anchor: 'center', zoom: 'off', subject_fill: 0.4 },
       sharpening: { target: 'screen', amount: 'standard' },
       metadata: { policy: 'copyright_only', strip_gps: true, copyright: null, creator: null, keywords: [] },
       naming: { template: '{original}_ig', on_collision: 'suffix' },
@@ -316,7 +320,7 @@ export const presets: ExportPreset[] = [
         dont_enlarge: true,
         ppi: 72,
       },
-      aspect: { ratio: null, orientation: 'auto', anchor: 'center' },
+      aspect: { ratio: null, orientation: 'auto', anchor: 'center', zoom: 'off', subject_fill: 0.4 },
       sharpening: { target: 'screen', amount: 'standard' },
       metadata: { policy: 'copyright_only', strip_gps: true, copyright: null, creator: null, keywords: [] },
       naming: { template: '{original}_web', on_collision: 'suffix' },
@@ -341,6 +345,7 @@ export function exportPlan(request: ExportRequest): ExportPlan {
       height,
       decode: width <= 3000 ? 'half' : 'full',
       collision: 'new',
+      zoom: 1,
       // With the subject anchor: the first photo frames a detected car, the others have none.
       ...(request.settings.aspect?.anchor === 'subject'
         ? id === request.photo_ids[0]
@@ -385,6 +390,7 @@ export function makeJob(overrides: Partial<Job> = {}): Job {
     preset_id: 'instagram-portrait',
     destination: 'C:/Exports/ig',
     folder: null,
+    review_id: null,
     summary: null,
     items: [
       { photo_id: 'p001', filename: 'DSCF1001.RAF', status: 'done', message: null, output_path: 'C:/Exports/ig/DSCF1001.jpg', ...noOutput },
@@ -459,4 +465,118 @@ export const styleReport: ConsistencyReport = {
     { measure: 'temperature', before_mad: 0, after_mad: 0, before_range: 0, after_range: 0 },
     { measure: 'tint', before_mad: 0, after_mad: 0, before_range: 0, after_range: 0 },
   ],
+}
+
+// ----------------------------------------------------------------- reviews (Phase 6c)
+
+const reviewItem = (n: number, overrides: Partial<ReviewItem>): ReviewItem => ({
+  photo_id: `p00${n}`,
+  filename: `DSCF${1000 + n}.RAF`,
+  status: 'ready',
+  reasons: [],
+  approved: false,
+  approved_framing: null,
+  framing: `f${n}`,
+  subject: 'detected',
+  subject_kind: 'car',
+  subject_score: 0.84,
+  subject_box: { left: 0.6, top: 0.4, right: 0.8, bottom: 0.55 },
+  candidates: [
+    { index: 0, box: { left: 0.6, top: 0.4, right: 0.8, bottom: 0.55 }, kind: 'car', score: 0.84, label: 'car', recognized: true, chosen: true },
+  ],
+  focus: { left: 0.66, top: 0.42, right: 0.72, bottom: 0.5 },
+  position: null,
+  crop: { left: 0.45, top: 0, right: 0.95, bottom: 1 },
+  zoom: 1,
+  auto_zoom: 1,
+  zoom_override: null,
+  limits: { fast: 1.54, quality: 3.08 },
+  decode: 'half',
+  width: 1080,
+  height: 1350,
+  warnings: [],
+  revision: `r${n}`,
+  ...overrides,
+})
+
+export function reviewCounts(items: ReviewItem[]): ReviewCounts {
+  const check = items.filter((i) => i.status === 'check')
+  return {
+    total: items.length,
+    ready: items.filter((i) => i.status === 'ready').length,
+    check: check.filter((i) => !i.approved).length,
+    approved: check.filter((i) => i.approved).length,
+    unusable: items.filter((i) => i.status === 'unusable').length,
+  }
+}
+
+/** A prepared Instagram export: one Ready car, two cars to choose from, a sunset without a subject, a small
+ * car at the zoom limit, and a photo whose original is gone. */
+export function makeReview(): ExportReview {
+  const items: ReviewItem[] = [
+    reviewItem(1, { zoom: 1.3, auto_zoom: 1.3 }),
+    reviewItem(2, {
+      status: 'check',
+      reasons: [{ code: 'ambiguous', text: 'another car scores 0.80 (the car: 0.84)' }],
+      candidates: [
+        { index: 0, box: { left: 0.6, top: 0.4, right: 0.8, bottom: 0.55 }, kind: 'car', score: 0.84, label: 'car', recognized: true, chosen: true },
+        { index: 1, box: { left: 0.05, top: 0.4, right: 0.25, bottom: 0.55 }, kind: 'car', score: 0.8, label: 'truck', recognized: true, chosen: false },
+        { index: 2, box: { left: 0.4, top: 0.1, right: 0.5, bottom: 0.2 }, kind: 'salient', score: 0.31, label: null, recognized: false, chosen: false },
+      ],
+    }),
+    reviewItem(3, {
+      status: 'check',
+      reasons: [{ code: 'no_subject', text: 'no subject found: centered' }],
+      subject: 'none',
+      subject_kind: null,
+      subject_score: null,
+      subject_box: null,
+      candidates: [],
+      crop: { left: 0.25, top: 0, right: 0.75, bottom: 1 },
+    }),
+    reviewItem(5, {
+      status: 'check',
+      reasons: [
+        {
+          code: 'zoom_limit',
+          text: 'the subject stays small: filling 40% of the crop needs 4.7×, the most without enlarging is 3.08×',
+        },
+      ],
+      zoom: 1.54,
+      auto_zoom: 1.54,
+    }),
+    reviewItem(6, {
+      status: 'unusable',
+      reasons: [{ code: 'unusable', text: 'the original is no longer at C:/Photos/DSCF1006.RAF' }],
+    }),
+  ]
+  return {
+    id: 'abcdef123456',
+    created_at: '2026-10-13T10:00:00Z',
+    updated_at: '2026-10-13T10:00:00Z',
+    preset_id: 'instagram-portrait',
+    style_id: null,
+    // Framed on each photo's subject, as a review is by default.
+    settings: { ...presets[0]!.settings, aspect: { ...presets[0]!.settings.aspect, anchor: 'subject', zoom: 'auto' } },
+    destination: 'C:/Exports/ig',
+    items,
+    counts: reviewCounts(items),
+  }
+}
+
+/** The AI Analysis of a photo in the fake backend: the detected car plus a person and a guess. */
+export const analysis: SubjectAnalysis = {
+  detected: true,
+  source: 'detected',
+  kind: 'car',
+  score: 0.84,
+  box: { left: 0.6, top: 0.4, right: 0.8, bottom: 0.55 },
+  candidates: [
+    { index: 0, box: { left: 0.6, top: 0.4, right: 0.8, bottom: 0.55 }, kind: 'car', score: 0.84, label: 'truck', recognized: true, chosen: true },
+    { index: 1, box: { left: 0.1, top: 0.6, right: 0.2, bottom: 0.9 }, kind: 'person', score: 0.2, label: 'person', recognized: true, chosen: false },
+    { index: 2, box: { left: 0.4, top: 0.1, right: 0.5, bottom: 0.2 }, kind: 'salient', score: 0.12, label: null, recognized: false, chosen: false },
+  ],
+  focus: { left: 0.66, top: 0.42, right: 0.72, bottom: 0.5 },
+  detector: 'yolox_s-test',
+  notes: [],
 }

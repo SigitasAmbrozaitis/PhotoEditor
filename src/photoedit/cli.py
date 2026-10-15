@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from photoedit.models import Job
     from photoedit.models.adjustments import GeometryChange
     from photoedit.models.export import ExportSettings
+    from photoedit.models.review import ExportReview
     from photoedit.services import Services
 
 app = typer.Typer(
@@ -46,6 +47,10 @@ models_app = typer.Typer(help="Pinned detector models for subject detection.", n
 app.add_typer(models_app, name="models")
 subject_app = typer.Typer(help="Photos' main subjects: detect, show, evaluate.", no_args_is_help=True)
 app.add_typer(subject_app, name="subject")
+review_app = typer.Typer(
+    help="Pre-export reviews: prepare, look at the doubtful photos, approve, export.", no_args_is_help=True
+)
+app.add_typer(review_app, name="review")
 
 ConfigOption = Annotated[
     Path | None,
@@ -1097,6 +1102,223 @@ def subject_eval(
         services.close()
     if not all(s.passed for s in scores(found)):
         raise typer.Exit(1)
+
+
+ReviewArg = Annotated[str, typer.Argument(help="A review id (see: photoedit review list).")]
+
+
+def _print_review(review: ExportReview) -> None:
+    counts = review.counts
+    typer.echo(
+        f"Review {review.id}: {counts.total} photos → {review.destination} ({review.preset_id or 'custom'})\n"
+        f"  {counts.ready} ready, {counts.check} to check, {counts.approved} approved"
+        + (f", {counts.unusable} can't be exported" if counts.unusable else "")
+    )
+    order = {"unusable": 0, "check": 1, "ready": 2}
+    for item in sorted(review.items, key=lambda i: order[i.status.value]):
+        mark = "approved" if item.approved else item.status.value
+        zoom = f"  zoom {item.zoom:.2f}×" if item.zoom > 1 else ""
+        typer.echo(f"  [{mark:>8}] {item.filename}{zoom}")
+        for reason in item.reasons:
+            typer.echo(f"             - {reason.text}")
+
+
+@review_app.command("prepare")
+def review_prepare(
+    photos: PhotosArg = None,
+    preset: Annotated[str, typer.Option(help="Export preset id (see: photoedit preset list).")] = (
+        "instagram-portrait"
+    ),
+    dest: Annotated[Path | None, typer.Option(help="Destination folder (created when exporting).")] = None,
+    folder: Annotated[
+        Path | None, typer.Option(help="Every photo of this imported folder instead of PHOTO….")
+    ] = None,
+    style: Annotated[str | None, typer.Option(help="Apply this style first.")] = None,
+    even_out: Annotated[bool, typer.Option(help="Even the photos out as a group (with --style).")] = False,
+    set_: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--set", help="Change a preset setting, e.g. --set aspect.subject_fill=0.5 (repeatable)."
+        ),
+    ] = None,
+    config: ConfigOption = None,
+) -> None:
+    """Prepare an export: frame every photo, then list the Ready ones and the ones to check, with reasons."""
+    from photoedit.core.errors import InvalidRequestError, NotFoundError
+
+    if dest is None:
+        raise typer.BadParameter("give the destination folder", param_hint="--dest")
+    services = _open_services(config)
+    try:
+        if folder is not None and photos:
+            raise typer.BadParameter("give PHOTO… or --folder, not both", param_hint="--folder")
+        found = (
+            _folder_photos(services, folder.expanduser().absolute())
+            if folder is not None
+            else _find_photos(services, photos)
+        )
+        if not found:
+            raise typer.BadParameter("no photos to prepare", param_hint="PHOTO")
+        try:
+            base = services.presets.get(preset)
+        except NotFoundError as exc:
+            raise typer.BadParameter(f"{exc} (see: photoedit preset list)", param_hint="--preset") from None
+        settings = _with_overrides(base.settings, set_ or [])
+        try:
+            job = services.reviews.prepare(
+                [p.id for p in found],
+                settings,
+                str(dest.expanduser().absolute()),
+                preset_id=preset,
+                style_id=style,
+                even_out=even_out,
+            )
+        except (InvalidRequestError, NotFoundError) as exc:
+            raise typer.BadParameter(str(exc)) from None
+        done = _run_job(services, job)
+        assert done.review_id is not None
+        _print_review(services.reviews.get(done.review_id))
+    finally:
+        services.close()
+
+
+@review_app.command("list")
+def review_list(config: ConfigOption = None) -> None:
+    """Open reviews, newest first."""
+    services = _open_services(config)
+    try:
+        summaries = services.reviews.summaries()
+        if not summaries:
+            typer.echo("No open reviews.")
+        for summary in summaries:
+            counts = summary.counts
+            typer.echo(
+                f"{summary.id}  {summary.created_at:%Y-%m-%d %H:%M}  {counts.total} photos, "
+                f"{counts.check} to check → {summary.destination}"
+            )
+    finally:
+        services.close()
+
+
+@review_app.command("show")
+def review_show(review: ReviewArg, config: ConfigOption = None) -> None:
+    """A review's photos: what is Ready, what to check and why."""
+    from photoedit.core.errors import NotFoundError
+
+    services = _open_services(config)
+    try:
+        try:
+            _print_review(services.reviews.get(review))
+        except NotFoundError as exc:
+            raise typer.BadParameter(str(exc), param_hint="REVIEW") from None
+    finally:
+        services.close()
+
+
+@review_app.command("approve")
+def review_approve(
+    review: ReviewArg,
+    photos: Annotated[list[str], typer.Argument(help="Photos to approve (file names or ids).")],
+    undo: Annotated[bool, typer.Option("--undo", help="Take the approval back.")] = False,
+    config: ConfigOption = None,
+) -> None:
+    """Approve photos as the review frames them."""
+    from photoedit.core.errors import InvalidRequestError, NotFoundError
+    from photoedit.models.review import ReviewItemUpdate
+
+    services = _open_services(config)
+    try:
+        found = _find_photos(services, photos)
+        try:
+            current = services.reviews.get(review)
+            for photo in found:
+                current = services.reviews.update_item(review, photo.id, ReviewItemUpdate(approved=not undo))
+        except (InvalidRequestError, NotFoundError) as exc:
+            raise typer.BadParameter(str(exc)) from None
+        _print_review(current)
+    finally:
+        services.close()
+
+
+@review_app.command("export")
+def review_export(
+    review: ReviewArg,
+    all_: Annotated[
+        bool, typer.Option("--all", help="Also the photos not approved, as the tool framed them.")
+    ] = False,
+    config: ConfigOption = None,
+) -> None:
+    """Export the Ready and approved photos (or all of them). Exported photos leave the review."""
+    from photoedit.core.errors import InvalidRequestError, NotFoundError
+    from photoedit.models import JobStatus
+    from photoedit.models.review import ReviewExportScope
+
+    services = _open_services(config)
+    try:
+        scope = ReviewExportScope.ALL if all_ else ReviewExportScope.APPROVED
+        try:
+            job = services.reviews.export(review, scope)
+        except (InvalidRequestError, NotFoundError) as exc:
+            raise typer.BadParameter(str(exc)) from None
+        typer.echo(f"{job.title}...")
+        _follow(services, job.id)
+        done = services.jobs.get(job.id)
+        typer.echo(done.summary or done.status.value)
+        left = [s for s in services.reviews.summaries() if s.id == review]
+        typer.echo(f"{left[0].counts.total} photos left in the review." if left else "The review is done.")
+        if done.failed or done.status is JobStatus.FAILED:
+            raise typer.Exit(1)
+    finally:
+        services.close()
+
+
+@review_app.command("settings")
+def review_settings(
+    min_score: Annotated[
+        float | None, typer.Option(help="Detected subjects scoring below this are checked (0-1).")
+    ] = None,
+    ambiguity: Annotated[
+        float | None, typer.Option(help="A rival at this share of the subject's score is checked (0.1-1).")
+    ] = None,
+    rule: Annotated[
+        list[str] | None,
+        typer.Option(
+            help="Switch a rule (no_subject, uncertain, ambiguous, cut_off, zoom_limit): uncertain=off."
+        ),
+    ] = None,
+    config: ConfigOption = None,
+) -> None:
+    """Show the review rules, or change them (open reviews are sorted again)."""
+    from pydantic import ValidationError
+
+    from photoedit.models.review import ReviewSettings
+
+    services = _open_services(config)
+    try:
+        current = services.reviews.settings()
+        changes: dict[str, object] = {}
+        if min_score is not None:
+            changes["min_score"] = min_score
+        if ambiguity is not None:
+            changes["ambiguity"] = ambiguity
+        switches = {"no_subject", "uncertain", "ambiguous", "cut_off", "zoom_limit"}
+        for text in rule or []:
+            name, _, value = text.partition("=")
+            if name not in switches or value not in ("on", "off"):
+                raise typer.BadParameter(
+                    f"'{text}': use NAME=on or NAME=off, NAME one of {', '.join(sorted(switches))}",
+                    param_hint="--rule",
+                )
+            changes[name] = value == "on"
+        if changes:
+            try:
+                current = ReviewSettings.model_validate({**current.model_dump(), **changes})
+            except ValidationError as exc:
+                raise typer.BadParameter(str(exc)) from None
+            services.reviews.set_settings(current)
+        typer.echo(current.model_dump_json(indent=2))
+    finally:
+        services.close()
 
 
 @app.command()

@@ -17,7 +17,7 @@ from photoedit.core.catalog import Catalog, CatalogPhoto, FolderRecord, photo_id
 from photoedit.core.decode import DecodeError, embedded_jpeg, is_raw, oriented_image, read_raw_info
 from photoedit.core.edits import EditStore, EffectiveEdit
 from photoedit.core.errors import NotFoundError
-from photoedit.core.geometry import apply_change, edited_size, is_identity
+from photoedit.core.geometry import apply_change, edited_size, is_identity, sub_crop
 from photoedit.core.jobs import ItemResult, ItemSpec, JobManager
 from photoedit.core.metadata import (
     AfMode,
@@ -44,7 +44,7 @@ from photoedit.models import (
     PhotoSort,
     SortOrder,
 )
-from photoedit.models.adjustments import Geometry, GeometryChange
+from photoedit.models.adjustments import CropRect, Geometry, GeometryChange
 from photoedit.models.photo import ZoomInfo, ZoomLevel
 from photoedit.safety import PathGuard
 
@@ -404,6 +404,27 @@ class Library:
         if not self.renderer.preview_path(photo, edit, long_edge, upright=upright).is_file():
             self._require_original(photo)
         return self.renderer.preview(photo, edit, long_edge, upright=upright)
+
+    def framing_preview(self, photo_id: str, crop: CropRect, long_edge: int) -> bytes:
+        """The photo with its edit, cut to ``crop`` (normalized to the edited photo) on top of its own crop:
+        what an export with that aspect crop shows (P6c.5). Cached like previews, under the edit's revision,
+        so a new edit prunes it."""
+        photo = self.photo(photo_id)
+        edit = self.edits.effective(photo)
+        geometry = edit.adjustments.geometry
+        framed = geometry.model_copy(
+            update={"crop": sub_crop(geometry.crop, crop.left, crop.top, crop.right, crop.bottom)}
+        )
+        key = hashlib.sha256(framed.crop.model_dump_json().encode()).hexdigest()[:10]
+        view = edit.model_copy(
+            update={
+                "adjustments": edit.adjustments.model_copy(update={"geometry": framed}),
+                "revision": f"{edit.revision}-f{key}",
+            }
+        )
+        if not self.renderer.preview_path(photo, view, long_edge).is_file():
+            self._require_original(photo)
+        return self.renderer.preview(photo, view, long_edge)
 
     def zoom_info(self, photo_id: str, level: ZoomLevel) -> ZoomInfo:
         """The zoom view at ``level`` (50 or 100 %): starts its decode if needed."""

@@ -12,7 +12,7 @@ Derived from [PLAN.md](PLAN.md) v0.3. This checklist is written for an AI to fol
 - ⛔ **STOP** = halt and wait for the user. Never continue past a STOP without the user's explicit go-ahead.
 - 🧑 **Human test** = steps the user runs by hand at the end of a phase, with the expected result for each step.
 - If something is ambiguous or the plan seems wrong, **ask**. Don't guess. Plan changes go into PLAN.md first.
-- **Phases 0–6b and 3b (deferred, at the end) are detailed.** Later phases are an outline and get detailed at the start of each phase. Writing that detail is the first item in each phase.
+- **Phases 0–6c and 3b (deferred, at the end) are detailed.** Later phases are an outline and get detailed at the start of each phase. Writing that detail is the first item in each phase.
 - Golden rules: originals are read-only; never write outside `C:\Work\PhotoEditing` (except export destinations the user
   chose); commit as `SigitasAmbrozaitis`.
 
@@ -1600,27 +1600,213 @@ AF-C zone mode, as at the rally, that is the zone's center and not the tracked c
 **Approved 2026-10-12.** The user tested it ("everything seems fine"). Next: Phase 6c (pre-export review),
 starting with P6c.0 in a new session.
 
-## Phase 6c: Pre-export review (outline, added 2026-10-12)
+## Phase 6c: Pre-export review (added 2026-10-12, detailed 2026-10-12)
 
 Goal (user's words): "most photos are handled by the tool, but where the tool is unable to take an accurate
 decision, the decision is left for the user." Bulk flow: select photos → style → export settings → **Prepare**
-→ review → export. Decisions in PLAN.md §0 (2026-10-12).
+→ review → export. Decisions in PLAN.md §0 (2026-10-12). Branch `phase-6c-review` from `main`.
 
-- [ ] **P6c.0** Detail this phase into items. ⛔ STOP for the user to review it.
-- [ ] Prepare step (on the export plan): each photo's style, subject, crop in the **export's ratio and
-  orientation**, automatic zoom on small subjects (capped where the export would start to upscale), output
-  size, and a styled preview of the final framing.
-- [ ] Review rules, each giving a reason: uncertain subject (score below the threshold, only the focus point,
-  nothing found), ambiguous (two candidates close in score), subject cut off by the crop, zoom at the quality
-  limit, no clear subject (centered or on the focus point, and asked). **Thresholds are settings** the user can
-  tune (start strict).
-- [ ] Review screen: Ready and Check groups; per photo the reason, the final framing, other candidates as
-  one-click choices, a zoom slider (the crop tool's flow plus zoom), and Set subject. A chosen subject is saved
-  to the photo's edit; the zoom belongs to this export.
-- [ ] Approvals: each Check photo is approved by hand. Buttons **Export Approved** and **Force Export All**
-  (exports the rest with the tool's suggestions); a single **Export All** when everything is approved.
-- [ ] Tests, docs, full check.
-- 🧑 Human test (bulk rally/drift/cat export through the review) + ⛔ STOP.
+What 6b left to build on: the export plan already frames each photo's subject (`anchor: subject`, centered,
+zoom 1: the aspect crop keeps the size of a centered crop and only moves) and carries the subject's source,
+kind and score. `suggest()` can already zoom (tighter around the subject, capped where subject + margin fills
+the crop). `SubjectInfo.candidates` holds everything found, best first. A manual box in the edit file wins.
+
+What the labeled set says (44 photos, measured 2026-10-12 in a scratch workspace; the user's catalog was not
+touched):
+- **Scores.** The 3 wrong detections score 0.36–0.48 (the empty drift track → a spectator 0.42, a shop test shot
+  → a face 0.48, the black cat on its back → part of it 0.36). Correct ones score 0.37–1.0, and only 3 of them
+  are below 0.5 (a tiny rally car 0.40, a person 0.46, the black cat 0.37). So **min score 0.5** puts every
+  wrong detection in Check, plus 3 right ones. The 6 photos with no recognized subject (5 framed on the focus
+  point, sunsets and an empty stage) are in Check anyway.
+- **Rivals.** Second-best recognized candidates reach 0.85–0.94 of the best on 4 good photos (two cats, two
+  drift cars far apart, the helicopter + a car). With **ambiguity 0.75** these are in Check too. Expected Check
+  share on the labeled set: about a third (strict start; loosen with use).
+- **Subject size in a 4:5 crop** (X-T3 landscape → a 3328×4160 crop, Instagram 1080×1350): with a target of the
+  subject filling **40 %** of the crop's width or height, 9 of 12 drift photos and 4 of 13 rally photos zoom in
+  (drift median 1.34×); only 2 photos want more than 1.54×, the zoom where the half-size decode stops covering
+  the output (beyond it the export needs the full decode: ~31 s per photo instead of ~1 s, PLAN §7.1). The
+  quality limit (no upscaling) is 3.08×; one tiny rally car (4.7 % of the width) wants more than that.
+
+**Design** (confirmed by the user 2026-10-12, see P6c.0):
+- **A review** (`ExportReview`) is a prepared export: photos, settings, preset, destination, and per photo the
+  framing, reasons, a zoom override and the approval. Stored as JSON in `workspace/reviews/<id>.json` (through
+  the path guard), so a reload or restart keeps the approvals. Deleted after Export All or by Discard; reviews
+  older than 30 days are pruned at start.
+- **Prepare** is a background job (detection takes ~6 s per photo the first time): it detects missing subjects
+  in parallel (as the plan does now), frames each photo, applies the rules and renders the framing previews.
+  The wizard's style is applied **before** Prepare (applying writes edit files only), so previews show it.
+- **Automatic zoom** is an export setting (`aspect.zoom`: `off` | `auto`, `aspect.subject_fill` 0.2–0.9,
+  default 0.4), on in the Instagram presets, off in print/web (center anchor). Auto zoom tightens the subject
+  crop until the subject fills `subject_fill` of it, capped at the **half-size decode limit** (stays fast);
+  the review's zoom slider can go further, up to the **quality limit** (the crop never has fewer pixels than the
+  output), and says when that photo will need the slower full decode. Photos with a crop of their own (the user
+  framed them) aren't zoomed automatically.
+- **Review rules** give each Check photo one or more reasons (codes + text). Thresholds and on/off per rule are
+  **review settings** (a Pydantic model with ranges), stored in `workspace/review-settings.json`, editable from
+  the review screen, also by CLI; not per preset.
+
+| Rule | Check when | Default |
+|---|---|---|
+| `no_subject` | nothing recognized: centered, or framed on the camera's focus point | on |
+| `uncertain` | detected subject's score < `min_score` | 0.5 |
+| `ambiguous` | another recognized candidate, not part of the subject (outside its box, not grouped with it), scores ≥ `ambiguity` × the subject's score | 0.75 |
+| `cut_off` | the aspect crop can't hold the whole subject | on |
+| `zoom_limit` | the subject fills less than `subject_fill` even at the quality limit | on |
+| `unusable` | the export can't be made (original missing, broken style): never approvable, never exported | always |
+
+  A subject **set by hand** (by the user, the AI or in this review) skips `no_subject`, `uncertain` and
+  `ambiguous`. Collisions and "enlarged" stay plan notes, not Check reasons.
+- **Approvals**: Ready photos need none. A Check photo is approved by **Approve**, or by fixing it (choosing a
+  candidate, Set subject, moving the zoom), since that is the user's decision (un-approving is possible). An approval stores the framing it
+  approved; if the framing changes later (the photo was re-edited elsewhere), the approval is dropped and the
+  photo goes back to Check with "changed since you approved it".
+- **Export**: **Export Approved** (Ready + approved), **Force Export All** (also the unapproved Check photos, with
+  the tool's framing; asks to confirm), and a single **Export All** once nothing is left to approve. Exported
+  photos leave the review; the rest stay for later. The export job is the normal one, with the review's
+  per-photo zoom passed along, so the files match the previews.
+- **Entry point**: a separate **Prepare export…** action in the Library for the selection: a dialog with an
+  optional style (+ even out), the export preset/settings and the destination, then **Prepare**. The Export
+  dialog and the Apply-style wizard stay as they are (direct export).
+
+- [x] **P6c.0** Detail this phase into items. ⛔ STOP for the user to review it.
+  Decided 2026-10-12 (user): auto zoom capped at the **fast (half-size decode) limit**, the review's slider goes
+  to the quality limit; fill target **40 %**; **fixing a Check photo approves it**; the review starts from a
+  **separate Prepare export… action** in the Library (Export and the wizard unchanged).
+
+### Core
+- [x] **P6c.1** Models (`models/review.py`, `models/export.py`): `AspectSettings.zoom` (`off`|`auto`) and
+  `subject_fill` (0.2–0.9); `ReviewSettings` (rule switches, `min_score`, `ambiguity`, ranges); `ReviewReason`
+  (code + text); `ReviewItem` (photo, status `ready`|`check`|`unusable`, reasons, subject source/kind/score/box,
+  candidates in the photo's frame, crop normalized to the edited photo, auto zoom, zoom override, zoom limits
+  (fast, quality), decode, output size, approved framing); `ExportReview` (id, created, photos, settings, preset,
+  destination, items, counts). Old presets and edit files load unchanged; the Instagram presets get `zoom: auto`.
+  Tests: validation, ranges, round-trip, old files.
+- [x] **P6c.2** Export geometry with zoom (`core/export/geometry.py`): `export_geometry(..., zoom)` shrinks the
+  subject crop by `zoom` around the subject (P6b.7's rule), capped at the quality limit and where subject +
+  margin fills the crop; the decode follows (half while it still covers the output). `zoom_plan(…, subject)` →
+  the wanted zoom for `subject_fill`, the fast and quality limits, and whether the quality limit stops it. A photo
+  with its own crop gets zoom 1 under `auto`, and so does one framed on the focus point (a guess, not a subject).
+  The `Exporter` frames every photo through one `frame()` (plans, exports and reviews share it) and takes per-photo
+  zoom overrides. The export form gets a **Zoom in on small subjects** switch and **Subject fills (%)**. Tests with exact numbers: no zoom when the subject is big enough,
+  capped at each limit, decode switching at the fast limit, a centered photo never zooms, determinism.
+- [x] **P6c.3** Review rules (`core/review/rules.py`): pure functions from the subject, the framing and
+  `ReviewSettings` to reasons. Tests per rule at its threshold's edges (0.49/0.50), manual subjects skipping the
+  subject rules, grouped tandems and parts not counting as rivals, rules switched off.
+- [x] **P6c.4** Review service (`core/review/service.py`, wired as `services.reviews`): `prepare(...)` → job
+  creating the review; `get`, `list`, `discard`; `set_zoom(item, zoom | None)` (None = auto);
+  `choose_candidate(item, index)` and `set_subject(item, box | None)` (saved to the photo's edit, like the crop
+  tool's Set subject, then that photo is re-framed); `approve(item, on)`; `refresh(review)` re-frames every photo
+  against its current edit and subject and drops approvals whose framing changed. Shares the planning code with
+  `Exporter._prepare` (no second copy of the framing rules). Writes only `workspace/reviews/`. Tests with the
+  fake detector: Ready/Check sorting, each fix approving, refresh after a re-edit, persistence across a restart,
+  prune, the originals untouched.
+- [x] **P6c.5** Framing previews: the photo's current edit (style included) with the export crop applied on top
+  of its own crop (`sub_crop`), through the normal preview renderer at 800 px long edge, cached by render
+  identity like previews. Test: a synthetic photo's preview and its exported file show the same framing (the
+  export downscaled to the preview's size matches within a small tolerance).
+- [x] **P6c.6** Export from a review: `export(review, scope=approved|all)` submits the normal export job with each
+  photo's zoom and the framing the review showed (the `Exporter` takes per-photo zoom overrides); `unusable`
+  photos are never sent. Exported photos leave the review; the review is deleted when empty. Tests: approved
+  only, force all, the files' crops equal the review's crops, nothing exported twice.
+
+### API + CLI
+- [x] **P6c.7** Endpoints: `GET`/`PUT /api/review-settings`; `POST /api/jobs` kind `prepare_export` (an export
+  request + optional style) → job whose result names the review; `GET /api/reviews`, `GET /api/reviews/{id}`,
+  `DELETE /api/reviews/{id}`; `PATCH /api/reviews/{id}/items/{photo_id}` (`zoom`, `approved`);
+  `PUT /api/reviews/{id}/items/{photo_id}/subject` (`{candidate}` | `{box}` | `{box: null}`);
+  `GET /api/reviews/{id}/items/{photo_id}/preview`; `POST /api/reviews/{id}/export` (`scope`). Settings changes
+  re-sort open reviews. Regenerate `openapi.json` + `schema.d.ts`. Tests for every endpoint, valid and invalid.
+- [x] **P6c.8** CLI: `photoedit review prepare PHOTO…|--folder DIR --preset ID --dest DIR [--style ID]` (prints
+  Ready/Check with reasons), `review show ID`, `review approve ID PHOTO…`, `review export ID [--all]`,
+  `review settings [--min-score 0.5] [--ambiguity 0.75] [--rule NAME=on|off]`. Tests with `CliRunner`.
+
+### UI
+- [x] **P6c.9** Entry point: Library **Prepare export…** for the selection → a dialog (optional style + even out,
+  preset/settings reusing the export form, destination) → **Prepare**; the job's progress, then the review
+  opens. A preset without subject framing is allowed (everything is Ready). A **Reviews**
+  link in the header lists open reviews (photo count, Check left, destination).
+- [x] **P6c.10** Review screen (`/reviews/:id`): header (preset, destination, counts); **Check** first, then
+  **Ready**, as grids of framing previews with reason chips. Selecting a photo opens its panel: the whole photo
+  with the export frame drawn on it and the candidates as clickable boxes (one click = that subject), the
+  reasons, the framing preview, a **Zoom** slider (Auto + manual, the fast and quality limits marked, "needs the
+  full decode" past the first), **Set subject** (drag a box) and **Use detected**, **Approve** (key `A`),
+  previous/next (arrow keys). A **Rules…** popover edits the review settings and re-sorts.
+- [x] **P6c.11** Export buttons: **Export Approved (N)**, **Force Export All (N)** (confirm dialog naming the
+  unapproved photos), or one **Export All** when nothing is left to approve. After export the job page opens;
+  the review keeps the photos not exported.
+- [x] **P6c.12** UI tests: Vitest for the Prepare dialog, the review groups and reasons, each fix approving,
+  the zoom slider limits, the rules popover, the export buttons' states. Playwright: prepare an Instagram export
+  of a few photos, fix one Check photo, Export Approved, then Export All. Screenshots of the review screen.
+
+### Tests + docs
+- [x] **P6c.13** Golden (local) on the labeled set: every wrong detection and every photo without a recognized
+  subject lands in Check (the tool never silently exports a wrong subject); the Check share per folder is
+  recorded; exported files match the review's framing; the photo folders' hashes are unchanged.
+  Measured 2026-10-13 (instagram-portrait): 13 of 44 in Check (30 %): drift 1/12, cats 6/12, rally 2/14,
+  orange cat + sunsets 4/6; reasons: uncertain 6, no subject 5, ambiguous 4, zoom limit 2, cut off 2.
+- [x] **P6c.14** Docs: `docs/export.md` (the review: Prepare, rules and settings, auto zoom and its limits,
+  approvals, export buttons) and `docs/geometry.md` (zoom), README (review CLI).
+- [x] **P6c.15** Full check (pytest incl. `-m golden`, ruff, format, mypy, npm test/lint/build, e2e).
+
+### Human test feedback (2026-10-13)
+Decisions in PLAN.md §0 ("Review tweaks"). The first review used Print 5×7: centered framing, so no subjects,
+no candidates, zoom around the photo's center, and Set subject had no effect on the export. More feedback may
+follow from a subject-framed review.
+- [x] **P6c.16** Prepare dialog: **Frame the crop on the subject** switch shown up front, on by default for any
+  preset with a ratio (sets `aspect.anchor`; off = centered). Set subject / Use detected are hidden in a review
+  that doesn't frame subjects.
+- [x] **P6c.17** Move the frame: `ReviewItem.position` (the crop's center, normalized to the edited photo; None =
+  framed by the rules). Core places the crop there (rejected if it can't fit), the export uses it, a move
+  approves; `PATCH …/items/{id}` gets `position` (null = back to the rules). Drag the frame in the panel.
+- [x] **P6c.18** Detection details: the review item carries every candidate (recognized or not, the camera's
+  focus point too), each with kind, label and confidence. The panel's photo shows them by default with the
+  subject and the export frame; **Hide details** (key D) hides them, remembered per browser. Confidence next to
+  the Ready/Check tag on the panel and the cards. Detection runs for every review that frames subjects.
+- [x] **P6c.19** Live zoom and move: core sends the frame for each zoom step (0.01× up to the quality limit) for
+  the current position; while the slider or the frame is dragged, the panel moves the frame and shows the
+  loaded photo cropped to it; on release the change is saved and the real framing preview replaces it.
+- [x] **P6c.20** The Apply-style wizard ends in the review: its last step is **Prepare for review** (style +
+  export settings → the Prepare job → the review), replacing the direct apply-and-export.
+- [x] **P6c.22** **AI Analysis** tab in the Photo view (next to Adjust, Info): the stored detection (subject:
+  source, kind, confidence; every candidate best first with label and confidence, cues marked as guesses; notes),
+  **Detect now** when not detected yet, **Set subject** (opens the crop tool's drawing), **Use detected**. While
+  the tab is open the boxes are drawn on the photo (Hide details, D, shared with the review). The Detect subjects
+  job ends with a summary ("168 car, 6 aircraft, 6 focus point only, …").
+- [x] **P6c.21** Tests (core, API, Vitest, Playwright), docs, full check; human test script updated.
+
+### 🧑 Human test: Phase 6c (round 2, after the feedback)
+0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`,
+   `uv run photoedit ui`. (Old reviews from round 1 still open; **Reviews** → Discard them, or keep them.)
+1. **AI Analysis.** Open a photo → **AI Analysis** tab (next to Adjust, Info): the subject with its confidence,
+   everything found (best first, guesses marked), the boxes drawn on the photo; **D** or **Hide details** hides
+   them. On a photo not analysed yet: **Detect now**. **Use** on another find makes it the subject; **Use
+   detected** goes back. **Set subject** opens the crop tool ready to draw. Library → **Detect subjects** on a
+   selection now ends with a summary on its job ("168 car, 6 aircraft, …").
+2. **Prepare from the wizard.** Select ~10 photos → **Apply style…** → a style → Next → **Instagram portrait** (or
+   **Print 5×7**: **Frame the crop on the subject** is on by default either way) → destination → Next →
+   **Apply & prepare for review**: the review opens at once and shows the progress, then the photos. (Or
+   **Prepare export…** in the Library, the same without having to pick a style.)
+3. **Details.** Each photo in the panel shows the export frame and what detection found, with confidence (the
+   subject amber, other finds blue, guesses dotted, the focus point as a dotted square with a dot). The
+   subject's confidence is next to the Ready/Check tag and on each card. **D** hides and shows the details.
+4. **Set subject** on a Check photo (e.g. a sunset): drag a box → the frame moves onto it and the photo is
+   approved. Click another candidate's box → the frame moves to it.
+5. **Zoom** a small car with the slider: the frame and the preview follow while you drag (no wait); on release
+   the real preview replaces it. Past the **fast** mark it says the export needs the full decode.
+6. **Drag the frame** to another spot (zoomed in or not): it stays where you put it, the photo is approved,
+   **Re-center on subject** puts it back.
+7. Switch **Frame the crop on the subject** off in Prepare export… → every photo is Ready, centered, and the
+   review has no Set subject (zoom and dragging still work).
+8. **Rules…** → lower the minimum score → photos move from Check to Ready. Put it back.
+9. **Export Approved**, then **Force Export All** (it names the photos not approved) → the files look like their
+   previews, zoom and position included. Reload halfway: decisions are still there.
+10. The photo folders are unchanged. **Give feedback** on the details overlay, the live zoom and dragging, the AI
+    Analysis tab, and the rules' strictness.
+
+### ⛔ STOP: user approves Phase 6c
+
+**Approved 2026-10-15.** The user tested both rounds ("Look great"). Next: Phase 7 (MCP server), detailed
+at the start of its own session (P7.0).
 
 ## Phase 7: MCP server (outline)
 - [ ] **P7.0** Detail this phase. ⛔ STOP for review.

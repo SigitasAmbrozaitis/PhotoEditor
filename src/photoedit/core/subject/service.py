@@ -10,6 +10,7 @@ change to any of them recomputes it, and an export of the same photo always fram
 from __future__ import annotations
 
 import threading
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 
@@ -28,6 +29,7 @@ from photoedit.core.metadata import AfMode
 from photoedit.core.render.pipeline import render
 from photoedit.core.render.stages import quantize
 from photoedit.core.renderer import profile_of
+from photoedit.core.subject.analysis import analysis
 from photoedit.core.subject.choose import CHOOSER_VERSION, choose
 from photoedit.core.subject.cues import (
     CUE_SIZE,
@@ -49,6 +51,7 @@ from photoedit.core.subject.suggest import suggest
 from photoedit.models import Job, JobKind
 from photoedit.models.crop import CropSuggestion, CropSuggestionRequest
 from photoedit.models.subject import (
+    SubjectAnalysis,
     SubjectBox,
     SubjectCandidate,
     SubjectInfo,
@@ -114,6 +117,17 @@ class Subjects:
             )
         return found or SubjectInfo(source=SubjectSource.NONE, notes=["Not detected yet."])
 
+    def analysis(self, photo: CatalogPhoto, *, detect: bool = False) -> SubjectAnalysis:
+        """What detection found in the photo, mapped into the edited photo (the AI Analysis tab). Runs
+        detection only when ``detect`` and it hasn't run yet."""
+        detected = self.cached(photo) is not None
+        info = self.subject(photo, detect=detect)
+        if detect:
+            detected = True
+        photo = self._library.with_af_point(photo)
+        geometry = self._library.edit(photo.id).adjustments.geometry
+        return analysis(info, geometry, photo.width, photo.height, af_point=photo.af_point, detected=detected)
+
     def set_manual(self, photo: CatalogPhoto, box: SubjectBox | None) -> SubjectInfo:
         """Set the subject by hand (upright coordinates), or clear it with None to use the detected one."""
         self._library.edits.set_subject(photo, box)
@@ -167,11 +181,19 @@ class Subjects:
         """Detect the photos' subjects in the background; photos already detected are skipped quickly."""
         photos = [self._library.photo(pid) for pid in photo_ids]  # NotFoundError before anything starts
 
+        kinds: Counter[str] = Counter()
+        lock = threading.Lock()
+
         def work(index: int) -> ItemResult:
             photo = photos[index]
             info = self.detected(photo)
             found = f"{info.kind.value} ({info.source.value})" if info.kind else info.source.value
+            with lock:
+                kinds[_found_name(info)] += 1
             return ItemResult(photo_id=photo.id, message=found, warnings=tuple(info.notes))
+
+        def finish() -> str:
+            return ", ".join(f"{count} {name}" for name, count in kinds.most_common())
 
         noun = "photo" if len(photos) == 1 else "photos"
         return self._library.jobs.submit(
@@ -180,6 +202,7 @@ class Subjects:
             [ItemSpec(filename=p.path.name, photo_id=p.id) for p in photos],
             work,
             parallel=DETECT_THREADS,
+            finish=finish,
         )
 
     def cached(self, photo: CatalogPhoto) -> SubjectInfo | None:
@@ -279,3 +302,12 @@ class Subjects:
                 if path is not None:
                     self._faces = FaceFinder(path)
                     self._model_ids[FACE_MODEL] = detector_identity(model)
+
+
+def _found_name(info: SubjectInfo) -> str:
+    """For a job's summary: "car", "focus point only", "no subject"."""
+    if info.source is SubjectSource.AF_POINT:
+        return "focus point only"
+    if info.source is SubjectSource.NONE or info.kind is None:
+        return "no subject"
+    return info.kind.value

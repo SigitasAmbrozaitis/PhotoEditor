@@ -42,8 +42,17 @@ from photoedit.models.export import (
     RevealRequest,
 )
 from photoedit.models.fs import DirListing
-from photoedit.models.job import DetectSubjectsRequest
+from photoedit.models.job import DetectSubjectsRequest, PrepareExportRequest
 from photoedit.models.photo import ZoomInfo, ZoomLevel
+from photoedit.models.review import (
+    ExportReview,
+    ReviewExportRequest,
+    ReviewFrames,
+    ReviewItemUpdate,
+    ReviewSettings,
+    ReviewSubjectUpdate,
+    ReviewSummary,
+)
 from photoedit.models.style import (
     PhotoStyleRequest,
     StyleCreate,
@@ -59,7 +68,7 @@ from photoedit.models.style import (
     StyleVersionInfo,
     style_view,
 )
-from photoedit.models.subject import SubjectInfo, SubjectUpdate
+from photoedit.models.subject import SubjectAnalysis, SubjectInfo, SubjectUpdate
 from photoedit.services import Services
 
 JPEG = "image/jpeg"
@@ -169,6 +178,18 @@ def photo_subject(photo_id: str, svc: Svc) -> SubjectInfo:
     """The photo's main subject: the box set by hand, else the detected one (detected now if needed, which
     takes a few seconds the first time)."""
     return svc.subjects.subject(svc.library.photo(photo_id))
+
+
+@router.get("/photos/{photo_id}/analysis", response_model=SubjectAnalysis, tags=["edit"])
+def photo_analysis(
+    photo_id: str,
+    svc: Svc,
+    detect: Annotated[
+        bool, Query(description="Run detection now if it hasn't run yet (a few seconds the first time).")
+    ] = False,
+) -> SubjectAnalysis:
+    """What detection found (subject, candidates, focus point), normalized to the edited photo."""
+    return svc.subjects.analysis(svc.library.photo(photo_id), detect=detect)
 
 
 @router.put("/photos/{photo_id}/subject", response_model=SubjectInfo, tags=["edit"])
@@ -456,6 +477,85 @@ def reveal_export(request: Annotated[RevealRequest, Body()], svc: Svc) -> Respon
 # ----------------------------------------------------------------- jobs
 
 
+# ----------------------------------------------------------------- pre-export review (Phase 6c)
+
+
+@router.get("/review-settings", response_model=ReviewSettings, tags=["review"])
+def review_settings(svc: Svc) -> ReviewSettings:
+    return svc.reviews.settings()
+
+
+@router.put("/review-settings", response_model=ReviewSettings, tags=["review"])
+def set_review_settings(request: Annotated[ReviewSettings, Body()], svc: Svc) -> ReviewSettings:
+    """Save the rules; open reviews are sorted again by them."""
+    return svc.reviews.set_settings(request)
+
+
+@router.get("/reviews", response_model=list[ReviewSummary], tags=["review"])
+def list_reviews(svc: Svc) -> list[ReviewSummary]:
+    return svc.reviews.summaries()
+
+
+@router.get("/reviews/{review_id}", response_model=ExportReview, tags=["review"])
+def get_review(review_id: str, svc: Svc) -> ExportReview:
+    """The review, refreshed against the photos' current edits and subjects."""
+    return svc.reviews.get(review_id)
+
+
+@router.delete("/reviews/{review_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["review"])
+def discard_review(review_id: str, svc: Svc) -> Response:
+    svc.reviews.discard(review_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.patch("/reviews/{review_id}/items/{photo_id}", response_model=ExportReview, tags=["review"])
+def update_review_item(
+    review_id: str, photo_id: str, request: Annotated[ReviewItemUpdate, Body()], svc: Svc
+) -> ExportReview:
+    """Set a photo's zoom (null = automatic; a zoom approves it) or approve it."""
+    return svc.reviews.update_item(review_id, photo_id, request)
+
+
+@router.put("/reviews/{review_id}/items/{photo_id}/subject", response_model=ExportReview, tags=["review"])
+def set_review_subject(
+    review_id: str, photo_id: str, request: Annotated[ReviewSubjectUpdate, Body()], svc: Svc
+) -> ExportReview:
+    """Choose a candidate, draw a box, or go back to the detected subject; saved to the photo's edit, and
+    the photo is approved."""
+    return svc.reviews.set_subject(review_id, photo_id, request)
+
+
+@router.get("/reviews/{review_id}/items/{photo_id}/frames", response_model=ReviewFrames, tags=["review"])
+def review_frames(review_id: str, photo_id: str, svc: Svc) -> ReviewFrames:
+    """The photo's export crop at each zoom step, for moving the frame while the zoom slider is dragged."""
+    return svc.reviews.frames(review_id, photo_id)
+
+
+@router.get(
+    "/reviews/{review_id}/items/{photo_id}/preview",
+    response_class=Response,
+    responses=IMAGE_RESPONSE,
+    tags=["review"],
+)
+def review_preview(
+    review_id: str,
+    photo_id: str,
+    svc: Svc,
+    v: Annotated[str | None, Query(description="The item's revision (cache busting only).")] = None,
+) -> Response:
+    """The photo framed as the export will frame it (800 px long edge)."""
+    data = svc.reviews.preview(review_id, photo_id)
+    return Response(content=data, media_type=JPEG, headers=IMAGE_CACHE)
+
+
+@router.post(
+    "/reviews/{review_id}/export", response_model=Job, status_code=status.HTTP_201_CREATED, tags=["review"]
+)
+def export_review(review_id: str, request: Annotated[ReviewExportRequest, Body()], svc: Svc) -> Job:
+    """Export the approved photos (scope ``approved``) or all but the unusable ones (``all``)."""
+    return svc.reviews.export(review_id, request.scope)
+
+
 @router.get("/jobs", response_model=list[Job], tags=["jobs"])
 def list_jobs(svc: Svc) -> list[Job]:
     return svc.jobs.list()
@@ -463,7 +563,8 @@ def list_jobs(svc: Svc) -> list[Job]:
 
 @router.post("/jobs", response_model=Job, status_code=status.HTTP_201_CREATED, tags=["jobs"])
 def create_job(request: Annotated[JobRequest, Body()], svc: Svc) -> Job:
-    """Apply a style, export, apply then export, or detect subjects."""
+    """Apply a style, export, apply then export, detect subjects, or prepare an export for review (the job's
+    ``review_id`` names the review)."""
     if isinstance(request, DetectSubjectsRequest):
         return svc.subjects.detect_job(request.photo_ids)
     if isinstance(request, ExportRequest):
@@ -478,6 +579,15 @@ def create_job(request: Annotated[JobRequest, Body()], svc: Svc) -> Job:
             svc.exporter.export(request.photo_ids, request.settings, request.destination, request.preset_id)
 
         return svc.styling.apply(request.photo_ids, request.style_id, even_out=request.even_out, then=export)
+    if isinstance(request, PrepareExportRequest):
+        return svc.reviews.prepare(
+            request.photo_ids,
+            request.settings,
+            request.destination,
+            preset_id=request.preset_id,
+            style_id=request.style_id,
+            even_out=request.even_out,
+        )
     return svc.styling.apply(request.photo_ids, request.style_id, even_out=request.even_out)
 
 

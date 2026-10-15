@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from photoedit.models.export import ExportSettings
 
@@ -18,6 +18,7 @@ class JobKind(StrEnum):
     EXPORT = "export"
     APPLY_AND_EXPORT = "apply_and_export"
     DETECT_SUBJECTS = "detect_subjects"
+    PREPARE_EXPORT = "prepare_export"
 
 
 class JobStatus(StrEnum):
@@ -60,6 +61,7 @@ class Job(BaseModel):
     destination: str | None = None
     folder: str | None = Field(default=None, description="Photo folder an import job reads (read-only).")
     summary: str | None = Field(default=None, description="Outcome in one line, e.g. '67 new, 1 skipped'.")
+    review_id: str | None = Field(default=None, description="The review a prepare_export job created.")
     items: list[JobItem] = Field(default_factory=list)
 
 
@@ -101,7 +103,25 @@ class DetectSubjectsRequest(_JobRequest):
     kind: Literal[JobKind.DETECT_SUBJECTS] = JobKind.DETECT_SUBJECTS
 
 
+class PrepareExportRequest(_JobRequest):
+    """Prepare an export for review (Phase 6c): optionally apply a style first, then frame and sort every
+    photo into Ready and Check. The job's ``review_id`` names the review."""
+
+    kind: Literal[JobKind.PREPARE_EXPORT] = JobKind.PREPARE_EXPORT
+    style_id: str | None = Field(default=None, description="Apply this style first; None = keep the edits.")
+    even_out: bool = False
+    preset_id: str | None = None
+    settings: ExportSettings
+    destination: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _even_out_needs_style(self) -> Self:
+        if self.even_out and self.style_id is None:
+            raise ValueError("even_out needs a style")
+        return self
+
+
 JobRequest = Annotated[
-    ApplyStyleRequest | ExportRequest | ApplyAndExportRequest | DetectSubjectsRequest,
+    ApplyStyleRequest | ExportRequest | ApplyAndExportRequest | DetectSubjectsRequest | PrepareExportRequest,
     Field(discriminator="kind"),
 ]

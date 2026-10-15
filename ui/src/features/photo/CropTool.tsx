@@ -79,11 +79,14 @@ export function CropTool({
   geometry,
   onDone,
   onCancel,
+  startDrawing = false,
 }: {
   photo: Photo
   geometry: Geometry
   onDone: (geometry: Geometry) => void
   onCancel: () => void
+  /** Open with Set subject on (from the AI Analysis tab). */
+  startDrawing?: boolean
 }) {
   const [draft, setDraft] = useState<Geometry>(geometry)
   const [error, setError] = useState<string | null>(null)
@@ -91,8 +94,8 @@ export function CropTool({
   const [dragging, setDragging] = useState(false)
   const [grid, toggleGrid] = useGrid({ key: true })
   // Subject overlay, drawing a subject by hand, and the last suggestion.
-  const [showSubject, setShowSubject] = useState(false)
-  const [drawing, setDrawing] = useState(false)
+  const [showSubject, setShowSubject] = useState(startDrawing)
+  const [drawing, setDrawing] = useState(startDrawing)
   const [sketch, setSketch] = useState<SubjectBox | null>(null)
   const [placement, setPlacement] = useState<CropPlacement>('centered')
   const [zoom, setZoom] = useState(1)

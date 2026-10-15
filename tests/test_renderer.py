@@ -97,6 +97,27 @@ def test_prune_keeps_only_the_given_revisions(env: tuple[Renderer, EditStore, Ca
     )
 
 
+def test_prune_leaves_a_render_still_in_use(
+    env: tuple[Renderer, EditStore, CatalogPhoto], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    renderer, edits, photo = env
+    old = edits.save(photo, AdjustmentParams.model_validate({"tone": {"exposure": 0.5}}))
+    renderer.preview(photo, old, 256)
+    renderer.preview(photo, old, 512)
+    new = edits.save(photo, AdjustmentParams.model_validate({"tone": {"exposure": 0.7}}))
+    in_use = renderer.preview_path(photo, old, 256)
+    unlink = Path.unlink
+
+    def locked(path: Path, missing_ok: bool = False) -> None:
+        if path == in_use:  # what Windows does to a file the browser is still being sent
+            raise PermissionError(32, "The process cannot access the file", str(path))
+        unlink(path, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", locked)
+    assert renderer.prune(photo.id, keep={new.revision}) == 1
+    assert in_use.exists() and not renderer.preview_path(photo, old, 512).exists()
+
+
 def test_thumbnails_do_not_evict_the_photo_being_edited(
     env: tuple[Renderer, EditStore, CatalogPhoto],
 ) -> None:

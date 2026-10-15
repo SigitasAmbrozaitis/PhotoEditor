@@ -107,6 +107,11 @@ class CropAnchor(StrEnum):
     CENTER = "center"
 
 
+class AspectZoom(StrEnum):
+    OFF = "off"
+    AUTO = "auto"
+
+
 class AspectSettings(_Section):
     ratio: str | None = Field(
         default=None,
@@ -122,6 +127,24 @@ class AspectSettings(_Section):
         description="What the aspect crop frames: the photo's main subject (set by hand or detected; "
         "centered when there is none) or the center.",
     )
+    zoom: AspectZoom = Field(
+        default=AspectZoom.OFF,
+        description="auto = tighten the subject crop until the subject fills `subject_fill` of it, as far "
+        "as a half-size decode still covers the output (fast). Needs a ratio and the 'subject' anchor. "
+        "Photos with a crop of their own are never zoomed automatically.",
+    )
+    subject_fill: float = Field(
+        default=0.4,
+        ge=0.2,
+        le=0.9,
+        description="Automatic zoom: the share of the crop's width or height the subject should fill.",
+    )
+
+    @model_validator(mode="after")
+    def _zoom_needs_subject(self) -> Self:
+        if self.zoom == AspectZoom.AUTO and (self.ratio is None or self.anchor != CropAnchor.SUBJECT):
+            raise ValueError("automatic zoom needs an aspect ratio and the 'subject' anchor")
+        return self
 
 
 class SharpenFor(StrEnum):
@@ -341,6 +364,7 @@ class ExportPlanItem(BaseModel):
     subject_score: float | None = Field(
         default=None, ge=0, le=1, description="How sure detection is of the subject (none when set by hand)."
     )
+    zoom: float = Field(default=1.0, ge=1, description="How much tighter than the largest crop (1 = none).")
 
 
 class ExportPlan(BaseModel):

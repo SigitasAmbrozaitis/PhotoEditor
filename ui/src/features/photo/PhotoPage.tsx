@@ -3,14 +3,18 @@ import { Tabs } from 'radix-ui'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { imageUrls } from '../../api/client'
-import { usePhotoDetail, usePhotos, useStyles } from '../../api/queries'
+import { useAnalysis, usePhotoDetail, usePhotos, useStyles } from '../../api/queries'
 import type { Geometry, Photo, ZoomLevel } from '../../api/types'
 import { Button, ErrorState, Loading, Stars } from '../../components/ui'
+import { DetectionOverlay } from '../../components/DetectionOverlay'
+import { subjectText } from '../../components/detectionWords'
+import { useDetails } from '../../hooks/useDetails'
 import { useGrid } from '../../hooks/useGrid'
 import { cn } from '../../lib/cn'
 import { useSelection } from '../../state/selection'
 import { ExportDialog } from '../export/ExportDialog'
 import { AdjustmentPanel } from './AdjustmentPanel'
+import { AnalysisPanel } from './AnalysisPanel'
 import { CropTool } from './CropTool'
 import { withValue, type EditSession } from './editSession'
 import { PhotoViewer, type ViewMode } from './PhotoViewer'
@@ -110,12 +114,13 @@ export function PhotoPage() {
   // The open photo's edit session lives in its adjustment panel; the crop tool saves through it too.
   const session = useRef<EditSession | null>(null)
   // Both belong to the photo they were opened on: another photo starts uncropped and fitted.
-  const [crop, setCrop] = useState<{ photoId: string; geometry: Geometry } | null>(null)
+  const [crop, setCrop] = useState<{ photoId: string; geometry: Geometry; subject: boolean } | null>(null)
   const [zoomState, setZoomState] = useState<{ photoId: string; level: Zoom; focus: Point } | null>(null)
   const cropping = crop?.photoId === photoId
-  const setCropping = (on: boolean) => {
+  // 'subject' opens the crop tool ready to draw the subject (from the AI Analysis tab).
+  const setCropping = (on: boolean | 'subject') => {
     const geometry = session.current?.params.geometry ?? detail.data?.edit.adjustments.geometry
-    setCrop(on && geometry ? { photoId, geometry } : null)
+    setCrop(on && geometry ? { photoId, geometry, subject: on === 'subject' } : null)
   }
   const zoom = zoomState?.photoId === photoId ? zoomState : { level: 'fit' as Zoom, focus: CENTER }
   const setZoom = (next: { level: Zoom; focus: Point }) => setZoomState({ photoId, ...next })
@@ -129,6 +134,10 @@ export function PhotoPage() {
   const canZoom = mode !== 'camera' && !cropping
   // The crop tool handles G itself while it is open.
   const [grid, toggleGrid] = useGrid({ key: !cropping })
+  const [tab, setTab] = useState('adjust')
+  // The AI Analysis tab draws what detection found on the photo; D hides it.
+  const [details] = useDetails({ key: tab === 'analysis' && !cropping })
+  const analysis = useAnalysis(photoId ?? '', Boolean(photoId) && tab === 'analysis')
 
   useEffect(() => {
     // Keep the shown photo selected so "Apply style…" / "Export…" act on it. Runs only when the photo changes.
@@ -262,6 +271,7 @@ export function PhotoPage() {
               <CropTool
                 photo={photo}
                 geometry={crop.geometry}
+                startDrawing={crop.subject}
                 onCancel={() => setCropping(false)}
                 onDone={(geometry) => {
                   const current = session.current
@@ -283,6 +293,15 @@ export function PhotoPage() {
                 photo={photo}
                 mode={mode}
                 grid={grid}
+                overlay={tab === 'analysis' && details && analysis.data ? (
+                  <DetectionOverlay
+                    subject={analysis.data.box}
+                    subjectLabel={subjectText(analysis.data.source, analysis.data.kind, analysis.data.score)}
+                    manual={analysis.data.source === 'manual'}
+                    candidates={analysis.data.candidates}
+                    focus={analysis.data.focus}
+                  />
+                ) : undefined}
                 onZoomAt={(point) => setZoom({ level: 100, focus: point })}
               />
             )}
@@ -291,11 +310,12 @@ export function PhotoPage() {
         </div>
 
         <aside className="flex w-80 shrink-0 flex-col border-l border-line bg-panel" aria-label="Photo details">
-          <Tabs.Root defaultValue="adjust" className="flex min-h-0 flex-1 flex-col">
+          <Tabs.Root value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
             <Tabs.List className="flex border-b border-line" aria-label="Panel">
               {[
                 ['adjust', 'Adjust'],
                 ['info', 'Info'],
+                ['analysis', 'AI Analysis'],
               ].map(([value, label]) => (
                 <Tabs.Trigger
                   key={value}
@@ -316,6 +336,15 @@ export function PhotoPage() {
             </Tabs.Content>
             <Tabs.Content value="info" className="min-h-0 flex-1 overflow-y-auto">
               <InfoPanel photo={photo} styleName={styleName} />
+            </Tabs.Content>
+            <Tabs.Content value="analysis" className="min-h-0 flex-1 overflow-y-auto">
+              <AnalysisPanel
+                photo={photo}
+                onSetSubject={() => {
+                  setZoom({ ...zoom, level: 'fit' })
+                  setCropping('subject')
+                }}
+              />
             </Tabs.Content>
           </Tabs.Root>
         </aside>

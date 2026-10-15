@@ -1,6 +1,6 @@
-import { Download, FolderOpen, Images, ListChecks, LoaderCircle, Palette } from 'lucide-react'
+import { ClipboardCheck, Download, FolderOpen, Images, ListChecks, LoaderCircle, Palette } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router'
-import { useJobs, useLibrary, useRefreshAfterJobs } from '../api/queries'
+import { useJobs, useLibrary, useRefreshAfterJobs, useReviews } from '../api/queries'
 import { useBackendHealth, type BackendState } from '../hooks/useBackendHealth'
 import { cn } from '../lib/cn'
 
@@ -8,6 +8,7 @@ const NAV = [
   { to: '/library', label: 'Library', icon: Images },
   { to: '/styles', label: 'Styles', icon: Palette },
   { to: '/presets', label: 'Export presets', icon: Download },
+  { to: '/reviews', label: 'Reviews', icon: ClipboardCheck },
   { to: '/jobs', label: 'Jobs', icon: ListChecks },
 ] as const
 
@@ -68,7 +69,14 @@ function TopBar() {
   )
 }
 
+/** Photos still to check across the open reviews. */
+function useReviewsToCheck(): number {
+  const { data } = useReviews()
+  return data?.reduce((sum, r) => sum + r.counts.check, 0) ?? 0
+}
+
 function NavRail() {
+  const toCheck = useReviewsToCheck()
   return (
     <nav aria-label="Main" className="flex w-[76px] shrink-0 flex-col gap-1 border-r border-line bg-panel py-2">
       {NAV.map(({ to, label, icon: Icon }) => (
@@ -82,7 +90,17 @@ function NavRail() {
             )
           }
         >
-          <Icon className="size-5" aria-hidden />
+          <span className="relative">
+            <Icon className="size-5" aria-hidden />
+            {to === '/reviews' && toCheck > 0 && (
+              <span
+                className="absolute -top-1.5 -right-2.5 rounded-full bg-warn px-1 text-[10px] leading-4 text-black"
+                aria-label={`${toCheck} to check`}
+              >
+                {toCheck}
+              </span>
+            )}
+          </span>
           {label}
         </NavLink>
       ))}

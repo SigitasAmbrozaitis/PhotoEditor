@@ -9,6 +9,7 @@ from photoedit.core.presets import BUILTIN_PRESETS
 from photoedit.models import ExportPlan, ExportPlanItem, ExportSettings
 from photoedit.models.export import (
     AspectSettings,
+    AspectZoom,
     CropAnchor,
     DecodeSize,
     FileSettings,
@@ -102,3 +103,34 @@ def test_builtin_presets_anchor_and_print_full_decode() -> None:
         expected = DecodeSize.FULL if preset.target == "print" else DecodeSize.AUTO
         assert preset.settings.file.decode == expected, preset.id
         ExportSettings.model_validate_json(preset.settings.model_dump_json())
+
+
+def test_zoom_defaults_off_and_needs_ratio_and_subject_anchor() -> None:
+    aspect = AspectSettings()
+    assert aspect.zoom == AspectZoom.OFF
+    assert aspect.subject_fill == 0.4
+    AspectSettings(ratio="4:5", anchor="subject", zoom="auto")
+    with pytest.raises(
+        ValidationError, match="automatic zoom needs an aspect ratio and the 'subject' anchor"
+    ):
+        AspectSettings(ratio="4:5", anchor="center", zoom="auto")
+    with pytest.raises(ValidationError, match="automatic zoom needs"):
+        AspectSettings(anchor="subject", zoom="auto")
+
+
+@pytest.mark.parametrize("fill", [0.19, 0.91, -1])
+def test_subject_fill_range(fill: float) -> None:
+    with pytest.raises(ValidationError, match="subject_fill"):
+        AspectSettings(subject_fill=fill)
+
+
+def test_old_aspect_settings_load_without_zoom() -> None:
+    old = {"ratio": "4:5", "orientation": "portrait", "anchor": "subject"}
+    aspect = AspectSettings.model_validate(old)
+    assert aspect.zoom == AspectZoom.OFF
+
+
+def test_instagram_presets_zoom_automatically() -> None:
+    for preset in BUILTIN_PRESETS:
+        expected = AspectZoom.AUTO if preset.target == "instagram" else AspectZoom.OFF
+        assert preset.settings.aspect.zoom == expected, preset.id

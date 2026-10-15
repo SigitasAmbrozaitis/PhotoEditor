@@ -16,7 +16,7 @@ import subprocess
 import sys
 import threading
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from concurrent.futures import Executor, ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,7 +28,7 @@ from photoedit.core.catalog import CatalogPhoto
 from photoedit.core.decode import is_raw
 from photoedit.core.errors import InvalidRequestError, NotFoundError
 from photoedit.core.export.encode import EXTENSIONS
-from photoedit.core.export.geometry import ExportGeometry, export_geometry
+from photoedit.core.export.geometry import ExportGeometry, ZoomPlan, export_geometry, zoom_plan
 from photoedit.core.export.geometry import warnings as geometry_warnings
 from photoedit.core.export.naming import NameFields, plan_names
 from photoedit.core.export.worker import ExportTask, RenderedExport, render_export
@@ -38,7 +38,9 @@ from photoedit.core.library import Library
 from photoedit.core.renderer import profile_of
 from photoedit.core.subject.service import Subjects
 from photoedit.models import Job, JobKind
+from photoedit.models.adjustments import CropRect, Geometry
 from photoedit.models.export import (
+    AspectZoom,
     CollisionStatus,
     CropAnchor,
     DestinationCheck,
@@ -56,10 +58,14 @@ MAX_AUTO_WORKERS = 10
 # Peak memory of one worker rendering a full-size X-T3 export (measured 1.6 GiB, P5.11; a straightened crop
 # adds ~0.1 GiB, P6a.5). Workers that would not fit in the free memory aren't started.
 WORKER_PEAK_BYTES = 1.8 * 1024**3
+# Subjects automatic zoom moves toward: named by detection or by hand, not the camera's focus point.
+ZOOM_SOURCES = frozenset({SubjectSource.DETECTED, SubjectSource.MANUAL})
 # Subject detections a plan runs at once (threads; each decodes a half-size RAW, ~0.3 GiB at its peak).
 MAX_DETECTIONS = 8
 
 type ExecutorFactory = Callable[[int], Executor]
+# A crop's center set by hand, normalized to the edited photo.
+type Position = tuple[float, float]
 
 
 def auto_workers(*, cpus: int | None = None, available: int | None = None) -> int:
@@ -76,17 +82,36 @@ def _process_pool(workers: int) -> Executor:
 
 
 @dataclass(frozen=True)
+class Framing:
+    """One photo's framing in an export: the subject its aspect crop frames, the zoom and the geometry.
+
+    Plans, exports and reviews all frame photos through ``Exporter.frame``, so they always agree.
+    """
+
+    geometry: ExportGeometry
+    zoom: ZoomPlan  # the photo's zoom limits, and what automatic zoom wants
+    auto_zoom: float = 1.0  # the automatic zoom (1 when off, without a trusted subject or with an own crop)
+    box: SubjectBox | None = None  # normalized to the edited photo
+    source: SubjectSource | None = None  # None when the export doesn't frame a subject
+    kind: SubjectKind | None = None
+    score: float | None = None
+    note: str | None = None
+    own_crop: bool = False  # the user cropped the photo themselves
+
+
+@dataclass(frozen=True)
 class _Item:
     photo: CatalogPhoto
-    geometry: ExportGeometry
+    framing: Framing
     name: str
     collision: CollisionStatus
     copyright: str | None
     warnings: list[str] = field(default_factory=list)
     error: str | None = None
-    subject: SubjectSource | None = None
-    subject_kind: SubjectKind | None = None
-    subject_score: float | None = None
+
+    @property
+    def geometry(self) -> ExportGeometry:
+        return self.framing.geometry
 
 
 @dataclass(frozen=True)
@@ -117,9 +142,10 @@ class _Prepared:
                     decode=i.geometry.decode,
                     collision=i.collision,
                     warnings=[*i.warnings, *([i.error] if i.error else [])],
-                    subject=i.subject,
-                    subject_kind=i.subject_kind,
-                    subject_score=i.subject_score,
+                    subject=i.framing.source,
+                    subject_kind=i.framing.kind,
+                    subject_score=i.framing.score,
+                    zoom=i.geometry.zoom,
                 )
                 for i in self.items
             ],
@@ -230,9 +256,12 @@ class Exporter:
         settings: ExportSettings,
         destination: str,
         preset_id: str | None = None,
+        *,
+        zooms: Mapping[str, float] | None = None,
+        positions: Mapping[str, Position] | None = None,
     ) -> ExportPlan:
         """What ``export`` would write. Nothing is written."""
-        return self._prepare(photo_ids, settings, destination, preset_id).plan()
+        return self._prepare(photo_ids, settings, destination, preset_id, zooms, positions).plan()
 
     def export(
         self,
@@ -240,8 +269,16 @@ class Exporter:
         settings: ExportSettings,
         destination: str,
         preset_id: str | None = None,
+        *,
+        zooms: Mapping[str, float] | None = None,
+        positions: Mapping[str, Position] | None = None,
+        finished: Callable[[list[str]], None] | None = None,
     ) -> Job:
-        prepared = self._prepare(photo_ids, settings, destination, preset_id)
+        """Export the photos as a job. ``zooms`` replaces the automatic zoom of some photos and ``positions``
+        puts their crops where someone dragged them (a review's decisions). ``finished`` gets the ids of the
+        photos written (or skipped as already there) when the job ends, also when it was cancelled or
+        failed."""
+        prepared = self._prepare(photo_ids, settings, destination, preset_id, zooms, positions)
         dest = prepared.destination
         self._remember(dest)
         with self._lock:
@@ -251,6 +288,7 @@ class Exporter:
         pool: list[Executor] = []
         pool_lock = threading.Lock()
         outcomes: Counter[str] = Counter()
+        written_ids: list[str] = []
 
         def render(task: ExportTask) -> RenderedExport:
             if workers == 1:
@@ -267,6 +305,7 @@ class Exporter:
             if item.collision == CollisionStatus.SKIP:
                 with self._lock:
                     outcomes["skipped"] += 1
+                    written_ids.append(item.photo.id)
                 return ItemResult(photo_id=item.photo.id, output_path=str(target), message="exists, skipped")
             try:
                 if item.error:
@@ -280,6 +319,7 @@ class Exporter:
             with self._lock:
                 self._exported.add(Path(os.path.realpath(written)))
                 outcomes["exported"] += 1
+                written_ids.append(item.photo.id)
             return ItemResult(
                 photo_id=item.photo.id,
                 output_path=str(written),
@@ -296,6 +336,10 @@ class Exporter:
             return f"{', '.join(parts)} → {dest}"
 
         def cleanup() -> None:
+            if finished is not None:
+                with self._lock:
+                    done = list(written_ids)
+                finished(done)
             with pool_lock:
                 for executor in pool:
                     executor.shutdown(wait=True, cancel_futures=True)
@@ -324,25 +368,23 @@ class Exporter:
     # ---- internals
 
     def _prepare(
-        self, photo_ids: Sequence[str], settings: ExportSettings, destination: str, preset_id: str | None
+        self,
+        photo_ids: Sequence[str],
+        settings: ExportSettings,
+        destination: str,
+        preset_id: str | None,
+        zooms: Mapping[str, float] | None = None,
+        positions: Mapping[str, Position] | None = None,
     ) -> _Prepared:
         if not photo_ids:
             raise InvalidRequestError("no photos to export")
         dest = self._destination(destination)
-        photos = sorted(
-            {pid: self._library.photo(pid) for pid in photo_ids}.values(),
-            key=lambda p: (
-                p.captured_at is None,
-                p.captured_at.isoformat() if p.captured_at else "",
-                p.path.name.lower(),
-            ),
-        )
-        framing = settings.aspect.ratio is not None and settings.aspect.anchor == CropAnchor.SUBJECT
-        found = self._subjects_of(photos) if framing else {}
-        framed = [self._framed(p, *found[p.id]) if framing else _Framed() for p in photos]
-        geometries = [
-            export_geometry(*_edited_size(p), settings, is_raw=is_raw(p.path), subject=f.box)
-            for p, f in zip(photos, framed, strict=True)
+        photos = in_export_order({pid: self._library.photo(pid) for pid in photo_ids}.values())
+        found = self.subjects_of(photos) if frames_subjects(settings) else {}
+        zooms, positions = zooms or {}, positions or {}
+        framings = [
+            self.frame(p, settings, found.get(p.id), zoom=zooms.get(p.id), position=positions.get(p.id))
+            for p in photos
         ]
         existing = {p.name.lower() for p in dest.iterdir() if p.is_file()} if dest.is_dir() else set()
         fields = [
@@ -357,7 +399,8 @@ class Exporter:
         ]
         names = plan_names(settings.naming, fields, EXTENSIONS[settings.file.format], existing)
         items: list[_Item] = []
-        for photo, geometry, name, frame in zip(photos, geometries, names, framed, strict=True):
+        for photo, frame, name in zip(photos, framings, names, strict=True):
+            geometry = frame.geometry
             warnings = geometry_warnings(geometry)
             if frame.note:
                 warnings.append(frame.note)
@@ -370,24 +413,87 @@ class Exporter:
             error = None
             if not photo.path.is_file():
                 error = f"the original is no longer at {photo.path}"
-            items.append(
-                _Item(
-                    photo,
-                    geometry,
-                    name.name,
-                    name.collision,
-                    copyright_,
-                    warnings,
-                    error,
-                    subject=frame.source,
-                    subject_kind=frame.kind,
-                    subject_score=frame.score,
-                )
-            )
+            items.append(_Item(photo, frame, name.name, name.collision, copyright_, warnings, error))
         return _Prepared(dest, settings, items)
 
-    def _subjects_of(
-        self, photos: Sequence[CatalogPhoto]
+    def frame(
+        self,
+        photo: CatalogPhoto,
+        settings: ExportSettings,
+        found: tuple[SubjectInfo | None, str | None] | None,
+        *,
+        zoom: float | None = None,
+        position: Position | None = None,
+    ) -> Framing:
+        """How ``settings`` frame ``photo``: its subject (``found``, from ``subjects_of``; used only when the
+        settings frame subjects), the zoom (``zoom``, else the automatic one), where its crop was put by hand
+        (``position``, normalized to the edited photo) and the export geometry."""
+        inputs = self._inputs(photo, settings, found)
+        width, height, raw, framed, own_crop, plan = inputs
+        auto = 1.0
+        if settings.aspect.zoom == AspectZoom.AUTO and framed.source in ZOOM_SOURCES and not own_crop:
+            auto = plan.auto
+        geometry = export_geometry(
+            width,
+            height,
+            settings,
+            is_raw=raw,
+            subject=framed.box,
+            zoom=auto if zoom is None else zoom,
+            position=position,
+        )
+        return Framing(
+            geometry=geometry,
+            zoom=plan,
+            auto_zoom=auto,
+            box=framed.box,
+            source=framed.source,
+            kind=framed.kind,
+            score=framed.score,
+            note=framed.note,
+            own_crop=own_crop,
+        )
+
+    def zoom_frames(
+        self,
+        photo: CatalogPhoto,
+        settings: ExportSettings,
+        found: tuple[SubjectInfo | None, str | None] | None,
+        zooms: Sequence[float],
+        *,
+        position: Position | None = None,
+    ) -> list[ExportGeometry]:
+        """The export geometry of ``photo`` at each of ``zooms`` (as ``frame`` would give it): what a review
+        shows while its zoom slider moves."""
+        width, height, raw, framed, _, _ = self._inputs(photo, settings, found)
+        return [
+            export_geometry(
+                width, height, settings, is_raw=raw, subject=framed.box, zoom=zoom, position=position
+            )
+            for zoom in zooms
+        ]
+
+    def _inputs(
+        self,
+        photo: CatalogPhoto,
+        settings: ExportSettings,
+        found: tuple[SubjectInfo | None, str | None] | None,
+    ) -> tuple[int, int, bool, _Framed, bool, ZoomPlan]:
+        """What framing a photo needs: its edited size, whether it is a RAW, its subject in the edited photo,
+        whether the user cropped it, and its zoom limits."""
+        width, height = _edited_size(photo)
+        raw = is_raw(photo.path)
+        own = self._library.edit(photo.id).adjustments.geometry
+        framed = _Framed()
+        if frames_subjects(settings):
+            framed = self._framed(photo, own, *(found or (None, None)))
+        # Zoom only toward a subject detection or a person named; the focus point is a guess.
+        trusted = framed.box if framed.source in ZOOM_SOURCES else None
+        plan = zoom_plan(width, height, settings, is_raw=raw, subject=trusted)
+        return width, height, raw, framed, own.crop != CropRect(), plan
+
+    def subjects_of(
+        self, photos: Sequence[CatalogPhoto], *, detect: bool = True
     ) -> dict[str, tuple[SubjectInfo | None, str | None]]:
         """Each photo's subject and, if there is none to use, why. Detections not stored yet run here, a few
         at a time, and are stored, so the export itself reuses them."""
@@ -399,7 +505,7 @@ class Exporter:
             if not photo.path.is_file():
                 return None, None  # reported as the item's error
             try:
-                return subjects.subject(photo), None
+                return subjects.subject(photo, detect=detect), None
             except Exception as exc:  # one photo's failure must not stop the plan; it says so and centers
                 return None, f"subject detection failed ({exc}): centered"
 
@@ -407,12 +513,13 @@ class Exporter:
         with ThreadPoolExecutor(max_workers=workers) as pool:
             return {p.id: result for p, result in zip(photos, pool.map(one, photos), strict=True)}
 
-    def _framed(self, photo: CatalogPhoto, info: SubjectInfo | None, problem: str | None) -> _Framed:
+    def _framed(
+        self, photo: CatalogPhoto, geometry: Geometry, info: SubjectInfo | None, problem: str | None
+    ) -> _Framed:
         """The subject in the edited photo's coordinates (after its own crop), for the aspect crop."""
         if info is None or info.box is None:
             note = problem if info is None else "no subject found: centered"
             return _Framed(source=SubjectSource.NONE, note=note)
-        geometry = self._library.edit(photo.id).adjustments.geometry
         box = subject_in_crop(info.box, geometry, photo.width, photo.height)
         if box is None:
             return _Framed(
@@ -445,6 +552,23 @@ class Exporter:
             copyright=item.copyright,
             creator=settings.metadata.creator or self._settings.export_creator,
         )
+
+
+def in_export_order(photos: Iterable[CatalogPhoto]) -> list[CatalogPhoto]:
+    """Capture time, then file name (photos without a date last): the order of an export's {seq}."""
+    return sorted(
+        photos,
+        key=lambda p: (
+            p.captured_at is None,
+            p.captured_at.isoformat() if p.captured_at else "",
+            p.path.name.lower(),
+        ),
+    )
+
+
+def frames_subjects(settings: ExportSettings) -> bool:
+    """True when the export's aspect crop frames each photo's subject."""
+    return settings.aspect.ratio is not None and settings.aspect.anchor == CropAnchor.SUBJECT
 
 
 def _edited_size(photo: CatalogPhoto) -> tuple[int, int]:

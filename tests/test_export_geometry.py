@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from photoedit.core.errors import InvalidRequestError
-from photoedit.core.export.geometry import Box, export_geometry, parse_ratio, warnings
+from photoedit.core.export.geometry import Box, export_geometry, parse_ratio, warnings, zoom_plan
 from photoedit.core.presets import BUILTIN_PRESETS
 from photoedit.models.export import DecodeUsed, ExportSettings
 from photoedit.models.subject import SubjectBox
@@ -159,3 +159,121 @@ def test_a_subject_too_wide_for_the_crop_is_cut_and_centered_on() -> None:
     framed = export_geometry(*LANDSCAPE, settings, is_raw=True, subject=wide)
     assert framed.subject_cut == "wider"
     assert framed.crop.left + framed.crop.width / 2 == pytest.approx(0.4 * 6240, abs=1)
+
+
+# ---- zoom (P6c.2): X-T3 landscape → Instagram portrait crops 3328×4160 into 1080×1350.
+
+IG_FAST = 3328 / 2160  # 1.5407…: the half-size decode (3328/2 = 1664 ≥ 1080) stops covering past it
+IG_QUALITY = 3328 / 1080  # 3.0815…: the crop has 1080 px across
+
+
+def _box(cx: float, cy: float, w: float, h: float) -> SubjectBox:
+    return SubjectBox(left=cx - w / 2, top=cy - h / 2, right=cx + w / 2, bottom=cy + h / 2)
+
+
+def test_zoom_limits_for_instagram() -> None:
+    plan = zoom_plan(*LANDSCAPE, _preset("instagram-portrait"), is_raw=True)
+    assert plan.fast == pytest.approx(IG_FAST)
+    assert plan.quality == pytest.approx(IG_QUALITY)
+    assert plan.wanted == 1.0  # no subject: never zoomed automatically
+    # Not a RAW (or a forced full decode): no half-size decode to lose, so fast is the quality limit.
+    jpeg = zoom_plan(*LANDSCAPE, _preset("instagram-portrait"), is_raw=False)
+    assert jpeg.fast == pytest.approx(IG_QUALITY)
+
+
+def test_wanted_zoom_from_subject_fill() -> None:
+    settings = _preset("instagram-portrait")
+    # 0.3 of 6240 px = 1872 px fills 56 % of the 3328 px crop: big enough.
+    assert zoom_plan(*LANDSCAPE, settings, is_raw=True, subject=_box(0.5, 0.5, 0.3, 0.2)).wanted == 1.0
+    # 0.1 of the width (624 px) fills 18.75 %: 0.4 / 0.1875 = 2.133×, automatic zoom stops at the fast limit.
+    plan = zoom_plan(*LANDSCAPE, settings, is_raw=True, subject=_box(0.5, 0.5, 0.1, 0.1))
+    assert plan.wanted == pytest.approx(0.4 / 0.1875)
+    assert plan.auto == pytest.approx(IG_FAST)
+    assert not plan.limited
+    # 2 % of the width (124.8 px) wants 10.7×, past the quality limit.
+    tiny = zoom_plan(*LANDSCAPE, settings, is_raw=True, subject=_box(0.5, 0.5, 0.02, 0.02))
+    assert tiny.wanted == pytest.approx(0.4 / (124.8 / 3328))
+    assert tiny.limited
+    # The height can be the larger share: a tall subject (0.5 of 4160 px against a 4160 px crop height).
+    assert zoom_plan(*LANDSCAPE, settings, is_raw=True, subject=_box(0.5, 0.5, 0.05, 0.3)).wanted == (
+        pytest.approx(0.4 / 0.3)
+    )
+
+
+def test_subject_fill_setting_changes_the_wanted_zoom() -> None:
+    settings = _preset("instagram-portrait").model_copy(deep=True)
+    settings.aspect.subject_fill = 0.6
+    plan = zoom_plan(*LANDSCAPE, settings, is_raw=True, subject=_box(0.5, 0.5, 0.1, 0.1))
+    assert plan.wanted == pytest.approx(0.6 / 0.1875)
+
+
+def test_zoom_tightens_around_the_subject_and_keeps_the_output() -> None:
+    subject = _box(0.3, 0.5, 0.1, 0.1)  # centered at x = 1872 px
+    g = export_geometry(*LANDSCAPE, _preset("instagram-portrait"), is_raw=True, subject=subject, zoom=2)
+    assert (g.width, g.height) == (1080, 1350)
+    assert g.crop == Box(left=1872 - 832, top=1040, width=1664, height=2080)
+    assert g.zoom == 2.0
+    assert g.decode == DecodeUsed.FULL  # 1664 // 2 = 832 < 1080
+
+
+def test_decode_switches_at_the_fast_limit() -> None:
+    settings, subject = _preset("instagram-portrait"), _box(0.5, 0.5, 0.05, 0.05)
+    at = export_geometry(*LANDSCAPE, settings, is_raw=True, subject=subject, zoom=IG_FAST)
+    assert (at.crop.width, at.crop.height, at.decode) == (2160, 2700, DecodeUsed.HALF)
+    past = export_geometry(*LANDSCAPE, settings, is_raw=True, subject=subject, zoom=IG_FAST + 0.01)
+    assert past.decode == DecodeUsed.FULL
+
+
+def test_zoom_capped_at_the_quality_limit() -> None:
+    settings, subject = _preset("instagram-portrait"), _box(0.5, 0.5, 0.01, 0.01)
+    g = export_geometry(*LANDSCAPE, settings, is_raw=True, subject=subject, zoom=5)
+    assert (g.crop.width, g.crop.height) == (1080, 1350)
+    assert g.zoom == pytest.approx(IG_QUALITY, abs=1e-6)
+    assert g.scale == pytest.approx(1.0)
+
+
+def test_zoom_stops_where_the_subject_and_margin_fill_the_crop() -> None:
+    # 1872 px of subject + 5 % margin on each side fills a 2080 px crop: zoom 3328 / 2080 = 1.6.
+    g = export_geometry(
+        *LANDSCAPE, _preset("instagram-portrait"), is_raw=True, subject=_box(0.5, 0.5, 0.3, 0.2), zoom=3
+    )
+    assert g.zoom == pytest.approx(1.6, abs=1e-6)
+    assert g.crop.width == 2080
+
+
+def test_zoom_without_a_subject_zooms_on_the_center() -> None:
+    g = export_geometry(*LANDSCAPE, _preset("instagram-portrait"), is_raw=True, zoom=2)
+    assert g.crop == Box(left=(6240 - 1664) // 2, top=1040, width=1664, height=2080)
+
+
+def test_zoom_one_is_the_old_geometry_and_is_deterministic() -> None:
+    settings, subject = _preset("instagram-portrait"), _box(0.3, 0.4, 0.1, 0.1)
+    plain = export_geometry(*LANDSCAPE, settings, is_raw=True, subject=subject)
+    assert export_geometry(*LANDSCAPE, settings, is_raw=True, subject=subject, zoom=1.0) == plain
+    zoomed = [
+        export_geometry(*LANDSCAPE, settings, is_raw=True, subject=subject, zoom=1.37) for _ in range(3)
+    ]
+    assert zoomed[0] == zoomed[1] == zoomed[2]
+    with pytest.raises(InvalidRequestError, match="zoom must be at least 1"):
+        export_geometry(*LANDSCAPE, settings, is_raw=True, zoom=0.5)
+
+
+def test_original_size_exports_cannot_zoom() -> None:
+    settings = _settings(aspect={"ratio": "4:5", "anchor": "subject"})  # original size: crop = output
+    plan = zoom_plan(*LANDSCAPE, settings, is_raw=True, subject=_box(0.5, 0.5, 0.05, 0.05))
+    assert plan.quality == plan.fast == 1.0
+    assert plan.limited
+
+
+def test_a_position_places_the_crop_as_close_as_the_photo_allows() -> None:
+    settings, subject = _preset("instagram-portrait"), _box(0.3, 0.5, 0.1, 0.1)
+    # Zoom 2 (1664 × 2080) centered on (0.7, 0.4) of the photo: the subject no longer places it.
+    g = export_geometry(*LANDSCAPE, settings, is_raw=True, subject=subject, zoom=2, position=(0.7, 0.4))
+    assert g.crop == Box(left=round(0.7 * 6240 - 832), top=round(0.4 * 4160 - 1040), width=1664, height=2080)
+    assert g.subject_cut is None
+    # Too far right or down for the crop: it stops at the edges.
+    edge = export_geometry(*LANDSCAPE, settings, is_raw=True, zoom=2, position=(1.0, 1.0))
+    assert (edge.crop.left + edge.crop.width, edge.crop.top + edge.crop.height) == (6240, 4160)
+    # Zoom 1: the full-height crop can only move sideways.
+    wide = export_geometry(*LANDSCAPE, settings, is_raw=True, position=(0.2, 0.9))
+    assert (wide.crop.left, wide.crop.top, wide.crop.height) == (0, 0, 4160)

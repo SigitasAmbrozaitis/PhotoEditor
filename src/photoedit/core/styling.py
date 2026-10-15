@@ -151,11 +151,13 @@ class Styling:
         *,
         even_out: bool = False,
         then: Callable[[], None] | None = None,
+        queue: str | None = None,
     ) -> Job:
         """Apply ``style_id`` (None removes the style) to the photos as a job; it writes edit files only.
 
         With ``even_out``, every photo is measured first, then the group's medians are stored with each photo,
         so the style's exposure rule evens the photos out against each other. ``then`` runs after the job.
+        Jobs submitted later on the same ``queue`` wait for this one (a review's Prepare waits for its style).
         """
         photos = [self.library.photo(pid) for pid in photo_ids]
         style = self.styles.get(style_id) if style_id is not None else None
@@ -199,7 +201,14 @@ class Styling:
             return summary
 
         return self.jobs.submit(
-            JobKind.APPLY_STYLE, title, items, work, parallel=APPLY_THREADS, finish=finish, style_id=style_id
+            JobKind.APPLY_STYLE,
+            title,
+            items,
+            work,
+            parallel=APPLY_THREADS,
+            finish=finish,
+            style_id=style_id,
+            queue=queue,
         )
 
     def _group(self, photos: list[CatalogPhoto]) -> GroupReference:

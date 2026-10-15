@@ -1,8 +1,11 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
-import type { ExportRequest } from '../../api/types'
+import type { ExportRequest, ExportSettings } from '../../api/types'
 import { presets } from '../../test/fixtures'
 import { mockApi, renderApp, type ApiCall } from '../../test/render'
+import { ExportSettingsForm } from './ExportSettingsForm'
 import { exportSummary } from './exportSummary'
 
 describe('exportSummary', () => {
@@ -80,5 +83,46 @@ describe('Export dialog', () => {
     expect(within(dialog).getByText('Export preset')).toBeInTheDocument() // not "(modified)" any more
     const created = calls.find((c) => c.method === 'POST' && c.path === '/api/export-presets')!
     expect(created.body).toMatchObject({ name: 'IG P3', target: 'instagram', settings: { color_space: 'display_p3' } })
+  })
+})
+
+describe('Export settings form: automatic zoom', () => {
+  function Controlled({ initial, seen }: { initial: ExportSettings; seen: ExportSettings[] }) {
+    const [value, setValue] = useState(initial)
+    return (
+      <ExportSettingsForm
+        value={value}
+        onChange={(next) => {
+          seen.push(next)
+          setValue(next)
+        }}
+      />
+    )
+  }
+
+  it('needs a ratio and the subject anchor, and goes off with either', async () => {
+    const user = userEvent.setup()
+    const seen: ExportSettings[] = []
+    const ig = presets[0]!.settings
+    render(<Controlled initial={{ ...ig, aspect: { ...ig.aspect, anchor: 'subject', zoom: 'auto' } }} seen={seen} />)
+    const zoom = screen.getByRole('switch', { name: 'Zoom in on small subjects' })
+    expect(zoom).toBeChecked()
+    expect(screen.getByRole('spinbutton', { name: 'Subject fills (%)' })).toHaveValue(40)
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Frame the crop on' }), 'center')
+    expect(seen.at(-1)!.aspect).toMatchObject({ anchor: 'center', zoom: 'off' })
+    expect(zoom).toBeDisabled()
+    expect(screen.getByRole('spinbutton', { name: 'Subject fills (%)' })).toBeDisabled()
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Frame the crop on' }), 'subject')
+    await user.click(zoom)
+    expect(seen.at(-1)!.aspect).toMatchObject({ anchor: 'subject', zoom: 'auto' })
+    const fill = screen.getByRole('spinbutton', { name: 'Subject fills (%)' })
+    await user.clear(fill)
+    await user.type(fill, '55')
+    expect(seen.at(-1)!.aspect.subject_fill).toBeCloseTo(0.55)
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Crop to aspect' }), '')
+    expect(seen.at(-1)!.aspect).toMatchObject({ ratio: null, zoom: 'off' })
   })
 })

@@ -58,7 +58,13 @@ export type ApplyStyleRequest = Schemas['ApplyStyleRequest']
 export type ExportRequest = Schemas['ExportRequest']
 export type ApplyAndExportRequest = Schemas['ApplyAndExportRequest']
 export type DetectSubjectsRequest = Schemas['DetectSubjectsRequest']
-export type JobRequest = ApplyStyleRequest | ExportRequest | ApplyAndExportRequest | DetectSubjectsRequest
+export type PrepareExportRequest = Schemas['PrepareExportRequest']
+export type JobRequest =
+  | ApplyStyleRequest
+  | ExportRequest
+  | ApplyAndExportRequest
+  | DetectSubjectsRequest
+  | PrepareExportRequest
 
 export type FileFormat = Schemas['FileFormat']
 export type ColorSpace = Schemas['ColorSpace']
@@ -84,3 +90,22 @@ export type SubjectSource = Schemas['SubjectSource']
 export type CropPlacement = Schemas['CropPlacement']
 export type CropSuggestion = Schemas['CropSuggestion']
 export type CropSuggestionRequest = Schemas['CropSuggestionRequest']
+export type AspectZoom = Schemas['AspectZoom']
+export type ExportReview = Schemas['ExportReview']
+export type ReviewItem = Schemas['ReviewItem']
+export type FoundCandidate = Schemas['FoundCandidate']
+export type ReviewCandidate = FoundCandidate
+export type SubjectAnalysis = Schemas['SubjectAnalysis']
+export type FramePosition = Schemas['FramePosition']
+export type ReviewFrames = Schemas['ReviewFrames']
+export type ZoomFrame = Schemas['ZoomFrame']
+export type ReviewCounts = Schemas['ReviewCounts']
+export type ReviewReason = Schemas['ReviewReason']
+export type ReviewRule = Schemas['ReviewRule']
+export type ReviewStatus = Schemas['ReviewStatus']
+export type ReviewSummary = Schemas['ReviewSummary']
+export type ReviewSettings = Schemas['ReviewSettings-Output']
+export type ReviewItemUpdate = Schemas['ReviewItemUpdate']
+export type ReviewSubjectUpdate = Schemas['ReviewSubjectUpdate']
+export type ReviewExportScope = Schemas['ReviewExportScope']
+export type ZoomLimits = Schemas['ZoomLimits']

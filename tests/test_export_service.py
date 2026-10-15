@@ -375,3 +375,45 @@ def test_exports_work_inside_the_photos_own_geometry(env: Env) -> None:
     assert job.status == JobStatus.DONE, job
     with Image.open(next((env.out / "straight").iterdir())) as exported:
         assert int(np.asarray(exported.convert("RGB"))[..., 2].min()) > 150
+
+
+def test_automatic_zoom_and_zoom_overrides(env: Env) -> None:
+    from photoedit.models.adjustments import CropRect, GeometryChange
+
+    # Blue photo with a small red "car" (32 × 20 px of 320 × 200).
+    patch = Image.new("RGB", (320, 200), (30, 30, 220))
+    patch.paste((220, 30, 30), (144, 90, 176, 110))
+    patch.save(env.photos / "d_small_car.jpg", quality=95)
+    env.run(env.library.import_folder(env.photos))
+    pid = next(p.id for p in env.library.list_photos(limit=50).items if p.filename == "d_small_car.jpg")
+    car = SubjectCandidate(
+        box=SubjectBox(left=0.45, top=0.45, right=0.55, bottom=0.55), kind=SubjectKind.CAR, score=0.9
+    )
+    exporter = env.exporter(subjects=_subjects(env, car))
+    settings = _web(aspect={"ratio": "1:1", "anchor": "subject", "zoom": "auto"}, size={"long_edge": 40})
+
+    # The car fills 32 / 200 = 16 % of the 200 px square; 40 % wants 2.5×, within the quality limit (5×).
+    assert exporter.plan([pid], settings, str(env.out)).items[0].zoom == pytest.approx(2.5)
+    assert exporter.plan([pid], settings, str(env.out), zooms={pid: 1.0}).items[0].zoom == 1.0
+    off = settings.model_copy(update={"aspect": settings.aspect.model_copy(update={"zoom": "off"})})
+    assert exporter.plan([pid], off, str(env.out)).items[0].zoom == 1.0
+
+    written: list[list[str]] = []
+    job = env.run(exporter.export([pid], settings, str(env.out), finished=written.append))
+    assert job.status == JobStatus.DONE
+    assert written == [[pid]]
+    with Image.open(next(env.out.iterdir())) as exported:
+        red = np.asarray(exported.convert("RGB"))[..., 0] > 128
+    # An 80 px crop: the car is 10 % of it (a 200 px crop would show 1.6 %).
+    assert 0.06 < red.mean() < 0.14
+
+    # The user cropped the photo: no automatic zoom (an explicit one still applies).
+    env.library.set_geometry(pid, GeometryChange(crop=CropRect(left=0.05, right=0.95)))
+    assert exporter.plan([pid], settings, str(env.out)).items[0].zoom == 1.0
+    assert exporter.plan([pid], settings, str(env.out), zooms={pid: 2.0}).items[0].zoom == pytest.approx(2.0)
+
+
+def test_automatic_zoom_ignores_the_focus_point(env: Env) -> None:
+    exporter = env.exporter(subjects=_subjects(env))
+    settings = _web(aspect={"ratio": "1:1", "anchor": "subject", "zoom": "auto"}, size={"long_edge": 40})
+    assert {i.zoom for i in exporter.plan(env.ids(), settings, str(env.out)).items} == {1.0}

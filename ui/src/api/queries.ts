@@ -9,6 +9,7 @@ import type {
   EngineInfo,
   ExportPlan,
   ExportPreset,
+  ExportReview,
   ExportRequest,
   Geometry,
   GeometryChange,
@@ -22,6 +23,11 @@ import type {
   PhotoSort,
   PresetCreate,
   PresetUpdate,
+  ReviewExportScope,
+  ReviewItemUpdate,
+  ReviewSettings,
+  ReviewSubjectUpdate,
+  ReviewSummary,
   SortOrder,
   ConsistencyReport,
   CropSuggestion,
@@ -35,6 +41,8 @@ import type {
   StyleUpdate,
   StyleUpdateFromPhoto,
   StyleVersionInfo,
+  ReviewFrames,
+  SubjectAnalysis,
   SubjectBox,
   SubjectInfo,
   ZoomInfo,
@@ -58,6 +66,7 @@ export const queryKeys = {
   photos: (q: PhotoQuery) => ['photos', q] as const,
   photo: (id: string) => ['photo', id] as const,
   subject: (id: string) => ['subject', id] as const,
+  analysis: (id: string) => ['analysis', id] as const,
   styles: ['styles'] as const,
   style: (id: string) => ['style', id] as const,
   styleHistory: (id: string) => ['style', id, 'history'] as const,
@@ -68,6 +77,9 @@ export const queryKeys = {
   exportPlan: (request: ExportRequest | null) => ['export', 'plan', request] as const,
   jobs: ['jobs'] as const,
   job: (id: string) => ['job', id] as const,
+  reviews: ['reviews'] as const,
+  review: (id: string) => ['review', id] as const,
+  reviewSettings: ['review-settings'] as const,
 }
 
 /** Poll quickly while something is running, otherwise not at all. */
@@ -206,6 +218,29 @@ export function useSetSubject(photoId: string) {
     onSuccess: (info) => {
       client.setQueryData(queryKeys.subject(photoId), info)
       void client.invalidateQueries({ queryKey: ['export', 'plan'] })
+      void client.invalidateQueries({ queryKey: queryKeys.analysis(photoId) })
+    },
+  })
+}
+
+/** What detection found in the photo, normalized to the edited photo (the AI Analysis tab). Never detects. */
+export function useAnalysis(photoId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.analysis(photoId),
+    queryFn: () => api.get<SubjectAnalysis>(`/api/photos/${encodeURIComponent(photoId)}/analysis`),
+    enabled,
+  })
+}
+
+/** Run detection for one photo now (a few seconds the first time) and show the result. */
+export function useDetectNow(photoId: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      api.get<SubjectAnalysis>(`/api/photos/${encodeURIComponent(photoId)}/analysis`, { detect: true }),
+    onSuccess: (analysis) => {
+      client.setQueryData(queryKeys.analysis(photoId), analysis)
+      void client.invalidateQueries({ queryKey: queryKeys.subject(photoId) })
     },
   })
 }
@@ -493,6 +528,15 @@ export function useRefreshAfterJobs() {
         void client.invalidateQueries({ queryKey: ['export', 'plan'] })
       }
     }
+    // A review changes when its export writes photos (they leave it) or a Prepare creates one.
+    for (const job of jobs.data ?? []) {
+      if (job.kind !== 'export' && job.kind !== 'prepare_export') continue
+      if (isActive(job)) running.current.add(job.id)
+      else if (running.current.delete(job.id)) {
+        void client.invalidateQueries({ queryKey: queryKeys.reviews })
+        void client.invalidateQueries({ queryKey: ['review'] })
+      }
+    }
     if (finished) {
       void client.invalidateQueries({ queryKey: ['photos'] })
       void client.invalidateQueries({ queryKey: ['photo'] })
@@ -509,6 +553,116 @@ export function useCancelJob() {
     onSuccess: (job) => {
       client.setQueryData(queryKeys.job(job.id), job)
       void client.invalidateQueries({ queryKey: queryKeys.jobs })
+    },
+  })
+}
+
+// ----------------------------------------------------------------- pre-export reviews (Phase 6c)
+
+export function useReviews() {
+  return useQuery({ queryKey: queryKeys.reviews, queryFn: () => api.get<ReviewSummary[]>('/api/reviews') })
+}
+
+export function useReview(id: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.review(id ?? ''),
+    queryFn: () => api.get<ExportReview>(`/api/reviews/${encodeURIComponent(id ?? '')}`),
+    enabled: Boolean(id),
+  })
+}
+
+/** A decision changes the whole review (counts, maybe the photo's status): the answer replaces it. */
+function useReviewMutation<T>(
+  reviewId: string,
+  send: (body: T) => Promise<ExportReview>,
+  after?: (body: T) => void,
+) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: send,
+    onSuccess: (review, body) => {
+      client.setQueryData(queryKeys.review(reviewId), review)
+      void client.invalidateQueries({ queryKey: queryKeys.reviews })
+      after?.(body)
+    },
+  })
+}
+
+export function useUpdateReviewItem(reviewId: string) {
+  return useReviewMutation(reviewId, ({ photoId, update }: { photoId: string; update: ReviewItemUpdate }) =>
+    api.patch<ExportReview>(
+      `/api/reviews/${encodeURIComponent(reviewId)}/items/${encodeURIComponent(photoId)}`,
+      update,
+    ),
+  )
+}
+
+export function useSetReviewSubject(reviewId: string) {
+  const client = useQueryClient()
+  return useReviewMutation(
+    reviewId,
+    ({ photoId, update }: { photoId: string; update: ReviewSubjectUpdate }) =>
+      api.put<ExportReview>(
+        `/api/reviews/${encodeURIComponent(reviewId)}/items/${encodeURIComponent(photoId)}/subject`,
+        update,
+      ),
+    // The subject is saved to the photo's edit: the crop tool's view of it is stale now.
+    ({ photoId }) => void client.invalidateQueries({ queryKey: queryKeys.subject(photoId) }),
+  )
+}
+
+/** The export's crop at each zoom step for one photo (refetched when its framing changes). */
+export function useReviewFrames(reviewId: string, photoId: string, revision: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['review', reviewId, 'frames', photoId, revision] as const,
+    queryFn: () =>
+      api.get<ReviewFrames>(
+        `/api/reviews/${encodeURIComponent(reviewId)}/items/${encodeURIComponent(photoId)}/frames`,
+      ),
+    enabled,
+    staleTime: Infinity,
+  })
+}
+
+export function useExportReview(reviewId: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (scope: ReviewExportScope) =>
+      api.post<Job>(`/api/reviews/${encodeURIComponent(reviewId)}/export`, { scope }),
+    onSuccess: (job) => {
+      client.setQueryData(queryKeys.job(job.id), job)
+      void client.invalidateQueries({ queryKey: queryKeys.jobs })
+    },
+  })
+}
+
+export function useDiscardReview() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/api/reviews/${encodeURIComponent(id)}`),
+    onSuccess: (_, id) => {
+      client.removeQueries({ queryKey: queryKeys.review(id) })
+      void client.invalidateQueries({ queryKey: queryKeys.reviews })
+    },
+  })
+}
+
+export function useReviewSettings() {
+  return useQuery({
+    queryKey: queryKeys.reviewSettings,
+    queryFn: () => api.get<ReviewSettings>('/api/review-settings'),
+  })
+}
+
+export function useSaveReviewSettings() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (settings: ReviewSettings) => api.put<ReviewSettings>('/api/review-settings', settings),
+    onSuccess: (settings) => {
+      client.setQueryData(queryKeys.reviewSettings, settings)
+      // Open reviews are sorted again by the new rules.
+      void client.invalidateQueries({ queryKey: ['review'] })
+      void client.invalidateQueries({ queryKey: queryKeys.reviews })
     },
   })
 }

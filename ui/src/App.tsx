@@ -8,6 +8,8 @@ import { JobsPage } from './features/jobs/JobsPage'
 import { LibraryPage } from './features/library/LibraryPage'
 import { PhotoPage } from './features/photo/PhotoPage'
 import { PresetsPage } from './features/presets/PresetsPage'
+import { ReviewPage } from './features/review/ReviewPage'
+import { ReviewsPage } from './features/review/ReviewsPage'
 import { StyleDetailPage } from './features/styles/StyleDetailPage'
 import { StylesPage } from './features/styles/StylesPage'
 import { createQueryClient } from './queryClient'
@@ -36,6 +38,8 @@ export function AppRoutes() {
         <Route path="styles/:styleId" element={<StyleDetailPage />} />
         <Route path="presets" element={<PresetsPage />} />
         <Route path="presets/:presetId" element={<PresetsPage />} />
+        <Route path="reviews" element={<ReviewsPage />} />
+        <Route path="reviews/:reviewId" element={<ReviewPage />} />
         <Route path="jobs" element={<JobsPage />} />
         <Route path="jobs/:jobId" element={<JobsPage />} />
         <Route path="*" element={<EmptyState title="Page not found." />} />

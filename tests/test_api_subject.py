@@ -133,3 +133,23 @@ def test_detect_subjects_job_and_the_plan(client: TestClient, finder: Finder, tm
     assert {(i["subject"], i["subject_kind"]) for i in plan.json()["items"]} == {("detected", "car")}
     assert all(0 < i["subject_score"] <= 1 for i in plan.json()["items"])
     assert finder.calls == len(ids)  # the plan reused the stored detections
+
+
+def test_analysis(client: TestClient, finder: Finder) -> None:
+    pid = _ids(client)[0]
+    r = client.get(f"/api/photos/{pid}/analysis")
+    assert r.status_code == 200, r.text
+    assert (r.json()["detected"], finder.calls) == (False, 0)
+    r = client.get(f"/api/photos/{pid}/analysis", params={"detect": True})
+    found = r.json()
+    assert (found["detected"], found["source"], found["kind"]) == (True, "detected", "car")
+    assert found["candidates"][0] | {"box": None} == {
+        "index": 0,
+        "box": None,
+        "kind": "car",
+        "score": found["candidates"][0]["score"],
+        "label": "car",
+        "recognized": True,
+        "chosen": True,
+    }
+    assert client.get("/api/photos/nope/analysis").status_code == 404

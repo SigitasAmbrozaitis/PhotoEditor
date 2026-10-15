@@ -46,11 +46,18 @@ function num(value: string): number | null {
 }
 
 /** A number that can't be empty: while the field is cleared, the setting keeps its last value. */
-function RequiredNumberInput({
+export function RequiredNumberInput({
   value,
   onChange,
   ...props
-}: { value: number; onChange: (value: number) => void; min?: number; max?: number; disabled?: boolean }) {
+}: {
+  value: number
+  onChange: (value: number) => void
+  min?: number
+  max?: number
+  step?: number
+  disabled?: boolean
+}) {
   const [text, setText] = useState(String(value))
   const shown = text.trim() === '' || num(text) === value ? text : String(value)
   return (
@@ -311,7 +318,11 @@ export function ExportSettingsForm({
           <Select
             value={aspect.ratio ?? ''}
             disabled={disabled}
-            onChange={(e) => set('aspect', { ratio: e.target.value || null })}
+            // Automatic zoom needs a ratio: it goes off with the crop.
+            onChange={(e) => {
+              const ratio = e.target.value || null
+              set('aspect', ratio ? { ratio } : { ratio, zoom: 'off' })
+            }}
           >
             {ASPECTS.map((a) => (
               <option key={a} value={a}>
@@ -335,11 +346,31 @@ export function ExportSettingsForm({
           <Select
             value={aspect.anchor}
             disabled={disabled || !aspect.ratio}
-            onChange={(e) => set('aspect', { anchor: e.target.value as CropAnchor })}
+            onChange={(e) => {
+              const anchor = e.target.value as CropAnchor
+              set('aspect', anchor === 'subject' ? { anchor } : { anchor, zoom: 'off' })
+            }}
           >
             <option value="center">Image center</option>
             <option value="subject">The photo's subject</option>
           </Select>
+        </Field>
+        <div className="flex items-end pb-1.5">
+          <Switch
+            label="Zoom in on small subjects"
+            checked={aspect.zoom === 'auto'}
+            disabled={disabled || !aspect.ratio || aspect.anchor !== 'subject'}
+            onCheckedChange={(v) => set('aspect', { zoom: v ? 'auto' : 'off' })}
+          />
+        </div>
+        <Field label="Subject fills (%)">
+          <RequiredNumberInput
+            value={Math.round(aspect.subject_fill * 100)}
+            min={20}
+            max={90}
+            disabled={disabled || aspect.zoom !== 'auto'}
+            onChange={(percent) => set('aspect', { subject_fill: percent / 100 })}
+          />
         </Field>
       </Section>
 
