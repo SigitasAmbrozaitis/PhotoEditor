@@ -1882,35 +1882,54 @@ after its own mutations (plus job polling).
   only in the full parallel run, on `main` too).
 
 ### Core
-- [ ] **P7.3** Photo references (`core/library.py`): `Library.resolve(ref)` and `resolve_many(refs, folder=None)`
+- [x] **P7.3** Photo references (`core/library.py`): `Library.resolve(ref)` and `resolve_many(refs, folder=None)`
   as described in the design; errors list the matches (at most 10). The CLI's `_find_photos` switches to it.
   Tests: id, prefix, name with and without extension, `folder/name`, ambiguous, unknown, a folder.
-- [ ] **P7.4** Draft render (`Library.render_draft(photo, adjustments | None, size, before=False)`): the photo with
+  Done 2026-10-15: `Catalog.matches(ref)` finds every candidate; `Library.resolve` / `resolve_many` /
+  `folder_photos`; ids need 8+ characters as a prefix; `folder/` matches whole trailing path parts. The
+  CLI's `_find_photos` / `_folder_photos` (and the contact sheet) use them.
+- [x] **P7.4** Draft render (`Library.render_draft(photo, adjustments | None, size, before=False)`): the photo with
   the given adjustments (validated like a save: later-phase parameters rejected) or its current edit, through
   the normal renderer; nothing saved, nothing cached on disk. (P3b.2 reuses it later.) Tests: equals the saved
   edit's preview when the adjustments are the same, no files written, invalid params rejected.
-- [ ] **P7.5** Partial edits (`Library.update_edit(photo, patch)`): a JSON patch of only the fields to change
+  Done 2026-10-15: `Library.render_draft(photo, adjustments, size, before=False)` (adjustments required; with
+  none the tool uses the normal cached preview) → `Renderer.draft`, which renders like a preview and writes
+  nothing.
+- [x] **P7.5** Partial edits (`Library.update_edit(photo, patch)`): a JSON patch of only the fields to change
   (e.g. `{"tone": {"exposure": 0.3}}`) merged over the photo's current own adjustments, then validated as a whole
   `AdjustmentParams`; unknown keys and out-of-range values are rejected with the field path. A `null` sets a
-  field back to its default. Tests: merge, nested merge, reset by null, unknown key, out of range, nothing
+  field back to its style's or default value. Tests: merge, nested merge, reset by null, unknown key, out of range, nothing
   written on error.
-- [ ] **P7.6** Image analysis (`core/analysis.py`, `models/analysis.py`): `analyze(photo, adjustments=None)` →
+  Done 2026-10-15: `edits.merge_patch` + `Library.update_edit`. A `null` puts the value back to the photo's
+  values before its own tweaks (the style's value, or the default), so it drops that tweak.
+- [x] **P7.6** Image analysis (`core/analysis.py`, `models/analysis.py`): `analyze(photo, adjustments=None)` →
   measured on the rendered photo (the current edit, or the draft adjustments) at a fixed working size:
   luminance histogram (32 bins) and percentiles (1, 5, 50, 95, 99), clipped shadows/highlights (% of pixels,
   per channel too), mean and median luminance, contrast (p95 − p5), color cast (mean a/b of near-neutral
   pixels, in OKLab), saturation and share of pixels per hue band (the 8 HSL bands), plus the stored tone stats
   (black/white/middle stops, neutral white balance) and the subject analysis. Deterministic. Tests on synthetic
   images with exact expected values (a gray ramp, a clipped patch, a tinted gray, a pure-red patch).
-- [ ] **P7.7** Claude's notes: `EditFile.note` (≤ 2000 chars, outside the adjustments,
-  so the revision and previews don't change), `Library.set_note(photo, text | None)`, in `PhotoDetail` and
-  `SubjectAnalysis`. Old edit files load unchanged. Tests: round-trip, too long rejected, revision unchanged.
-- [ ] **P7.8** Change events (`core/events.py`): a thread-safe `EventBus` (subscribe → queue, publish, bounded
-  queues so a stalled listener can't block a write). Event = kind (`photos`, `photo_edit`, `subject`, `style`,
+  Done 2026-10-15: `core/analysis.py` (`measure` on the 8-bit pixels a preview shows, at 1024 px;
+  `Analyzer` as `services.analysis`), `Library.render_pixels`. Lightness is OKLab L; the cast is measured
+  on mid-tone pixels with chroma < 0.06 (a strong cast is ~0.03, so a tinted photo still has a cast) and
+  named after the nearest HSL band hue; hue bands use the pipeline's own `band_weights`. Detection is not
+  run by the analysis (it shows what is stored).
+- [x] **P7.7** Claude's notes: `EditFile.note` (≤ 2000 chars, outside the adjustments,
+  so the revision and previews don't change), `Library.set_note(photo, text | None)`, in `PhotoDetail`. Old edit files load unchanged. Tests: round-trip, too long rejected, revision unchanged.
+  Done 2026-10-15: `PhotoNote` (text + `written_at`) in the edit file and in `PhotoDetail` only (the AI
+  Analysis tab has the photo's detail); a reset of the tweaks keeps it; API types regenerated.
+- [x] **P7.8** Change events (`core/events.py`): a thread-safe `EventBus` (subscribe → queue, publish, bounded
+  queues so a stalled listener can't block a write). Event = kind (`photo_edit`, `subject`, `style`,
   `preset`, `review`, `job`, `library`), the ids involved, origin, a short summary. Core services publish after
   each successful write; job state changes publish (not every item's progress tick: at most a few per second).
   The origin comes from a context variable each front-end sets (`ui` for the HTTP routes, `ai` for MCP tools,
   `cli`). Tests: every write path publishes once with the right ids, origin propagates into job threads, a
   slow subscriber drops old events instead of blocking.
+  Done 2026-10-15: the stores publish where they write (edit files, styles, presets, reviews, detected
+  subjects, imports and the open folder), so no write path is missed; `JobManager` owns the bus
+  (`jobs.events`, `services.events`), runs each job in its starter's context and publishes queued /
+  running / progress (≤ 4 per s) / finished. A listener that falls behind (256 events) gets one `resync`.
+  Kind `photos` was dropped: thumbnails arrive with the jobs' events.
 
 ### MCP server
 - [ ] **P7.9** Skeleton (`mcp/server.py`): `build_server(services)` registers the tools; mounted in `create_app` at
