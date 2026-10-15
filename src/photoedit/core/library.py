@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -13,10 +13,10 @@ from PIL import Image
 
 from photoedit.core import color
 from photoedit.core.cache import ImageCache
-from photoedit.core.catalog import Catalog, CatalogPhoto, FolderRecord, photo_id
+from photoedit.core.catalog import Catalog, CatalogPhoto, FolderRecord, path_key, photo_id
 from photoedit.core.decode import DecodeError, embedded_jpeg, is_raw, oriented_image, read_raw_info
 from photoedit.core.edits import EditStore, EffectiveEdit
-from photoedit.core.errors import NotFoundError
+from photoedit.core.errors import InvalidRequestError, NotFoundError
 from photoedit.core.geometry import apply_change, edited_size, is_identity, sub_crop
 from photoedit.core.jobs import ItemResult, ItemSpec, JobManager
 from photoedit.core.metadata import (
@@ -52,6 +52,7 @@ CURRENT_FOLDER = "current_folder"
 IMPORT_THREADS = 4  # hashing and JPEG decoding release the GIL, so a few threads overlap disk and CPU
 RENDER_THREADS = 4  # LibRaw and the numpy stages also release the GIL for most of their work
 _HASH_CHUNK = 1 << 20
+MAX_LISTED = 10  # matches named in an ambiguous-reference error
 
 type Clock = Callable[[], datetime]
 
@@ -285,6 +286,55 @@ class Library:
         if photo is None:
             raise NotFoundError(f"photo '{photo_id}' not found")
         return photo
+
+    def resolve(self, ref: str) -> CatalogPhoto:
+        """The one photo ``ref`` names: an id, an id prefix (8+ characters), a file name with or without its
+        extension, or ``folder/name`` (any trailing part of the folder's path) when a name is in several
+        folders. Unknown and ambiguous references are errors that list what matched."""
+        ref = ref.strip()
+        if not ref:
+            raise InvalidRequestError("empty photo reference")
+        exact = self.catalog.get(ref)
+        if exact is not None and not exact.missing:
+            return exact
+        folder, sep, name = ref.replace("\\", "/").rpartition("/")
+        found = self.catalog.matches(name if sep else ref)
+        if sep:
+            found = [p for p in found if _in_folder(p.path.parent, folder)]
+        if not found:
+            raise NotFoundError(f"no imported photo called '{ref}' (import its folder first)")
+        if len(found) > 1:
+            listed = "; ".join(f"{p.path} (id {p.id})" for p in found[:MAX_LISTED])
+            more = f"; and {len(found) - MAX_LISTED} more" if len(found) > MAX_LISTED else ""
+            raise InvalidRequestError(
+                f"'{ref}' matches {len(found)} photos: {listed}{more}. Use folder/name or the id."
+            )
+        return found[0]
+
+    def resolve_many(self, refs: Sequence[str] = (), *, folder: Path | None = None) -> list[CatalogPhoto]:
+        """The photos ``refs`` name, then every photo of ``folder`` (an imported folder), each once, in
+        order."""
+        photos = [self.resolve(ref) for ref in refs]
+        if folder is not None:
+            photos += self.folder_photos(folder)
+        if not photos:
+            raise InvalidRequestError("no photos given")
+        return list({p.id: p for p in photos}.values())
+
+    def folder_photos(self, folder: Path) -> list[CatalogPhoto]:
+        """Every present photo of an imported folder (with its subfolders if it was imported with them), by
+        capture date."""
+        record = self.catalog.get_folder(folder)
+        if record is None:
+            raise NotFoundError(f"{folder} isn't imported yet; import it first")
+        items, _ = self.catalog.page(
+            record.path,
+            recursive=record.include_subfolders,
+            sort=PhotoSort.DATE,
+            order=SortOrder.ASC,
+            limit=1_000_000,
+        )
+        return items
 
     def photo_detail(self, photo_id: str) -> PhotoDetail:
         photo = self.photo(photo_id)
@@ -534,3 +584,11 @@ def _summary(outcomes: Counter[ImportOutcome], photos: int, skipped: int, missin
 
 
 __all__ = ["ImportOutcome", "Library", "SourceKind"]
+
+
+def _in_folder(parent: Path, folder: str) -> bool:
+    """Whether ``parent`` is ``folder`` or ends with it at a path boundary (``2026-08-11`` matches
+    ``C:/Pictures/2026/2026-08-11``)."""
+    have = path_key(parent).replace("\\", "/").rstrip("/")
+    want = path_key(Path(folder)).replace("\\", "/").rstrip("/")
+    return bool(want) and (have == want or have.endswith("/" + want))

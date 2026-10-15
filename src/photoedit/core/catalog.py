@@ -24,6 +24,7 @@ from photoedit.models.subject import SubjectInfo
 from photoedit.safety import PathGuard
 
 SCHEMA_VERSION = 7
+MIN_ID_PREFIX = 8  # shortest id prefix accepted as a photo reference
 ID_LENGTH = 16  # hex digits of the SHA-256 used as photo id: 64 bits, collisions are not a practical concern
 
 _SCHEMA = """
@@ -305,9 +306,24 @@ class Catalog:
         row = self._one(
             "SELECT * FROM photos WHERE missing = 0 AND (id = ? OR filename = ? COLLATE NOCASE OR "
             "filename LIKE ? ESCAPE '!' COLLATE NOCASE) ORDER BY rowid DESC LIMIT 1",
-            (name, name, name.replace("!", "!!").replace("%", "!%").replace("_", "!_") + ".%"),
+            (name, name, _escape_like(name) + ".%"),
         )
         return _photo(row) if row else None
+
+    def matches(self, ref: str) -> list[CatalogPhoto]:
+        """Every present photo ``ref`` can mean: its id, an id prefix (8+ characters), its file name or its
+        file name without extension (case-insensitive). Oldest import first."""
+        like = _escape_like(ref)
+        clauses = ["id = ?", "filename = ? COLLATE NOCASE", "filename LIKE ? ESCAPE '!' COLLATE NOCASE"]
+        params: list[Any] = [ref, ref, like + ".%"]
+        if len(ref) >= MIN_ID_PREFIX:
+            clauses.append("id LIKE ? ESCAPE '!'")
+            params.append(like.lower() + "%")
+        with self._lock:
+            rows = self._db.execute(
+                f"SELECT * FROM photos WHERE missing = 0 AND ({' OR '.join(clauses)}) ORDER BY rowid", params
+            ).fetchall()
+        return [_photo(row) for row in rows]
 
     def get_by_path(self, path: Path) -> CatalogPhoto | None:
         row = self._one("SELECT * FROM photos WHERE path_key = ?", (path_key(path),))
@@ -540,8 +556,12 @@ def _scope(folder: Path, recursive: bool) -> tuple[str, list[Any]]:
     if not recursive:
         return "parent_key = ?", [key]
     prefix = key.rstrip("\\/") + os.sep
-    escaped = prefix.replace("!", "!!").replace("%", "!%").replace("_", "!_")
-    return "(parent_key = ? OR path_key LIKE ? ESCAPE '!')", [key, escaped + "%"]
+    return "(parent_key = ? OR path_key LIKE ? ESCAPE '!')", [key, _escape_like(prefix) + "%"]
+
+
+def _escape_like(text: str) -> str:
+    """``text`` as a literal in a LIKE pattern with ``ESCAPE '!'``."""
+    return text.replace("!", "!!").replace("%", "!%").replace("_", "!_")
 
 
 def _row_values(photo: CatalogPhoto) -> dict[str, Any]:

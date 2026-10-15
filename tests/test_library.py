@@ -14,7 +14,7 @@ from PIL import Image
 from helpers import fill_folder, write_jpeg
 from photoedit.core.cache import ImageCache
 from photoedit.core.catalog import Catalog
-from photoedit.core.errors import NotFoundError
+from photoedit.core.errors import InvalidRequestError, NotFoundError
 from photoedit.core.jobs import JobManager
 from photoedit.core.library import Library
 from photoedit.core.scan import ScanError
@@ -436,3 +436,60 @@ def test_focus_point_is_imported_and_filled_in_for_older_photos(env: Env) -> Non
     assert (filled.af_point, filled.af_mode) == ((0.25, 0.75), AfMode.SINGLE)
     assert catalog.find("fuji") == filled
     assert env.library.with_af_point(filled) is filled  # already known: the file isn't read again
+
+
+# ----------------------------------------------------------------- photo references (P7.3)
+
+
+@pytest.fixture
+def two_folders(env: Env) -> Env:
+    """``rally/DSCF0001.jpg`` and ``drift/DSCF0001.jpg`` (same name, different photos), plus
+    ``drift/cat.jpg``."""
+    write_jpeg(env.photos / "rally" / "DSCF0001.jpg", (200, 10, 10))
+    write_jpeg(env.photos / "drift" / "DSCF0001.jpg", (10, 200, 10))
+    write_jpeg(env.photos / "drift" / "cat.jpg", (10, 10, 200))
+    env.run_import(include_subfolders=True)
+    return env
+
+
+def _by_folder(env: Env, folder: str, name: str) -> str:
+    (photo,) = [p for p in env.library.folder_photos(env.photos) if p.path == env.photos / folder / name]
+    return photo.id
+
+
+def test_resolve_by_id_prefix_and_name(two_folders: Env) -> None:
+    library = two_folders.library
+    cat = _by_folder(two_folders, "drift", "cat.jpg")
+    for ref in (cat, cat[:8], cat[:8].upper(), "cat", "CAT.JPG", " cat.jpg "):
+        assert library.resolve(ref).id == cat, ref
+    with pytest.raises(NotFoundError, match="no imported photo called 'ca'"):
+        library.resolve("ca")
+    with pytest.raises(NotFoundError):
+        library.resolve(cat[:7])  # too short for a prefix
+    with pytest.raises(InvalidRequestError, match="empty"):
+        library.resolve("  ")
+
+
+def test_resolve_ambiguous_name_lists_the_matches_and_folder_name_picks_one(two_folders: Env) -> None:
+    library = two_folders.library
+    with pytest.raises(InvalidRequestError, match="'DSCF0001' matches 2 photos") as raised:
+        library.resolve("DSCF0001")
+    assert "rally" in str(raised.value) and "drift" in str(raised.value)
+    rally = _by_folder(two_folders, "rally", "DSCF0001.jpg")
+    for ref in ("rally/DSCF0001", "RALLY\\dscf0001.jpg", f"{two_folders.photos / 'rally'}/DSCF0001"):
+        assert library.resolve(ref).id == rally, ref
+    with pytest.raises(NotFoundError):
+        library.resolve("ally/DSCF0001")  # folder names match whole path parts only
+
+
+def test_resolve_many_keeps_order_adds_a_folder_and_drops_repeats(two_folders: Env) -> None:
+    library = two_folders.library
+    cat = _by_folder(two_folders, "drift", "cat.jpg")
+    rally = _by_folder(two_folders, "rally", "DSCF0001.jpg")
+    photos = library.resolve_many(["cat", "rally/DSCF0001", cat], folder=two_folders.photos)
+    assert [p.id for p in photos][:2] == [cat, rally]
+    assert len(photos) == 3
+    with pytest.raises(InvalidRequestError, match="no photos given"):
+        library.resolve_many([])
+    with pytest.raises(NotFoundError, match="isn't imported yet"):
+        library.resolve_many(folder=two_folders.photos / "drift")

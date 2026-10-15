@@ -335,11 +335,7 @@ def contact_sheet(
 
     services = Services(load_settings(config))
     try:
-        found = services.catalog.find(photo)
-        if found is None:
-            raise typer.BadParameter(
-                f"no imported photo called '{photo}' (import its folder first)", param_hint="PHOTO"
-            )
+        found = _find_photos(services, [photo])[0]
         names = [group] if group else list(groups((0, 0)))
         base = decode_linear(found.path, half_size=is_raw(found.path))
         anchors = services.library.renderer.anchors(found, base)
@@ -372,18 +368,15 @@ def _open_services(config: Path | None) -> Services:
 
 def _find_photos(services: Services, names: list[str] | None) -> list[CatalogPhoto]:
     """The named photos, or every photo of the Library's current folder."""
+    from photoedit.core.errors import InvalidRequestError, NotFoundError
+
     if not names:
         page = services.library.list_photos(limit=500)
         return [services.library.photo(p.id) for p in page.items]
-    found = []
-    for name in names:
-        photo = services.catalog.find(name)
-        if photo is None:
-            raise typer.BadParameter(
-                f"no imported photo called '{name}' (import its folder first)", param_hint="PHOTO"
-            )
-        found.append(photo)
-    return found
+    try:
+        return services.library.resolve_many(names)
+    except (NotFoundError, InvalidRequestError) as exc:
+        raise typer.BadParameter(str(exc), param_hint="PHOTO") from None
 
 
 def _run_job(services: Services, job: Job) -> Job:
@@ -637,23 +630,13 @@ def _with_overrides(settings: ExportSettings, overrides: list[str]) -> ExportSet
 
 
 def _folder_photos(services: Services, folder: Path) -> list[CatalogPhoto]:
-    from photoedit.models import PhotoSort, SortOrder
+    from photoedit.core.errors import NotFoundError
 
-    record = services.catalog.get_folder(folder)
-    if record is None:
+    try:
+        return services.library.folder_photos(folder)
+    except NotFoundError:
         hint = f'{folder} isn\'t imported yet; run: photoedit import "{folder}"'
-        raise typer.BadParameter(hint, param_hint="--folder")
-    items, _ = services.catalog.page(
-        record.path,
-        recursive=record.include_subfolders,
-        style_id=None,
-        min_rating=0,
-        sort=PhotoSort.DATE,
-        order=SortOrder.ASC,
-        offset=0,
-        limit=100_000,
-    )
-    return list(items)
+        raise typer.BadParameter(hint, param_hint="--folder") from None
 
 
 @app.command("export")
