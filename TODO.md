@@ -1848,7 +1848,7 @@ after its own mutations (plus job polling).
   protected photo folder. The `/mcp` endpoint answers only on 127.0.0.1 and rejects browser cross-origin requests
   (DNS-rebinding protection).
 
-- [ ] **P7.0** Detail this phase into items. ⛔ STOP for the user to review it.
+- [x] **P7.0** Detail this phase into items. ⛔ STOP for the user to review it. Reviewed and approved 2026-10-15.
 
 ### Decisions to confirm at phase start (ask the user)
 - [x] **P7.1** Confirmed 2026-10-15 (all recommendations; recorded in PLAN.md §0): inside `photoedit ui`, any
