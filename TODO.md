@@ -1869,10 +1869,17 @@ after its own mutations (plus job polling).
     file next to the manual subject (no pixels change), shown in the **AI Analysis** tab (P6c left room for it).
 
 ### Dependencies
-- [ ] **P7.2** Add the official MCP Python SDK (`mcp`, 2.3.x, `uv add`). Spike first: a `ping` tool and an image
+- [x] **P7.2** Add the official MCP Python SDK (`mcp`, 2.3.x, `uv add`). Spike first: a `ping` tool and an image
   tool mounted into the FastAPI app at `/mcp`, called from a test through the SDK's HTTP client; confirm the
   SDK's API for structured output, image content, tool errors and transport security (Host/Origin checks) before
   writing the tools. Record what was found in `docs/mcp.md`.
+  Done 2026-10-15: `mcp` 2.3.0 (`FastMCP` is `MCPServer` in 2.x). `mcp/server.py` has `build_server`, the
+  server instructions, `_core_errors` (only a `ToolError` keeps its message; anything else reaches the model as
+  "Error executing tool"), `ping` and a first `render_preview`; the route is added to the FastAPI app before the
+  UI's catch-all, the session manager runs in the app's lifespan, OpenAPI is unchanged. The SDK's default
+  Host/Origin check for 127.0.0.1 answers a foreign origin with 403. Tests in-process and over real HTTP
+  (uvicorn on a free port). Vitest: `asyncUtilTimeout` 5 s in `src/test/setup.ts` (a preset test timed out
+  only in the full parallel run, on `main` too).
 
 ### Core
 - [ ] **P7.3** Photo references (`core/library.py`): `Library.resolve(ref)` and `resolve_many(refs, folder=None)`

@@ -15,6 +15,7 @@ from photoedit import __version__
 from photoedit.api.routes import router
 from photoedit.config import Settings, load_settings
 from photoedit.core.errors import ConflictError, InvalidRequestError, NotFoundError
+from photoedit.mcp.server import MCP_PATH, build_server
 from photoedit.safety import WriteNotAllowedError
 from photoedit.services import Services
 
@@ -37,10 +38,15 @@ class Health(BaseModel):
 def create_app(settings: Settings | None = None, services: Services | None = None) -> FastAPI:
     settings = settings if settings is not None else load_settings()
     provider = _ServicesProvider(settings, services)
+    mcp = build_server(provider)
+    # The MCP endpoint is one plain route (kept out of OpenAPI). Answering only localhost Host/Origin headers
+    # is the SDK's default for a 127.0.0.1 host: a web page can't reach it through DNS rebinding.
+    mcp_routes = mcp.streamable_http_app(streamable_http_path=MCP_PATH, host=settings.host).routes
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        yield
+        async with mcp.session_manager.run():
+            yield
         provider.close()
 
     app = FastAPI(title="PhotoEditor", version=__version__, lifespan=lifespan)
@@ -68,6 +74,8 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
         return Health(status="ok", version=__version__)
 
     app.include_router(router)
+    # Before the UI's catch-all route, which would otherwise answer the MCP stream's GET.
+    app.router.routes.extend(mcp_routes)
 
     ui_dist = settings.ui_dist_dir
 
