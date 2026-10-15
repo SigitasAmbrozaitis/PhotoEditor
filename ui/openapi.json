@@ -6229,6 +6229,17 @@
               }
             ],
             "description": "None if the camera recorded no white balance."
+          },
+          "note": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PhotoNote"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Claude's note about the photo, if it wrote one."
           }
         },
         "additionalProperties": false,
@@ -6236,7 +6247,8 @@
         "required": [
           "photo",
           "edit",
-          "as_shot"
+          "as_shot",
+          "note"
         ],
         "title": "PhotoDetail"
       },
@@ -6413,6 +6425,29 @@
         ],
         "title": "PhotoMeasurements",
         "description": "Measurements of one render: brightness in stops relative to mid gray, white balance in Kelvin/tint."
+      },
+      "PhotoNote": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Text"
+          },
+          "written_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Written At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text",
+          "written_at"
+        ],
+        "title": "PhotoNote",
+        "description": "Claude's note about a photo (what it saw or decided), shown in the AI Analysis tab. Changes no\npixels."
       },
       "PhotoSort": {
         "type": "string",

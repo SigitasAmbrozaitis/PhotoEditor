@@ -13,6 +13,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 from PIL import Image
+from pydantic import ValidationError
 
 from photoedit.core import color
 from photoedit.core.cache import ImageCache
@@ -49,7 +50,7 @@ from photoedit.models import (
     SortOrder,
 )
 from photoedit.models.adjustments import CropRect, Geometry, GeometryChange
-from photoedit.models.photo import ZoomInfo, ZoomLevel
+from photoedit.models.photo import PhotoNote, ZoomInfo, ZoomLevel
 from photoedit.safety import PathGuard
 
 CURRENT_FOLDER = "current_folder"
@@ -362,7 +363,21 @@ class Library:
                 group=edit.group,
             ),
             as_shot=AsShot(temperature=as_shot[0], tint=as_shot[1]) if as_shot else None,
+            note=self.edits.note(photo.id),
         )
+
+    def set_note(self, photo_id: str, text: str | None) -> PhotoNote | None:
+        """Write Claude's note about the photo (replacing the old one), or remove it with None. No pixels
+        change, so previews and the edit's revision stay."""
+        photo = self.photo(photo_id)
+        note = None
+        if text is not None:
+            try:
+                note = PhotoNote(text=text.strip(), written_at=self._clock())
+            except ValidationError as exc:
+                raise InvalidRequestError(f"invalid note: {exc.errors()[0]['msg']}") from exc
+        self.edits.set_note(photo, note)
+        return note
 
     def rule_inputs(self, photo: CatalogPhoto) -> RuleInputs:
         """What a style's rules know about ``photo`` (measured once and stored; may decode the photo the first

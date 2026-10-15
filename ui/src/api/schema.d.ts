@@ -2573,6 +2573,8 @@ export interface components {
             edit: components["schemas"]["PhotoEdit"];
             /** @description None if the camera recorded no white balance. */
             as_shot: components["schemas"]["AsShot"] | null;
+            /** @description Claude's note about the photo, if it wrote one. */
+            note: components["schemas"]["PhotoNote"] | null;
         };
         /**
          * PhotoEdit
@@ -2642,6 +2644,20 @@ export interface components {
             temperature: number | null;
             /** Tint */
             tint: number | null;
+        };
+        /**
+         * PhotoNote
+         * @description Claude's note about a photo (what it saw or decided), shown in the AI Analysis tab. Changes no
+         *     pixels.
+         */
+        PhotoNote: {
+            /** Text */
+            text: string;
+            /**
+             * Written At
+             * Format: date-time
+             */
+            written_at: string;
         };
         /**
          * PhotoSort

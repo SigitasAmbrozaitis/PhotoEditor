@@ -111,12 +111,28 @@ class AsShot(BaseModel):
     tint: float = Field(description="Green (-) / magenta (+), Lightroom units.")
 
 
+NOTE_MAX_LENGTH = 2000
+
+
+class PhotoNote(BaseModel):
+    """Claude's note about a photo (what it saw or decided), shown in the AI Analysis tab. Changes no
+    pixels."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    text: str = Field(min_length=1, max_length=NOTE_MAX_LENGTH)
+    written_at: datetime
+
+
 class PhotoDetail(BaseModel):
     model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
 
     photo: Photo
     edit: PhotoEdit
     as_shot: AsShot | None = Field(default=None, description="None if the camera recorded no white balance.")
+    note: PhotoNote | None = Field(
+        default=None, description="Claude's note about the photo, if it wrote one."
+    )
 
 
 class ZoomLevel(IntEnum):

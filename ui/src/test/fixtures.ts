@@ -265,6 +265,7 @@ export function photoDetail(photo: Photo): PhotoDetail {
       group: null,
     },
     as_shot: { temperature: 5200, tint: 8 },
+    note: null,
   }
 }
 

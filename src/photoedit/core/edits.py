@@ -28,6 +28,7 @@ from photoedit.core.style_rules import RuleInputs, resolve, rule_parameters
 from photoedit.core.styles import StyleLibrary
 from photoedit.models import AdjustmentParams, GroupReference, RuleResult, Style
 from photoedit.models.adjustments import Geometry
+from photoedit.models.photo import PhotoNote
 from photoedit.models.subject import SubjectBox
 from photoedit.safety import PathGuard
 
@@ -51,6 +52,8 @@ class PhotoEditFile(BaseModel):
     # The main subject set by hand (upright coordinates). It frames crops but changes no pixels, so it is kept
     # out of the overrides and the revision.
     subject: SubjectBox | None = None
+    # Claude's note (P7.7): text only, so it stays out of the overrides and the revision too.
+    note: PhotoNote | None = None
 
 
 class EffectiveEdit(BaseModel):
@@ -223,8 +226,17 @@ class EditStore:
         stored = self.load(photo.id) or PhotoEditFile(photo_id=photo.id)
         self._store(stored.model_copy(update={"subject": box}))
 
+    def note(self, photo_id: str) -> PhotoNote | None:
+        stored = self.load(photo_id)
+        return stored.note if stored is not None else None
+
+    def set_note(self, photo: CatalogPhoto, note: PhotoNote | None) -> None:
+        """Set or (None) remove Claude's note. The revision stays the same."""
+        stored = self.load(photo.id) or PhotoEditFile(photo_id=photo.id)
+        self._store(stored.model_copy(update={"note": note}))
+
     def reset(self, photo_id: str) -> None:
-        """Forget the photo's edit entirely (style, group, tweaks and subject)."""
+        """Forget the photo's edit entirely (style, group, tweaks, subject and note)."""
         path = self.path(photo_id)
         if path.exists():
             self._guard.assert_writable(path)
@@ -233,11 +245,16 @@ class EditStore:
     # ---- internals
 
     def _store(self, record: PhotoEditFile) -> None:
-        if not record.overrides and record.style_id is None and record.subject is None:
+        if (
+            not record.overrides
+            and record.style_id is None
+            and record.subject is None
+            and record.note is None
+        ):
             self.reset(record.photo_id)
         else:
-            # Leave out keys that are unset, so files look as they did before groups and subjects existed.
-            unset = {name for name in ("group", "subject") if getattr(record, name) is None}
+            # Leave out keys that are unset, so files look as they did before groups, subjects and notes.
+            unset = {name for name in ("group", "subject", "note") if getattr(record, name) is None}
             data = record.model_dump_json(indent=2, exclude=unset or None)
             self._guard.write_atomic(self.path(record.photo_id), data.encode("utf-8"))
 

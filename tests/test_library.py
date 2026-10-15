@@ -384,6 +384,29 @@ def test_update_edit_saves_only_the_patch_and_nothing_on_error(env: Env) -> None
     assert env.library.update_edit(pid, {"tone": {"exposure": None}}).overridden == ["presence.saturation"]
 
 
+def test_claude_note_is_stored_without_changing_the_edit(env: Env) -> None:
+    fill_folder(env.photos)
+    env.run_import()
+    pid = env.library.list_photos(sort=PhotoSort.NAME).items[0].id
+    edit_file = env.workspace / "edits" / f"{pid}.json"
+    revision = env.library.edit(pid).revision
+    note = env.library.set_note(pid, "  Red cast from the stage lights; kept it.  ")
+    assert note is not None and note.text == "Red cast from the stage lights; kept it."
+    assert env.library.photo_detail(pid).note == note
+    assert env.reopen().photo_detail(pid).note == note
+    assert env.library.edit(pid).revision == revision
+    env.library.update_edit(pid, {"tone": {"exposure": 0.3}})
+    assert env.library.reset_edit(pid) and env.library.photo_detail(pid).note == note  # tweaks go, note stays
+    with pytest.raises(InvalidRequestError, match="at most 2000 characters"):
+        env.library.set_note(pid, "x" * 2001)
+    with pytest.raises(InvalidRequestError, match="at least 1 character"):
+        env.library.set_note(pid, "   ")
+    assert env.library.photo_detail(pid).note == note
+    assert env.library.set_note(pid, None) is None
+    assert env.library.photo_detail(pid).note is None
+    assert not edit_file.exists()  # nothing left to keep
+
+
 # ----------------------------------------------------------------- geometry (Phase 6a)
 
 
