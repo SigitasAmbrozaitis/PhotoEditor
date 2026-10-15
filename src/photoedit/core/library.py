@@ -10,6 +10,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+import numpy.typing as npt
 from PIL import Image
 
 from photoedit.core import color
@@ -469,14 +471,31 @@ class Library:
     ) -> bytes:
         """The photo with ``adjustments`` that aren't saved (a look at a change before making it). Validated
         like a save; nothing is written. ``before`` = the photo's defaults with the draft's geometry."""
-        photo = self.photo(photo_id)
-        check_supported(adjustments)
-        check_geometry(adjustments.geometry, photo.width, photo.height)
+        photo = self._draft_photo(photo_id, adjustments)
         if before:
             adjustments = self.edits.before(photo, adjustments.geometry).adjustments
+        return self.renderer.draft(photo, adjustments, long_edge)
+
+    def render_pixels(
+        self, photo_id: str, adjustments: AdjustmentParams | None, long_edge: int
+    ) -> npt.NDArray[np.uint8]:
+        """The 8-bit sRGB pixels of the photo with its saved edit, or with unsaved ``adjustments`` (validated
+        like a save), as a preview shows them. Nothing is written."""
+        if adjustments is None:
+            photo = self._draft_photo(photo_id, None)
+            adjustments = self.edits.effective(photo).adjustments
+        else:
+            photo = self._draft_photo(photo_id, adjustments)
+        return self.renderer.pixels(photo, adjustments, long_edge)
+
+    def _draft_photo(self, photo_id: str, adjustments: AdjustmentParams | None) -> CatalogPhoto:
+        photo = self.photo(photo_id)
+        if adjustments is not None:
+            check_supported(adjustments)
+            check_geometry(adjustments.geometry, photo.width, photo.height)
         if self.renderer.linear.peek(photo.id) is None:
             self._require_original(photo)
-        return self.renderer.draft(photo, adjustments, long_edge)
+        return photo
 
     def framing_preview(self, photo_id: str, crop: CropRect, long_edge: int) -> bytes:
         """The photo with its edit, cut to ``crop`` (normalized to the edited photo) on top of its own crop:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from photoedit.config import Settings
+from photoedit.core.analysis import Analyzer
 from photoedit.core.cache import ImageCache
 from photoedit.core.catalog import Catalog
 from photoedit.core.export.presets import PresetLibrary
@@ -36,6 +37,7 @@ class Services:
         )
         self.styling = Styling(self.library, self.styles, self.jobs, self.guard)
         self.subjects = Subjects(self.library, settings.cache_dir)
+        self.analysis = Analyzer(self.library, lambda: self.subjects)
         self.presets = PresetLibrary(settings.presets_dir, self.guard)
         self.exporter = Exporter(
             self.library,

@@ -14,6 +14,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
+import numpy.typing as npt
 from PIL import Image
 
 from photoedit.core.cache import THUMBNAIL_LONG_EDGE, LinearCache, resize_linear
@@ -143,6 +144,14 @@ class Renderer:
         base = self.linear.get(photo)
         return self._encode(photo, adjustments, base, long_edge, PREVIEW_QUALITY, self.anchors(photo, base))
 
+    def pixels(
+        self, photo: CatalogPhoto, adjustments: AdjustmentParams, long_edge: int
+    ) -> npt.NDArray[np.uint8]:
+        """The 8-bit sRGB pixels a preview of ``adjustments`` shows (before JPEG compression); written
+        nowhere."""
+        base = self.linear.get(photo)
+        return self._rgb8(photo, adjustments, base, long_edge, self.anchors(photo, base))
+
     def zoom_info(self, photo: CatalogPhoto, edit: EffectiveEdit, level: ZoomLevel) -> ZoomInfo:
         """Start the decode for ``level`` if needed; once ready, the edited image's size at that level."""
         if self.zoom.request(photo, level) != "ready":
@@ -270,6 +279,19 @@ class Renderer:
     ) -> bytes:
         if upright:
             adjustments = adjustments.model_copy(update={"geometry": Geometry()})
+        rgb = self._rgb8(photo, adjustments, base, long_edge, anchors)
+        buf = io.BytesIO()
+        Image.fromarray(rgb).save(buf, "JPEG", quality=quality, optimize=True)
+        return buf.getvalue()
+
+    def _rgb8(
+        self,
+        photo: CatalogPhoto,
+        adjustments: AdjustmentParams,
+        base: LinearImage,
+        long_edge: int,
+        anchors: ToneAnchors,
+    ) -> npt.NDArray[np.uint8]:
         pixels = render(
             base,
             adjustments,
@@ -278,9 +300,7 @@ class Renderer:
             long_edge=long_edge,
             anchors=anchors,
         )
-        buf = io.BytesIO()
-        Image.fromarray(np.asarray(quantize(pixels, 8))).save(buf, "JPEG", quality=quality, optimize=True)
-        return buf.getvalue()
+        return np.asarray(quantize(pixels, 8), dtype=np.uint8)
 
     def _lock(self, path: Path) -> threading.Lock:
         with self._locks_lock:
