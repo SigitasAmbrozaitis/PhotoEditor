@@ -17,7 +17,7 @@ from photoedit.core.catalog import Catalog, CatalogPhoto, FolderRecord, path_key
 from photoedit.core.decode import DecodeError, embedded_jpeg, is_raw, oriented_image, read_raw_info
 from photoedit.core.edits import EditStore, EffectiveEdit
 from photoedit.core.errors import InvalidRequestError, NotFoundError
-from photoedit.core.geometry import apply_change, edited_size, is_identity, sub_crop
+from photoedit.core.geometry import apply_change, check_geometry, edited_size, is_identity, sub_crop
 from photoedit.core.jobs import ItemResult, ItemSpec, JobManager
 from photoedit.core.metadata import (
     AfMode,
@@ -26,6 +26,7 @@ from photoedit.core.metadata import (
     read_metadata,
     read_metadata_from_bytes,
 )
+from photoedit.core.render.pipeline import check_supported
 from photoedit.core.renderer import Renderer, stored_stats
 from photoedit.core.scan import ScannedPhoto, SourceKind, scan_folder
 from photoedit.core.style_rules import RuleInputs
@@ -454,6 +455,20 @@ class Library:
         if not self.renderer.preview_path(photo, edit, long_edge, upright=upright).is_file():
             self._require_original(photo)
         return self.renderer.preview(photo, edit, long_edge, upright=upright)
+
+    def render_draft(
+        self, photo_id: str, adjustments: AdjustmentParams, long_edge: int, *, before: bool = False
+    ) -> bytes:
+        """The photo with ``adjustments`` that aren't saved (a look at a change before making it). Validated
+        like a save; nothing is written. ``before`` = the photo's defaults with the draft's geometry."""
+        photo = self.photo(photo_id)
+        check_supported(adjustments)
+        check_geometry(adjustments.geometry, photo.width, photo.height)
+        if before:
+            adjustments = self.edits.before(photo, adjustments.geometry).adjustments
+        if self.renderer.linear.peek(photo.id) is None:
+            self._require_original(photo)
+        return self.renderer.draft(photo, adjustments, long_edge)
 
     def framing_preview(self, photo_id: str, crop: CropRect, long_edge: int) -> bytes:
         """The photo with its edit, cut to ``crop`` (normalized to the edited photo) on top of its own crop:

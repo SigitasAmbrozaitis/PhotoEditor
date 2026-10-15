@@ -26,7 +26,7 @@ from photoedit.core.render.pipeline import geometry_stage, render, render_identi
 from photoedit.core.render.profile import CameraProfile, profile_for
 from photoedit.core.render.stages import quantize
 from photoedit.core.zoom import ZoomBases
-from photoedit.models.adjustments import Geometry
+from photoedit.models.adjustments import AdjustmentParams, Geometry
 from photoedit.models.photo import TILE_SIZE, ZoomInfo, ZoomLevel
 from photoedit.safety import PathGuard
 
@@ -131,9 +131,17 @@ class Renderer:
                 return path.read_bytes()
             base = self.linear.get(photo)
             anchors = self.anchors(photo, base)
-            data = self._encode(photo, edit, base, long_edge, PREVIEW_QUALITY, anchors, upright=upright)
+            data = self._encode(
+                photo, edit.adjustments, base, long_edge, PREVIEW_QUALITY, anchors, upright=upright
+            )
             self._guard.write_atomic(path, data)
             return data
+
+    def draft(self, photo: CatalogPhoto, adjustments: AdjustmentParams, long_edge: int) -> bytes:
+        """JPEG of ``photo`` with ``adjustments`` that may never be saved: rendered like a preview, written
+        nowhere (the in-memory base is shared with previews)."""
+        base = self.linear.get(photo)
+        return self._encode(photo, adjustments, base, long_edge, PREVIEW_QUALITY, self.anchors(photo, base))
 
     def zoom_info(self, photo: CatalogPhoto, edit: EffectiveEdit, level: ZoomLevel) -> ZoomInfo:
         """Start the decode for ``level`` if needed; once ready, the edited image's size at that level."""
@@ -210,7 +218,9 @@ class Renderer:
                 base = resize_linear(decoded, 2 * THUMBNAIL_LONG_EDGE)
             else:
                 anchors = self.anchors(photo, base)
-            data = self._encode(photo, edit, base, THUMBNAIL_LONG_EDGE, THUMBNAIL_QUALITY, anchors)
+            data = self._encode(
+                photo, edit.adjustments, base, THUMBNAIL_LONG_EDGE, THUMBNAIL_QUALITY, anchors
+            )
             self._guard.write_atomic(path, data)
             return data
 
@@ -250,7 +260,7 @@ class Renderer:
     def _encode(
         self,
         photo: CatalogPhoto,
-        edit: EffectiveEdit,
+        adjustments: AdjustmentParams,
         base: LinearImage,
         long_edge: int,
         quality: int,
@@ -258,7 +268,6 @@ class Renderer:
         *,
         upright: bool = False,
     ) -> bytes:
-        adjustments = edit.adjustments
         if upright:
             adjustments = adjustments.model_copy(update={"geometry": Geometry()})
         pixels = render(

@@ -347,6 +347,29 @@ def test_before_and_after_previews(env: Env) -> None:
     assert env.library.preview(pid, 256) != env.library.preview(pid, 256, before=True)
 
 
+def test_draft_render_shows_unsaved_adjustments_and_writes_nothing(env: Env) -> None:
+    from photoedit.core.render.pipeline import UnsupportedParameterError
+
+    fill_folder(env.photos)
+    env.run_import()
+    pid = env.library.list_photos(sort=PhotoSort.NAME).items[0].id
+    current = env.library.edit(pid)
+    assert env.library.render_draft(pid, current.adjustments, 256) == env.library.preview(pid, 256)
+    files = sorted(env.workspace.rglob("*"))
+    draft = current.adjustments.model_copy(deep=True)
+    draft.presence.saturation = -100
+    gray = env.library.render_draft(pid, draft, 256)
+    assert gray != env.library.preview(pid, 256)
+    before = env.library.preview(pid, 256, before=True)
+    assert env.library.render_draft(pid, draft, 256, before=True) == before
+    assert sorted(env.workspace.rglob("*")) == files
+    assert env.library.edit(pid).revision == current.revision
+    later = current.adjustments.model_copy(deep=True)
+    later.presence.clarity = 30
+    with pytest.raises(UnsupportedParameterError, match="clarity"):
+        env.library.render_draft(pid, later, 256)
+
+
 # ----------------------------------------------------------------- geometry (Phase 6a)
 
 
