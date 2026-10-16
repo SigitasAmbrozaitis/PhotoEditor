@@ -51,6 +51,8 @@ review_app = typer.Typer(
     help="Pre-export reviews: prepare, look at the doubtful photos, approve, export.", no_args_is_help=True
 )
 app.add_typer(review_app, name="review")
+mcp_app = typer.Typer(help="The MCP server Claude uses (part of `photoedit ui`).", no_args_is_help=True)
+app.add_typer(mcp_app, name="mcp")
 
 ConfigOption = Annotated[
     Path | None,
@@ -1302,6 +1304,41 @@ def review_settings(
         typer.echo(current.model_dump_json(indent=2))
     finally:
         services.close()
+
+
+@mcp_app.command("check")
+def mcp_check(
+    config: ConfigOption = None,
+    port: Annotated[int | None, typer.Option(help="Override the configured port.")] = None,
+) -> None:
+    """Check that the MCP server answers (it runs inside `photoedit ui`) and list its tools; prints the
+    .mcp.json entry for Claude Code."""
+    import json
+
+    import anyio
+    from mcp import Client
+
+    from photoedit.mcp.server import MCP_PATH
+
+    settings = load_settings(config, **({"port": port} if port is not None else {}))
+    url = f"http://{settings.host}:{settings.port}{MCP_PATH}"
+
+    async def tool_names() -> list[str]:
+        async with Client(url) as client:
+            return sorted(tool.name for tool in (await client.list_tools()).tools)
+
+    entry = {"mcpServers": {"photoedit": {"type": "http", "url": url}}}
+    try:
+        names = anyio.run(tool_names)
+    except Exception:  # any connection failure: say how to start it, not a traceback
+        typer.echo(f"No MCP server answers at {url}. Start it with: photoedit ui", err=True)
+        typer.echo(".mcp.json entry for this address:", err=True)
+        typer.echo(json.dumps(entry, indent=2), err=True)
+        raise typer.Exit(1) from None
+    typer.echo(f"MCP server at {url}: {len(names)} tools")
+    typer.echo("  " + ", ".join(names))
+    typer.echo(".mcp.json entry:")
+    typer.echo(json.dumps(entry, indent=2))
 
 
 @app.command()

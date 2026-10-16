@@ -156,3 +156,18 @@ def test_mcp_refuses_cross_origin_requests(server_url: str) -> None:
         headers={"Origin": "http://evil.example", "Accept": "application/json, text/event-stream"},
     )
     assert response.status_code == 403
+
+
+def test_cli_mcp_check(server_url: str, tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from photoedit.cli import app
+
+    port = server_url.rsplit(":", 1)[1]
+    config = ["--config", str(tmp_path / "missing.toml")]
+    up = CliRunner().invoke(app, ["mcp", "check", *config, "--port", port])
+    assert up.exit_code == 0, up.output
+    assert f"MCP server at {server_url}/mcp: 49 tools" in up.output
+    assert "render_preview" in up.output and f'"url": "{server_url}/mcp"' in up.output
+    down = CliRunner().invoke(app, ["mcp", "check", *config, "--port", str(_free_port())])
+    assert down.exit_code == 1 and "Start it with: photoedit ui" in down.output
