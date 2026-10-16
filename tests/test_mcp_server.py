@@ -73,7 +73,7 @@ def test_tools_have_descriptions_and_schemas(services: Services) -> None:
             return (await client.list_tools()).tools
 
     tools = {tool.name: tool for tool in _run(go)}
-    assert {"ping", "render_preview"} <= tools.keys()
+    assert {"ping", "render_preview", "library_status", "export_photos"} <= tools.keys()
     for tool in tools.values():
         assert tool.description, tool.name
         assert tool.input_schema["type"] == "object"
@@ -89,10 +89,10 @@ def test_ping_returns_structured_output(services: Services) -> None:
 
 def test_render_preview_returns_a_jpeg_of_the_asked_size(services: Services) -> None:
     result = _call(
-        build_server(lambda: services), "render_preview", {"photo_id": _first_photo(services), "size": 256}
+        build_server(lambda: services), "render_preview", {"photo": _first_photo(services), "size": 256}
     )
     assert not result.is_error
-    (block,) = result.content
+    block = result.content[0]
     assert isinstance(block, ImageContent)
     assert block.mime_type == "image/jpeg"
     with Image.open(io.BytesIO(base64.b64decode(block.data))) as image:
@@ -101,13 +101,13 @@ def test_render_preview_returns_a_jpeg_of_the_asked_size(services: Services) -> 
 
 
 def test_core_errors_reach_the_model_with_their_message(services: Services) -> None:
-    result = _call(build_server(lambda: services), "render_preview", {"photo_id": "nope"})
+    result = _call(build_server(lambda: services), "render_preview", {"photo": "nope"})
     assert result.is_error
-    assert "photo 'nope' not found" in _text(result)
+    assert "no imported photo called 'nope'" in _text(result)
 
 
 def test_invalid_arguments_are_rejected_with_the_reason(services: Services) -> None:
-    result = _call(build_server(lambda: services), "render_preview", {"photo_id": "x", "size": 5000})
+    result = _call(build_server(lambda: services), "render_preview", {"photo": "x", "size": 5000})
     assert result.is_error
     assert "less than or equal to 1600" in _text(result)
 
@@ -143,7 +143,7 @@ def server_url(photo_settings: Settings, services: Services) -> Iterator[str]:
 def test_mcp_over_http_in_the_ui_server(server_url: str, services: Services) -> None:
     ping = _call(f"{server_url}/mcp", "ping")
     assert ping.structured_content is not None and ping.structured_content["status"] == "ok"
-    preview = _call(f"{server_url}/mcp", "render_preview", {"photo_id": _first_photo(services), "size": 300})
+    preview = _call(f"{server_url}/mcp", "render_preview", {"photo": _first_photo(services), "size": 300})
     assert isinstance(preview.content[0], ImageContent)
     # The UI and the API are still served next to it.
     assert httpx2.get(f"{server_url}/api/health").json()["status"] == "ok"

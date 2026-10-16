@@ -145,6 +145,10 @@ def count(items: list[ReviewItem]) -> ReviewCounts:
 class ExportReview(_Model):
     """A prepared export: what it will write, photo by photo, and the user's decisions so far."""
 
+    # Described as it is sent (with the computed counts): the MCP tools publish this as their output schema,
+    # and clients check the result against it.
+    model_config = ConfigDict(json_schema_mode_override="serialization")
+
     id: str = Field(pattern=r"^[a-z0-9]{12}$")
     created_at: datetime
     updated_at: datetime

@@ -202,6 +202,36 @@ def _compose(name: str, group: str, rows: Sequence[Row], tiles: list[list[Image.
     return buf.getvalue()
 
 
+SERIES_COLUMNS = 6
+
+
+def series_sheet(tiles: Sequence[tuple[str, bytes]]) -> bytes:
+    """Previews (name, JPEG) in a grid of up to ``SERIES_COLUMNS`` columns, each captioned with its name."""
+    if not tiles:
+        raise InvalidRequestError("no photos for the sheet")
+    images = [(name, Image.open(io.BytesIO(data)).convert("RGB")) for name, data in tiles]
+    columns = min(SERIES_COLUMNS, len(images))
+    rows = -(-len(images) // columns)
+    cell_w = max(image.width for _, image in images)
+    cell_h = max(image.height for _, image in images)
+    gap = 6
+    sheet = Image.new(
+        "RGB",
+        (columns * (cell_w + gap) + gap, rows * (cell_h + LABEL_HEIGHT + gap) + gap),
+        (32, 32, 32),
+    )
+    draw = ImageDraw.Draw(sheet)
+    for index, (name, image) in enumerate(images):
+        x = gap + (index % columns) * (cell_w + gap)
+        y = gap + (index // columns) * (cell_h + LABEL_HEIGHT + gap)
+        draw.text((x, y + 2), name, fill=(220, 220, 220))
+        # Centered in its cell, so portrait and landscape photos line up.
+        sheet.paste(image, (x + (cell_w - image.width) // 2, y + LABEL_HEIGHT + (cell_h - image.height) // 2))
+    buf = io.BytesIO()
+    sheet.save(buf, "JPEG", quality=85)
+    return buf.getvalue()
+
+
 def _as_shot(photo: CatalogPhoto, image: LinearImage) -> tuple[float, float]:
     if photo.as_shot_temperature is not None and photo.as_shot_tint is not None:
         return photo.as_shot_temperature, photo.as_shot_tint

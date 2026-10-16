@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from photoedit.core import color
 from photoedit.core.cache import ImageCache
 from photoedit.core.catalog import Catalog, CatalogPhoto, FolderRecord, path_key, photo_id
+from photoedit.core.contact_sheet import series_sheet
 from photoedit.core.decode import DecodeError, embedded_jpeg, is_raw, oriented_image, read_raw_info
 from photoedit.core.edits import EditStore, EffectiveEdit, merge_patch
 from photoedit.core.errors import InvalidRequestError, NotFoundError
@@ -266,6 +267,7 @@ class Library:
     def list_photos(
         self,
         *,
+        folder: Path | None = None,
         style_id: str | None = None,
         min_rating: int = 0,
         sort: PhotoSort = PhotoSort.DATE,
@@ -273,7 +275,14 @@ class Library:
         offset: int = 0,
         limit: int = 100,
     ) -> Page[Photo]:
-        current = self._current()
+        """A page of the photos of ``folder`` (an imported folder) or, by default, the folder open in the
+        Library."""
+        if folder is not None:
+            current = self.catalog.get_folder(folder)
+            if current is None:
+                raise NotFoundError(f"{folder} isn't imported yet; import it first")
+        else:
+            current = self._current()
         if current is None:
             return Page[Photo](items=[], total=0, offset=offset, limit=limit)
         items, total = self.catalog.page(
@@ -418,9 +427,20 @@ class Library:
     def update_edit(self, photo_id: str, patch: Mapping[str, Any]) -> EffectiveEdit:
         """Change only the values in ``patch`` (nested, e.g. ``{"tone": {"exposure": 0.3}}``; ``None`` = back
         to the style's or default value) and save. Nothing is written when any value is rejected."""
+        return self.save_edit(photo_id, self.patched(photo_id, patch))
+
+    def patched(self, photo_id: str, patch: Mapping[str, Any]) -> AdjustmentParams:
+        """The photo's current adjustments with ``patch`` merged in (as ``update_edit`` would save them),
+        without saving: for a draft render or analysis of a change."""
         current = self.edit(photo_id)
         base = current.base or self.edits.default(self.photo(photo_id)).adjustments
-        return self.save_edit(photo_id, merge_patch(current.adjustments, base, patch))
+        return merge_patch(current.adjustments, base, patch)
+
+    def series_sheet(self, photo_ids: Sequence[str], tile: int) -> bytes:
+        """One JPEG with the photos side by side (their edits, previews cached as usual), each with its file
+        name: for judging a series at a glance."""
+        tiles = [(self.photo(pid).path.name, self.preview(pid, tile)) for pid in photo_ids]
+        return series_sheet(tiles)
 
     def set_geometry(self, photo_id: str, change: GeometryChange) -> EffectiveEdit:
         """Apply a geometry change (flips and turns carry the crop along; angle and aspect changes shrink the

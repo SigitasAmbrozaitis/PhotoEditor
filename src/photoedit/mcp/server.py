@@ -4,33 +4,38 @@ server at ``/mcp`` (decided 2026-10-15), so the AI and the UI share one set of s
 
 from __future__ import annotations
 
-import functools
-from collections.abc import Callable
-from typing import Annotated, Any
+from typing import Any
 
-from mcp.server.mcpserver import Image, MCPServer
-from mcp.server.mcpserver.exceptions import ToolError
-from pydantic import BaseModel, Field, ValidationError
+from mcp.server.mcpserver import MCPServer
+from pydantic import BaseModel, Field
 
 from photoedit import __version__
-from photoedit.core.errors import InvalidRequestError, NotFoundError
-from photoedit.core.events import origin
-from photoedit.models.events import Origin
-from photoedit.safety import WriteNotAllowedError
-from photoedit.services import Services
+from photoedit.mcp import tools_edit, tools_export, tools_library, tools_styles
+from photoedit.mcp.common import READ_ONLY, Svc, tool
 
 MCP_PATH = "/mcp"
 
 INSTRUCTIONS = """\
-PhotoEditor: a non-destructive RAW photo editor driven by you. The user browses, compares and approves in its
-web UI, which follows your changes live.
+PhotoEditor: a non-destructive RAW photo editor that you drive for the user. They browse, compare and approve
+in its web UI, which follows your changes live (and tells them "Claude changed…").
 
-Rules the tool enforces (you can't break them, so don't work around an error; report it):
-- Originals are read-only. Edits are small JSON files; pixels are only made for previews and exports.
-- Every value has a range; out-of-range or unknown values are rejected with the reason.
-- Rendering is deterministic: the same photo, edit and engine give the same image.
+Rules the tool enforces (you can't break them, so don't work around an error: report it):
+- Originals are read-only. Edits, styles and presets are small JSON files; pixels are only made for previews
+  and exports.
+- Every value has a range; out-of-range or unknown values are rejected with the reason, and nothing changes.
+- Rendering is deterministic: the same photo, edit and engine always give the same image.
+- Exports go only to the folder you name, never into a photo folder. Deleting styles or presets and
+  discarding reviews is left to the user.
 
-Look before and after you change something: render_preview shows you the photo."""
+How to work:
+- Start with library_status. Photos can be named by file name (DSCF5437), folder/name, or id.
+- Look before and after changing something: render_preview (an image) and analyze_photo (numbers). Both can
+  show unsaved `changes` first; update_adjustments saves only the values you give.
+- A series: apply_style (or update_adjustments on a folder), wait with get_job, then contact_sheet.
+- Export: plan_export first, then export_photos. When subjects decide the framing (Instagram crops), use
+  prepare_export so doubtful photos go to the user's review (Check) instead of guessing.
+- Long work returns a job: get_job with wait_seconds until it ends.
+- Leave a note with set_note when you change or judge a photo, so the user sees why in its AI Analysis tab."""
 
 
 class Pong(BaseModel):
@@ -39,41 +44,17 @@ class Pong(BaseModel):
     photos: int = Field(description="Photos in the folder open in the Library.")
 
 
-def _core_errors[**P, R](fn: Callable[P, R]) -> Callable[P, R]:
-    """Runs a tool as the AI (so the UI can say "Claude changed…"), with core errors as tool errors carrying
-    their message. Anything else is a crash, which the SDK reports to the model only as "Error executing
-    tool" (its text stays in the server log)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-        try:
-            with origin(Origin.AI):
-                return fn(*args, **kwargs)
-        except (NotFoundError, InvalidRequestError, WriteNotAllowedError, ValidationError) as exc:
-            raise ToolError(str(exc)) from exc
-
-    return wrapper
-
-
-def build_server(services: Callable[[], Services]) -> MCPServer[Any]:
+def build_server(services: Svc) -> MCPServer[Any]:
     """The MCP server over ``services``, called per tool call (the app builds the services on first use)."""
     server: MCPServer[Any] = MCPServer(
         "photoedit", title="PhotoEditor", version=__version__, instructions=INSTRUCTIONS
     )
 
-    @server.tool()
-    @_core_errors
+    @tool(server, READ_ONLY)
     def ping() -> Pong:
         """Check that PhotoEditor is running; returns its version and the open folder's photo count."""
         return Pong(status="ok", version=__version__, photos=services().library.info().photo_count)
 
-    @server.tool()
-    @_core_errors
-    def render_preview(
-        photo_id: Annotated[str, Field(description="The photo's id.")],
-        size: Annotated[int, Field(ge=256, le=1600, description="Long edge in pixels.")] = 1024,
-    ) -> Image:
-        """The photo with its current edit, as a JPEG for you to look at."""
-        return Image(data=services().library.preview(photo_id, size), format="jpeg")
-
+    for module in (tools_library, tools_edit, tools_styles, tools_export):
+        module.register(server, services)
     return server
