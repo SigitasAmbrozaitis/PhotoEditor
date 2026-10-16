@@ -1932,39 +1932,56 @@ after its own mutations (plus job polling).
   Kind `photos` was dropped: thumbnails arrive with the jobs' events.
 
 ### MCP server
-- [ ] **P7.9** Skeleton (`mcp/server.py`): `build_server(services)` registers the tools; mounted in `create_app` at
+- [x] **P7.9** Skeleton (`mcp/server.py`): `build_server(services)` registers the tools; mounted in `create_app` at
   `/mcp` (only when the services are built, so `photoedit openapi` stays side-effect free); Host/Origin checks
   allow only localhost. Server **instructions** (sent to Claude on connect): what the tool is, the golden rules
   that bind the AI (originals read-only, ranges are enforced, deterministic), the usual workflow (look → change
   → look again; apply a style → contact sheet → export plan → export; Check photos go to a review), and that
   long work returns a job to wait on with `get_job`. One error mapping for every tool. Tests: tools listed,
   every tool has a description and an input schema, errors become tool errors.
-- [ ] **P7.10** Library + seeing tools: `library_status` (folders, current folder, counts, engine identity,
+  Done 2026-10-16: `mcp/server.py` (instructions, `ping`) + `mcp/common.py`: one `tool()` registration
+  for every tool (runs as the AI, core errors incl. decode and model-file errors become tool errors,
+  read-only / changes hints). The route is always mounted; tools build the services lazily, so
+  `photoedit openapi` stays side-effect free.
+- [x] **P7.10** Library + seeing tools: `library_status` (folders, current folder, counts, engine identity,
   running jobs), `import_folder` (job), `list_photos` (folder, style, rating, paging; compact rows: id, name,
   folder, capture time, camera/lens/exposure, style, edited, subject kind), `get_photo` (EXIF, style, own
   adjustments, geometry, subject, stats, note), `render_preview` (photo, optional draft adjustments, size,
   `before`) → image, `contact_sheet` (≤ 24 photos, size) → image with file names, `analyze_photo` (photo,
   optional draft adjustments). Tests: valid and invalid input for each, images decode as JPEG at the asked size.
-- [ ] **P7.11** Edit tools: `update_adjustments` (photo(s), patch; same patch for several photos),
+  Done 2026-10-16 (`mcp/tools_library.py`), plus `open_folder` (shows a folder in the user's Library).
+  `list_photos` returns the API's `Photo` rows (no subject kind: `get_subject` / `analyze_photo` have
+  it). Drafts are a partial `changes` patch over the current edit (`Library.patched`), not a full set.
+  `contact_sheet` takes photos or a folder with offset/limit (`Library.series_sheet`).
+- [x] **P7.11** Edit tools: `update_adjustments` (photo(s), patch; same patch for several photos),
   `set_adjustments` (full set), `reset_adjustments`, `set_geometry` (`GeometryChange`), `suggest_crop` (ratio,
   placement, zoom; nothing saved), `get_subject` / `set_subject` (box or null), `detect_subjects` (job),
   `set_note` (P7.7). Tests: valid and invalid for each (out of range, later-phase parameter, crop outside the
   photo, unknown photo).
-- [ ] **P7.12** Style tools: `list_styles`, `get_style` (optionally a version), `create_style`,
+  Done 2026-10-16 (`mcp/tools_edit.py`): a change for several photos is validated for all before any is
+  saved; `suggest_crop` works in the photo's current framing.
+- [x] **P7.12** Style tools: `list_styles`, `get_style` (optionally a version), `create_style`,
   `create_style_from_photo`, `update_style` (with `expected_version`), `update_style_from_photo`,
   `duplicate_style`, `apply_style` (photos or folder, style or null, even out; job), `style_report`,
   `style_history`, `style_diff`, `revert_style`, `render_style_samples` (job). Tests: valid and invalid for
   each, a version conflict, the style's photos follow an update.
-- [ ] **P7.13** Export, review and job tools: `list_export_presets`, `get_export_preset`,
+  Done 2026-10-16 (`mcp/tools_styles.py`); photo names are resolved wherever a request carries photo ids.
+  Photos following a style update is core behavior, tested in `test_styling.py`.
+- [x] **P7.13** Export, review and job tools: `list_export_presets`, `get_export_preset`,
   `create_export_preset` / `update_export_preset` (custom presets only), `plan_export` (dry run),
   `export_photos` (job), `prepare_export` (job → review id), `list_reviews`, `get_review`, `update_review_item`
   (zoom, position, approve), `set_review_subject`, `review_preview` → image, `export_review` (scope),
   `get_review_settings` / `set_review_settings`, `list_jobs`, `get_job` (optional `wait_seconds` ≤ 120: returns
   when the job ends or the time is up, with its progress), `cancel_job`. Tests: valid and invalid for each, an
   export into a protected photo folder refused, `get_job` waiting and timing out.
-- [ ] **P7.14** Registration: `.mcp.json` at the repo root (`photoedit`, type `http`, `http://127.0.0.1:8765/mcp`);
+  Done 2026-10-16 (`mcp/tools_export.py`): a preset or full settings (the settings win). `ExportReview`'s
+  JSON schema is in serialization mode, so the computed `counts` are in the tool's output schema
+  (clients validate results against it; the UI's API types didn't change).
+- [x] **P7.14** Registration: `.mcp.json` at the repo root (`photoedit`, type `http`, `http://127.0.0.1:8765/mcp`);
   `photoedit mcp check` (CLI) says whether the server is up at the configured host/port and lists the tools, and
   prints the `.mcp.json` entry for another port. Test with `CliRunner` against a test server.
+  Done 2026-10-16: 49 tools; `photoedit mcp check [--port]` exits 1 with "Start it with: photoedit ui"
+  when nothing answers.
 
 ### API + UI
 - [ ] **P7.15** `GET /api/events`: server-sent events from the bus (JSON per event, a heartbeat every 15 s,

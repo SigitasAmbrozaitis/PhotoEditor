@@ -223,6 +223,9 @@ def test_set_geometry_and_suggest_crop(env: Env) -> None:
     result = env.ok("set_geometry", {"photo": "a", "change": {"aspect": "1:1"}})
     assert result["geometry"]["aspect"] == "1:1"
     assert "less than or equal to 45" in env.error("set_geometry", {"photo": "a", "change": {"angle": 60}})
+    full_frame = {"left": 0, "top": 0, "right": 1, "bottom": 1}
+    outside = env.error("set_geometry", {"photo": "b", "change": {"angle": 10, "crop": full_frame}})
+    assert "outside" in outside.lower() or "corner" in outside.lower(), outside
     crop = env.ok("suggest_crop", {"photo": "b", "aspect": "4:5"})
     assert crop["aspect"] in ("4:5", "5:4") and crop["crop"]["right"] > crop["crop"]["left"]
     assert "pattern" in env.error("suggest_crop", {"photo": "b", "aspect": "square"})
