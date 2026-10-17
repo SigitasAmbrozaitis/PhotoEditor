@@ -24,5 +24,8 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     css: false,
     include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts'],
+    // The longest tests walk a whole flow (~2 s alone); with every file running in parallel on a busy machine
+    // (e.g. next to the Python suite) they went past the default 5 s.
+    testTimeout: 15_000,
   },
 })
