@@ -2009,41 +2009,58 @@ after its own mutations (plus job polling).
   `AnalysisPanel`. Checked in the browser with a note written over MCP.
 
 ### Tests + docs
-- [ ] **P7.18** Cross-cutting MCP tests: every tool's structured output validates against its declared schema;
+- [x] **P7.18** Cross-cutting MCP tests: every tool's structured output validates against its declared schema;
   a whole session through the SDK client (import a folder of synthetic photos → preview → update → apply style
   → plan → export → files written only in the chosen `tmp_path` destination) with the originals' hashes
   unchanged; `render_preview` is deterministic (same bytes twice); AI writes publish events with origin `ai`.
-- [ ] **P7.19** UI tests: Vitest for `useLiveUpdates` (fake `EventSource`: invalidations per kind, the toast only
+  Done 2026-10-17: `tests/test_mcp_session.py` (also: every declared output schema is a valid JSON schema,
+  only the workspace, cache and styles are written in the project, jobs' events carry `ai` too).
+- [x] **P7.19** UI tests: Vitest for `useLiveUpdates` (fake `EventSource`: invalidations per kind, the toast only
   for `ai`, reconnect) and the note in the AI Analysis tab. Playwright: with the UI open on a photo, a change made
   through the API by another client (origin `ai`) updates the preview and the Library without a reload, and the
   toast appears (screenshot).
-- [ ] **P7.20** Docs: `docs/mcp.md` (setup, `.mcp.json`, starting the server, every tool with an example, the
+  Done 2026-10-17: Vitest `liveUpdates.test.ts`, `useLiveUpdates.test.tsx` (incl. the toast in the app),
+  the note in `Analysis.test.tsx`, outside edits in `PhotoPage.test.tsx`. Playwright (test 11): the change
+  goes through MCP (`scripts/mcp_call.py`, the SDK client), so it is the AI's; the sliders, the preview
+  and the toast follow, Undo takes it back, the note shows (screenshots 26, 27).
+- [x] **P7.20** Docs: `docs/mcp.md` (setup, `.mcp.json`, starting the server, every tool with an example, the
   workflow, limits), README (MCP section), CLAUDE.md (a short "using the photoedit MCP tools" section: what to
   do when the server isn't connected).
-- [ ] **P7.21** Full check (pytest incl. golden, ruff, format, mypy, npm test/lint/build, e2e) and the human test
+  Done 2026-10-17: the tool tables group the 49 tools (no per-tool examples: the schemas and
+  descriptions carry them, and `scripts/mcp_call.py` shows how to call one).
+- [x] **P7.21** Full check (pytest incl. golden, ruff, format, mypy, npm test/lint/build, e2e) and the human test
   script below updated.
+  Done 2026-10-17: pytest 1175 passed, 2 skipped; Vitest 156, oxlint, build, ruff, format, mypy; e2e 11/11. Vitest's
+  test timeout is 15 s (a whole-flow test went past 5 s under load).
 
 ### 🧑 Human test: Phase 7
+Claude works on your real catalog (edits, styles, exports): the photo folders stay read-only, and every edit can
+be undone or reset.
+
 0. Stop any running `photoedit ui`. Then `uv sync`, `npm --prefix ui install`, `npm --prefix ui run build`,
-   `uv run photoedit ui`. `uv run photoedit mcp check` says the server is up and lists the tools.
-1. Start a **new** Claude Code session in `C:\Work\PhotoEditing` and approve the `photoedit` MCP server (from
-   `.mcp.json`). Ask "what's in my photo library?" → Claude lists the folders and counts.
-2. Keep the UI open on a photo (e.g. DSCF5437). Ask Claude to show it to you and describe it → it shows the
-   preview and talks about what it sees.
-3. "Make it a bit warmer and lift the shadows" → Claude changes only those values (it may preview first); the UI's
-   photo updates within a second or two without a reload, and a toast says Claude edited it.
-4. "Analyze it: is anything clipped, is there a color cast?" → numbers that fit the photo. Ask Claude to write a
-   note → it appears in the AI Analysis tab.
-5. "Apply style *X* to folder 2026-08-11 and export it for Instagram to `C:\Work\PhotoEditing\output\mcp-test`" →
-   Claude applies the style (Library thumbnails change live), shows a contact sheet, plans and exports (Claude
-   Code asks before the export with the destination shown); the Jobs page shows the progress live; the files
-   are there.
-6. "Prepare an Instagram export of the rally photos for review" → the review appears under **Reviews**; Claude
-   says which photos are in Check and why. Approve one in the UI → Claude sees it on its next look.
-7. Ask for something out of range ("exposure +20") or impossible ("export into the photo folder") → Claude reports
-   the tool's clear error, and nothing changed.
-8. The photo folders are unchanged. **Give feedback** on what Claude could and couldn't do, the toasts, and
-   anything the tools should offer.
+   `uv run photoedit ui`. In a second terminal, `uv run photoedit mcp check` says "MCP server at
+   http://127.0.0.1:8765/mcp: 49 tools".
+1. Start a **new** Claude Code session in `C:\Work\PhotoEditing` (desktop app or `claude`) and approve the
+   `photoedit` MCP server when asked (from `.mcp.json`); `/mcp` shows it connected. Ask "what's in my photo
+   library?" → Claude lists the folders and counts.
+2. Open a photo in the UI (e.g. DSCF5437, Adjust tab). Ask Claude to show it to you and describe it → it looks
+   at the preview (and maybe the analysis) and describes the photo.
+3. "Make it a bit warmer and lift the shadows" → Claude changes only those values (it may preview them first);
+   within a second or two, without a reload, the photo and the sliders change and a toast says "Claude edited
+   DSCF5437.RAF" (Show opens it). **Ctrl+Z** (or Undo) in the Adjust panel takes the change back.
+4. "Analyze it: is anything clipped, is there a color cast?" → numbers that fit what you see. Ask Claude to leave
+   a note → it shows at the top of the **AI Analysis** tab with its time; **Clear** removes it.
+5. "Apply style *X* to the 2026-08-11 folder, show me how they look together, and export them for Instagram to
+   `C:\Work\PhotoEditing\output\mcp-test`" → the Library's thumbnails change as the style is applied (toast
+   "Claude edited N photos"), Claude shows a contact sheet and the export plan, Claude Code asks before the
+   export with the destination in the request, the Jobs indicator shows the progress, and the files are there.
+6. "Prepare an Instagram export of the rally photos for review" → the review appears under **Reviews**; Claude says
+   which photos are in Check and why. Approve one in the UI → Claude sees it when it looks again.
+7. Ask for something out of range ("exposure +20"), something refused ("export into the photo folder") and
+   something left to you ("delete style X") → Claude reports the tool's clear error or says it can't, and
+   nothing changed.
+8. The photo folders are unchanged. **Give feedback** on what Claude could and couldn't do, the speed, the toasts
+   (a note also says "Claude edited…"; should it say "wrote a note"?), and anything the tools should offer.
 
 ### ⛔ STOP: user approves Phase 7
 
