@@ -1,6 +1,7 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
-import type { AdjustmentParams } from '../../api/types'
+import type { AdjustmentParams, PhotoDetail } from '../../api/types'
 import { mockApi, renderApp, type ApiCall } from '../../test/render'
 
 function panel() {
@@ -166,5 +167,24 @@ describe('Photo view', () => {
     const strip = screen.getByRole('navigation', { name: 'Filmstrip' })
     await user.click(within(strip).getByRole('link', { name: 'DSCF1005.RAF' }))
     expect(await screen.findByRole('heading', { name: 'DSCF1005.RAF' })).toBeInTheDocument()
+  })
+
+  it('takes over an edit saved elsewhere (by Claude) without saving it back', async () => {
+    const calls = mockApi()
+    const { client } = renderApp('/library/p001')
+    const details = await panel()
+    expect(within(details).getByText('0 EV')).toBeInTheDocument()
+    // What the live updates bring: the photo's detail with a new revision.
+    const detail = client.getQueryData<PhotoDetail>(['photo', 'p001'])!
+    const edited = structuredClone(detail)
+    edited.edit.adjustments.tone.exposure = 0.8
+    edited.edit.revision = 'r-claude'
+    act(() => client.setQueryData(['photo', 'p001'], edited))
+    expect(await within(details).findByText('+0.8 EV')).toBeInTheDocument()
+    await new Promise((resolve) => setTimeout(resolve, 400)) // longer than the save delay
+    expect(lastSaved(calls)).toBeUndefined()
+    // Undo goes back to what was there before.
+    await userEvent.setup().click(within(details).getByRole('button', { name: /Undo/ }))
+    await waitFor(() => expect(lastSaved(calls)?.tone.exposure).toBe(0))
   })
 })

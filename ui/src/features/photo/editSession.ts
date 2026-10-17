@@ -4,6 +4,9 @@
  * Slider moves update the local parameters at once (so the UI keeps up) and save after a short pause. Saves
  * never overlap: while one is in flight, only the newest parameters wait for the next one, so responses (and
  * the preview versions they carry) can't arrive out of order.
+ *
+ * Changes made elsewhere (Claude, another tab, a style update) arrive as a new revision of the photo's detail;
+ * the session takes them over as an undo step, unless a change of its own is on its way (the user's wins).
  */
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { useResetEdit, useSaveEdit } from '../../api/queries'
@@ -77,7 +80,7 @@ function reducer(state: State, action: Action): State {
       return { params: next, past: [...state.past, state.params], future: rest, gestureStart: null, saveDelay: 0 }
     }
     case 'loaded':
-      // The backend already has these (after a reset): an undo step, but nothing to save.
+      // The backend already has these (after a reset, or saved elsewhere): an undo step, but nothing to save.
       return { ...state, params: action.params, past: [...state.past, state.params], future: [], gestureStart: null }
   }
 }
@@ -113,6 +116,7 @@ export function useEditSession(detail: PhotoDetail): EditSession {
   const [saving, setSaving] = useState(false)
 
   const onServer = useRef(detail.edit.adjustments) // what the backend has (no need to save it again)
+  const seenRevision = useRef(detail.edit.revision) // the newest edit this session knows of (its own saves too)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inFlight = useRef(false)
   const queued = useRef<AdjustmentParams | null>(null)
@@ -132,7 +136,8 @@ export function useEditSession(detail: PhotoDetail): EditSession {
     while (next) {
       queued.current = null
       try {
-        await mutate.current(next)
+        const saved = await mutate.current(next)
+        seenRevision.current = saved.edit.revision
         onServer.current = next
         setError(null)
       } catch (e) {
@@ -145,6 +150,14 @@ export function useEditSession(detail: PhotoDetail): EditSession {
   }, [])
 
   const pending = useRef<AdjustmentParams | null>(null)
+
+  // An edit saved elsewhere: show it (an undo step, nothing to save), unless our own change is on its way.
+  useEffect(() => {
+    if (detail.edit.revision === seenRevision.current || inFlight.current || pending.current) return
+    seenRevision.current = detail.edit.revision
+    onServer.current = detail.edit.adjustments
+    dispatch({ type: 'loaded', params: detail.edit.adjustments })
+  }, [detail.edit])
   useEffect(() => {
     if (state.params === onServer.current) return
     pending.current = state.params
@@ -170,6 +183,7 @@ export function useEditSession(detail: PhotoDetail): EditSession {
     pending.current = null
     reset.mutate(undefined, {
       onSuccess: (updated) => {
+        seenRevision.current = updated.edit.revision
         onServer.current = updated.edit.adjustments
         dispatch({ type: 'loaded', params: updated.edit.adjustments })
       },
