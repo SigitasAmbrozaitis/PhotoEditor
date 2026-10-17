@@ -6,6 +6,7 @@
  * output/e2e/exports. Screenshots of every screen go to output/screenshots/ for a quick visual review.
  */
 import { expect, test, type Page } from '@playwright/test'
+import { execFileSync } from 'node:child_process'
 import { readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
@@ -482,4 +483,41 @@ test('review: prepare an Instagram export → fix a Check photo → Export Appro
   expect(readdirSync(`${EXPORTS}/review`)).toHaveLength(3)
   await page.getByRole('link', { name: /Reviews/ }).click()
   await expect(page.getByText('No open reviews.')).toBeVisible()
+})
+
+/** Call an MCP tool the way Claude does (scripts/mcp_call.py, the SDK's client), on the test server. */
+function asClaude(tool: string, args: object): string {
+  const url = `${test.info().project.use.baseURL}/mcp`
+  return execFileSync('uv', ['run', '--project', '..', 'python', '../scripts/mcp_call.py', '--url', url, tool, JSON.stringify(args)], {
+    encoding: 'utf-8',
+  })
+}
+
+test('live updates: Claude changes the open photo over MCP → the view follows, with a toast and a note', async ({ page }) => {
+  await page.goto('/library')
+  await page.getByRole('listbox', { name: 'Photos' }).getByRole('option', { name: 'E2E_0008.JPG' }).dblclick()
+  const details = page.getByRole('complementary', { name: 'Photo details' })
+  await expect(details.getByText('0 EV', { exact: true })).toBeVisible()
+  const preview = page.getByRole('img', { name: 'E2E_0008.JPG (after)' })
+  const before = await preview.getAttribute('src')
+
+  asClaude('update_adjustments', { photos: ['E2E_0008'], changes: { tone: { exposure: 1.4, shadows: 25 } } })
+  // No reload: the sliders, the preview and a toast follow the change.
+  await expect(details.getByText('+1.4 EV')).toBeVisible({ timeout: 10_000 })
+  await expect(details.getByText('+25', { exact: true })).toBeVisible()
+  await expect(preview).not.toHaveAttribute('src', before ?? '')
+  const toast = page.getByRole('status').filter({ hasText: 'Claude edited E2E_0008.JPG' })
+  await expect(toast).toBeVisible()
+  await shot(page, '26-live-update-toast')
+
+  // Undo takes Claude's change back like any other (the history lives while the Adjust tab is open).
+  await details.getByRole('button', { name: 'Undo' }).click()
+  await expect(details.getByText('0 EV', { exact: true })).toBeVisible()
+
+  asClaude('set_note', { photo: 'E2E_0008', text: 'Lifted exposure and shadows: the scene was a stop dark.' })
+  await page.getByRole('tab', { name: 'AI Analysis' }).click()
+  await expect(page.getByRole('region', { name: "Claude's note" })).toContainText('a stop dark', { timeout: 10_000 })
+  await shot(page, '27-claude-note')
+  asClaude('set_note', { photo: 'E2E_0008', text: null })
+  await expect(page.getByRole('region', { name: "Claude's note" })).toHaveCount(0)
 })
