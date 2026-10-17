@@ -68,6 +68,16 @@ API contract: Python models in `photoedit.models` are the source of truth. After
 Claude's browser previews (`.claude/launch.json`) use ports 8766/5174 so they never clash with the user's own
 `photoedit ui` on 8765.
 
+## Using the photoedit MCP tools (Phase 7)
+
+When a session should drive the tool itself (rather than change its code), use the `photoedit` MCP server from
+`.mcp.json` (see [docs/mcp.md](docs/mcp.md)). It runs inside `photoedit ui` at http://127.0.0.1:8765/mcp, so
+if its tools are missing, `photoedit ui` wasn't running when the session started: ask the user to start it (or
+start `uv run photoedit ui --no-browser` in the background) and to reconnect the server in `/mcp`. The tools act on
+the user's real catalog: say what you are about to change, look first (`render_preview`, `analyze_photo`), and
+prefer `prepare_export` over `export_photos` when subjects decide the framing. For development, test against the
+sandbox server instead (`.claude/launch.json` `backend-sandbox`, port 8766) with `scripts/mcp_call.py --url`.
+
 ## Layout
 
 ```
@@ -81,7 +91,7 @@ src/photoedit/
                 core/geometry.py + core/render/warp.py = crop and straighten, core/zoom.py = zoom view bases,
                 core/export/ = geometry (incl. zoom), color, sharpening, encoders, metadata, names, worker, service,
                 presets; core/subject/ = detection + suggested crops; core/review/ = pre-export review (rules, service)
-  mcp/          MCP server for Claude (Phase 7)
+  mcp/          MCP server for Claude (Phase 7): server.py, common.py, tools_library/edit/styles/export.py
 tests/          pytest; mirrors src/
 ui/             React + TypeScript web UI (src/features/<screen>/, src/api/ generated types + query hooks,
                 src/components/ shared UI, src/test/ fake API + fixtures, e2e/ Playwright)

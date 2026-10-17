@@ -226,6 +226,14 @@ Pre-export review (docs/export.md): `photoedit review prepare PHOTO…|--folder 
 `review settings [--min-score 0.5] [--ambiguity 0.75] [--rule uncertain=off]`.
 `photoedit benchmark --export full|instagram` times real exports per worker count.
 
+**Claude (MCP).** With `photoedit ui` running, start Claude Code in this folder and approve the `photoedit` MCP
+server (registered in `.mcp.json`; `uv run photoedit mcp check` tells you whether it answers). Then ask in plain
+words, e.g. "apply my Warm film style to the 2026-08-11 folder and export it for Instagram to D:\Exports". Claude
+sees previews and numbers about each photo, changes edits and styles within their ranges, runs exports and
+pre-export reviews, and leaves notes in the AI Analysis tab. The open UI follows every change live and shows a toast
+for Claude's ("Claude edited 24 photos"); Ctrl+Z in the Adjust panel takes a change back. Claude can't delete styles
+or presets or discard reviews, and never writes into a photo folder. See [docs/mcp.md](docs/mcp.md) for the tools.
+
 For UI development with hot reload (backend plus Vite dev server on http://localhost:5173):
 
 ```bash
@@ -268,8 +276,8 @@ CLAUDE.md          rules for AI agents working on this repo
 src/photoedit/     Python package: CLI, config, safety (write guard), API, core, MCP server
 ui/                web UI (React + TypeScript + Vite)
 tests/             Python tests
-scripts/           dev helpers (dev.cmd, e2e_setup.py for e2e test photos, update_golden.py)
-docs/              benchmark results, the default look (camera profile), tone sliders, styles, export, geometry
+scripts/           dev helpers (dev.cmd, e2e_setup.py for e2e test photos, update_golden.py, mcp_call.py)
+docs/              benchmark results, the default look (camera profile), tone sliders, styles, export, geometry, MCP
 styles/            saved styles: style.json + README + history (sample images stay local)
 export-presets/    your own export presets (one JSON file each; the built-in ones are in code)
 workspace/         local catalog (catalog.sqlite) and per-photo edits (git-ignored)
