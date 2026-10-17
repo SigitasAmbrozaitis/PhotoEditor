@@ -5,9 +5,6 @@ from __future__ import annotations
 
 import base64
 import io
-import socket
-import threading
-import time
 from collections.abc import Awaitable, Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -15,12 +12,11 @@ from typing import Any
 import anyio
 import httpx2
 import pytest
-import uvicorn
 from mcp import Client
 from mcp_types import CallToolResult, ImageContent, TextContent
 from PIL import Image
 
-from helpers import fill_folder
+from helpers import fill_folder, free_port, serve
 from photoedit import __version__
 from photoedit.api import create_app
 from photoedit.config import Settings, load_settings
@@ -115,29 +111,10 @@ def test_invalid_arguments_are_rejected_with_the_reason(services: Services) -> N
 # ----------------------------------------------------------------- over HTTP, inside the ui server
 
 
-def _free_port() -> int:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        port: int = sock.getsockname()[1]
-        return port
-
-
 @pytest.fixture
 def server_url(photo_settings: Settings, services: Services) -> Iterator[str]:
-    port = _free_port()
-    config = uvicorn.Config(
-        create_app(photo_settings, services=services), host="127.0.0.1", port=port, log_level="warning"
-    )
-    server = uvicorn.Server(config)
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    deadline = time.monotonic() + 10
-    while not server.started:
-        assert time.monotonic() < deadline, "server did not start"
-        time.sleep(0.02)
-    yield f"http://127.0.0.1:{port}"
-    server.should_exit = True
-    thread.join(timeout=10)
+    with serve(create_app(photo_settings, services=services)) as url:
+        yield url
 
 
 def test_mcp_over_http_in_the_ui_server(server_url: str, services: Services) -> None:
@@ -169,5 +146,5 @@ def test_cli_mcp_check(server_url: str, tmp_path: Path) -> None:
     assert up.exit_code == 0, up.output
     assert f"MCP server at {server_url}/mcp: 49 tools" in up.output
     assert "render_preview" in up.output and f'"url": "{server_url}/mcp"' in up.output
-    down = CliRunner().invoke(app, ["mcp", "check", *config, "--port", str(_free_port())])
+    down = CliRunner().invoke(app, ["mcp", "check", *config, "--port", str(free_port())])
     assert down.exit_code == 1 and "Start it with: photoedit ui" in down.output

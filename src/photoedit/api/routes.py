@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Body, Depends, Query, Request, Response, status
+from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from photoedit.core.fs import list_dirs
 from photoedit.core.render.pipeline import LATER_PHASE_PARAMETERS
@@ -32,6 +36,7 @@ from photoedit.models import (
 )
 from photoedit.models.adjustments import Geometry, GeometryChange, GeometryPreviewRequest
 from photoedit.models.crop import CropSuggestion, CropSuggestionRequest
+from photoedit.models.events import ChangeEvent
 from photoedit.models.export import (
     DestinationCheck,
     DestinationCheckRequest,
@@ -76,6 +81,7 @@ IMAGE_RESPONSE: dict[int | str, dict[str, Any]] = {200: {"content": {JPEG: {}}, 
 # Photo images are addressed by content-hash id and the decoder's render identity is part of the cache, so a
 # URL's bytes only change when the decoder changes; a short browser cache keeps the grid snappy.
 IMAGE_CACHE = {"Cache-Control": "private, max-age=600"}
+EVENTS_HEARTBEAT = 15  # s between keep-alive comments on the event stream
 
 
 def get_services(request: Request) -> Services:
@@ -554,6 +560,47 @@ def review_preview(
 def export_review(review_id: str, request: Annotated[ReviewExportRequest, Body()], svc: Svc) -> Job:
     """Export the approved photos (scope ``approved``) or all but the unusable ones (``all``)."""
     return svc.reviews.export(review_id, request.scope)
+
+
+# ----------------------------------------------------------------- change events (P7.8, P7.15)
+
+
+@router.get(
+    "/events",
+    response_class=EventSourceResponse,
+    responses={
+        200: {
+            "model": ChangeEvent,
+            "description": "Server-sent events: one `change` event (a ChangeEvent as JSON) per change, and a "
+            "comment every 15 s. A `resync` event means events were missed: refetch everything.",
+            "content": {"text/event-stream": {"schema": {"$ref": "#/components/schemas/ChangeEvent"}}},
+        }
+    },
+    tags=["system"],
+)
+async def events(svc: Svc) -> EventSourceResponse:
+    """What changes on the server (photo edits, styles, presets, reviews, jobs, the library) as it happens,
+    so the UI can follow changes made elsewhere (by Claude, another tab or the CLI)."""
+    loop = asyncio.get_running_loop()
+    wake = asyncio.Event()
+
+    def notify() -> None:  # called from the thread that published
+        with contextlib.suppress(RuntimeError):  # the loop is closed: the server is stopping
+            loop.call_soon_threadsafe(wake.set)
+
+    subscription = svc.events.subscribe(notify=notify)
+
+    async def stream() -> AsyncIterator[ServerSentEvent]:
+        try:
+            while True:
+                await wake.wait()
+                wake.clear()
+                for event in subscription.drain():
+                    yield ServerSentEvent(data=event.model_dump_json(), event="change", id=str(event.seq))
+        finally:
+            subscription.close()
+
+    return EventSourceResponse(stream(), ping=EVENTS_HEARTBEAT)
 
 
 @router.get("/jobs", response_model=list[Job], tags=["jobs"])

@@ -939,6 +939,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Events
+         * @description What changes on the server (photo edits, styles, presets, reviews, jobs, the library) as it happens,
+         *     so the UI can follow changes made elsewhere (by Claude, another tab or the CLI).
+         */
+        get: operations["events_api_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs": {
         parameters: {
             query?: never;
@@ -1160,6 +1181,26 @@ export interface components {
          * @enum {string}
          */
         AspectZoom: "off" | "auto";
+        /** ChangeEvent */
+        ChangeEvent: {
+            /**
+             * Seq
+             * @description Increases by one per event, per server run.
+             */
+            seq: number;
+            kind: components["schemas"]["EventKind"];
+            /**
+             * Ids
+             * @description What changed: photo, style, preset, review or job ids.
+             */
+            ids: string[];
+            origin: components["schemas"]["Origin"];
+            /**
+             * Summary
+             * @description A short line for people (jobs: title and status).
+             */
+            summary: string | null;
+        };
         /**
          * CollisionPolicy
          * @enum {string}
@@ -1468,6 +1509,11 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /**
+         * EventKind
+         * @enum {string}
+         */
+        EventKind: "photo_edit" | "subject" | "style" | "preset" | "review" | "job" | "library" | "resync";
         /**
          * ExportPlan
          * @description What an export would write (a dry run: nothing is written).
@@ -2444,6 +2490,12 @@ export interface components {
          * @enum {string}
          */
         Orientation: "auto" | "portrait" | "landscape";
+        /**
+         * Origin
+         * @description Which front-end caused a change.
+         * @enum {string}
+         */
+        Origin: "ui" | "ai" | "cli";
         /** OutputSharpening */
         "OutputSharpening-Input": {
             /** @default screen */
@@ -5992,6 +6044,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    events_api_events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server-sent events: one `change` event (a ChangeEvent as JSON) per change, and a comment every 15 s. A `resync` event means events were missed: refetch everything. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["ChangeEvent"];
+                    "application/json": components["schemas"]["ChangeEvent"];
                 };
             };
         };
