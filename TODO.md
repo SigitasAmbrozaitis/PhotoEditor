@@ -2033,7 +2033,10 @@ after its own mutations (plus job polling).
   Done 2026-10-17: pytest 1175 passed, 2 skipped; Vitest 156, oxlint, build, ruff, format, mypy; e2e 11/11. Vitest's
   test timeout is 15 s (a whole-flow test went past 5 s under load).
 
-### 🧑 Human test: Phase 7
+### 🧑 Human test: Phase 7 (deferred 2026-10-17: run right after Phase 8's human test)
+The user moved this test to after Phase 8 (PLAN §0, 2026-10-17). Phase 7 is complete (P7.0–P7.21) and pushed
+on `phase-7-mcp`; it is merged into `main` together with Phase 8 once both are confirmed.
+
 Claude works on your real catalog (edits, styles, exports): the photo folders stay read-only, and every edit can
 be undone or reset.
 
@@ -2062,9 +2065,29 @@ be undone or reset.
 8. The photo folders are unchanged. **Give feedback** on what Claude could and couldn't do, the speed, the toasts
    (a note also says "Claude edited…"; should it say "wrote a note"?), and anything the tools should offer.
 
-### ⛔ STOP: user approves Phase 7
+### ⛔ STOP: user approves Phase 7 (together with Phase 8)
 
 ## Phase 8: AI style creation (outline)
+
+**Start here in the next session** (prepared 2026-10-17):
+- Branch `phase-8-style-creation`, created from `phase-7-mcp` (not `main`: Phase 7 isn't merged yet, decision in
+  PLAN §0 2026-10-17). Both phases are merged into `main` after the combined human test (Phase 8's, then 7's).
+- The first step is the STOP below: ask the user for style samples. Questions to ask:
+  1. Which kind: finished photos only (a look to approximate), RAW + edited pairs (the same shot as its RAF and
+     the user's finished JPEG: an exact fit), or both?
+  2. How many looks, and what each is for (name, where it's used: e.g. Instagram rally, cats at home)?
+  3. Per look, roughly 10–30 photos across the user's subjects (rally/drift, the two cats, sunsets/travel) and
+     light. Which folders (read-only, like the other photo folders)?
+  4. What made the edited ones (Lightroom or another app), and do they include local edits, heavy crops or
+     retouching that global parameters can't express?
+  5. Is an ML fallback (F5) acceptable later if fitting and LUTs aren't enough?
+- What Phase 8 builds on: `analyze_photo` (P7.6: lightness, clipping, cast, HSL bands); `core/profile_fit.py`
+  (least-squares fit of a camera profile from RAF + camera JPEG pairs through the production render: the base for
+  fitting style values from pairs, developed first on the X-T3 camera JPEG + RAF pairs, PLAN §4.5); the style
+  tools (create/update/report/samples/history) and `render_preview` / `contact_sheet` with unsaved changes, so the
+  proposal → render → compare loop already runs through MCP; Phase 4's rules and even out; Phase 6's subjects
+  (for subject-weighted metering).
+
 - [ ] ⛔ **STOP FIRST: ask the user for style samples** (finished photos and/or RAW + edited pairs).
 - [ ] **P8.0** Detail this phase. ⛔ STOP for review.
 - [ ] Analysis tools; parameter fitting from pairs (developed first on the X-T3 camera JPEG + RAF pairs).
