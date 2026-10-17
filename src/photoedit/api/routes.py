@@ -48,7 +48,7 @@ from photoedit.models.export import (
 )
 from photoedit.models.fs import DirListing
 from photoedit.models.job import DetectSubjectsRequest, PrepareExportRequest
-from photoedit.models.photo import ZoomInfo, ZoomLevel
+from photoedit.models.photo import NoteUpdate, ZoomInfo, ZoomLevel
 from photoedit.models.review import (
     ExportReview,
     ReviewExportRequest,
@@ -225,6 +225,13 @@ def set_photo_style(photo_id: str, request: Annotated[PhotoStyleRequest, Body()]
 def reset_edit(photo_id: str, svc: Svc) -> PhotoDetail:
     """Drop the photo's own tweaks (its style stays; PUT /style with null removes the style)."""
     svc.library.reset_edit(photo_id)
+    return svc.library.photo_detail(photo_id)
+
+
+@router.put("/photos/{photo_id}/note", response_model=PhotoDetail, tags=["edit"])
+def set_note(photo_id: str, request: Annotated[NoteUpdate, Body()], svc: Svc) -> PhotoDetail:
+    """Claude's note about the photo (shown in the AI Analysis tab); null removes it. Changes no pixels."""
+    svc.library.set_note(photo_id, request.text)
     return svc.library.photo_detail(photo_id)
 
 

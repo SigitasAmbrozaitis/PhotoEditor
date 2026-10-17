@@ -488,3 +488,16 @@ def test_zoom_and_tiles(client: TestClient, photos: Path) -> None:
     assert client.get(f"/api/photos/{pid}/zoom/100/tiles/0/0", params={"before": True}).status_code == 200
     assert client.get(f"/api/photos/{pid}/zoom/100/tiles/5/0").status_code == 400
     assert client.get(f"/api/photos/{pid}/zoom/75").status_code == 422
+
+
+def test_note_set_and_cleared(client: TestClient, photos: Path) -> None:
+    _import(client, photos)
+    pid = _photo_ids(client)[0]
+    r = client.put(f"/api/photos/{pid}/note", json={"text": "Kept the warm cast."})
+    assert r.status_code == 200, r.text
+    detail = PhotoDetail.model_validate(r.json())
+    assert detail.note is not None and detail.note.text == "Kept the warm cast."
+    assert client.put(f"/api/photos/{pid}/note", json={"text": "x" * 2001}).status_code == 422
+    assert client.put("/api/photos/nope/note", json={"text": "hi"}).status_code == 404
+    cleared = PhotoDetail.model_validate(client.put(f"/api/photos/{pid}/note", json={"text": None}).json())
+    assert cleared.note is None

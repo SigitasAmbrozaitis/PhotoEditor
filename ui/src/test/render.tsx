@@ -146,6 +146,11 @@ export function defaultHandlers(): Record<string, Handler> {
       const box = manual.get(id)
       return box ? { ...fx.analysis, source: 'manual', kind: null, score: null, box } : fx.analysis
     },
+    'PUT /api/photos/:id/note': ({ path, body }) => {
+      const photo = fx.photos.find((p) => path.includes(`/${p.id}/`))!
+      const text = (body as { text: string | null }).text
+      return { ...fx.photoDetail(photo), note: text ? { text, written_at: '2026-10-16T12:00:00Z' } : null }
+    },
     'PUT /api/photos/:id/subject': ({ path, body }) => {
       const box = (body as { box: SubjectBox | null }).box
       if (box) manual.set(photoIdOf(path), box)

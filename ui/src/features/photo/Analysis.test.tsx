@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { resetDetailsForTests } from '../../hooks/useDetails'
+import * as fx from '../../test/fixtures'
 import { mockApi, renderApp } from '../../test/render'
 
 beforeEach(() => {
@@ -64,5 +65,24 @@ describe('AI Analysis tab', () => {
     await user.click(within(panel).getByRole('button', { name: /Set subject/ }))
     expect(await screen.findByTestId('crop-tool')).toBeInTheDocument()
     expect(screen.getByTestId('subject-draw')).toBeInTheDocument()
+  })
+
+  it("shows Claude's note above the detection and clears it", async () => {
+    const photo = fx.photos[0]!
+    const note = { text: 'Kept the warm cast: it is the stage light.', written_at: '2026-10-16T12:00:00Z' }
+    const calls = mockApi({ 'GET /api/photos/:id': () => ({ ...fx.photoDetail(photo), note }) })
+    const { user } = renderApp(`/library/${photo.id}`)
+    await user.click(await screen.findByRole('tab', { name: 'AI Analysis' }))
+    const section = await screen.findByRole('region', { name: "Claude's note" })
+    expect(within(section).getByTestId('claude-note')).toHaveTextContent(note.text)
+    await user.click(within(section).getByRole('button', { name: 'Clear' }))
+    await waitFor(() => expect(screen.queryByRole('region', { name: "Claude's note" })).not.toBeInTheDocument())
+    const put = calls.find((c) => c.method === 'PUT' && c.path === `/api/photos/${photo.id}/note`)
+    expect(put?.body).toEqual({ text: null })
+  })
+
+  it('shows no note section when Claude wrote none', async () => {
+    await openTab('p001')
+    expect(screen.queryByRole('region', { name: "Claude's note" })).not.toBeInTheDocument()
   })
 })

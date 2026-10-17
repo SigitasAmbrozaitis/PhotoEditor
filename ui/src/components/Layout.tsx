@@ -2,7 +2,9 @@ import { ClipboardCheck, Download, FolderOpen, Images, ListChecks, LoaderCircle,
 import { NavLink, Outlet } from 'react-router'
 import { useJobs, useLibrary, useRefreshAfterJobs, useReviews } from '../api/queries'
 import { useBackendHealth, type BackendState } from '../hooks/useBackendHealth'
+import { useLiveUpdates } from '../hooks/useLiveUpdates'
 import { cn } from '../lib/cn'
+import { ActivityToast } from './ActivityToast'
 
 const NAV = [
   { to: '/library', label: 'Library', icon: Images },
@@ -110,8 +112,10 @@ function NavRail() {
 
 export function Layout() {
   useRefreshAfterJobs()
+  const activity = useLiveUpdates()
   return (
     <div className="flex h-full flex-col">
+      <ActivityToast activity={activity} />
       <TopBar />
       <div className="flex min-h-0 flex-1">
         <NavRail />

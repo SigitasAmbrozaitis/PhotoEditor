@@ -223,6 +223,16 @@ export function useSetSubject(photoId: string) {
   })
 }
 
+/** Write or (null) clear Claude's note about the photo (the AI Analysis tab). */
+export function useSetNote(photoId: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (text: string | null) =>
+      api.put<PhotoDetail>(`/api/photos/${encodeURIComponent(photoId)}/note`, { text }),
+    onSuccess: (detail) => client.setQueryData(queryKeys.photo(photoId), detail),
+  })
+}
+
 /** What detection found in the photo, normalized to the edited photo (the AI Analysis tab). Never detects. */
 export function useAnalysis(photoId: string, enabled: boolean) {
   return useQuery({

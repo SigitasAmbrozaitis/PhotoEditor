@@ -314,6 +314,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photos/{photo_id}/note": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Note
+         * @description Claude's note about the photo (shown in the AI Analysis tab); null removes it. Changes no pixels.
+         */
+        put: operations["set_note_api_photos__photo_id__note_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/engine": {
         parameters: {
             query?: never;
@@ -2476,6 +2496,14 @@ export interface components {
              * @default 25
              */
             color: number;
+        };
+        /** NoteUpdate */
+        NoteUpdate: {
+            /**
+             * Text
+             * @description The note; null removes it.
+             */
+            text: string | null;
         };
         /** OpenFolderRequest */
         OpenFolderRequest: {
@@ -4729,6 +4757,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PhotoStyleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhotoDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_note_api_photos__photo_id__note_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteUpdate"];
             };
         };
         responses: {

@@ -1,6 +1,6 @@
-import { Eye, EyeOff, ScanSearch, SquareDashedMousePointer } from 'lucide-react'
-import { useAnalysis, useDetectNow, useSetSubject, useSubject } from '../../api/queries'
-import type { Photo } from '../../api/types'
+import { Eye, EyeOff, ScanSearch, Sparkles, SquareDashedMousePointer } from 'lucide-react'
+import { useAnalysis, useDetectNow, usePhotoDetail, useSetNote, useSetSubject, useSubject } from '../../api/queries'
+import type { Photo, PhotoNote } from '../../api/types'
 import { candidateName, candidateText, KIND_NAMES, percent, subjectText } from '../../components/detectionWords'
 import { Button, Chip, ErrorState, Loading, Spinner } from '../../components/ui'
 import { useDetails } from '../../hooks/useDetails'
@@ -12,6 +12,27 @@ const SOURCE_TEXT = {
   none: 'nothing recognized: crops are centered',
 } as const
 
+/** Claude's note about the photo (Phase 7): what it saw or changed, written through the MCP tools. */
+function ClaudeNote({ photoId, note }: { photoId: string; note: PhotoNote }) {
+  const clear = useSetNote(photoId)
+  return (
+    <section aria-label="Claude's note" className="flex flex-col gap-1 rounded border border-line bg-raised p-2">
+      <h3 className="flex items-center gap-1.5 text-[11px] font-medium tracking-wide text-muted uppercase">
+        <Sparkles className="size-3.5 text-accent" aria-hidden /> Claude's note
+      </h3>
+      <p className="text-sm whitespace-pre-wrap text-fg" data-testid="claude-note">
+        {note.text}
+      </p>
+      <div className="flex items-center gap-2 text-muted">
+        <span className="flex-1">{new Date(note.written_at).toLocaleString()}</span>
+        <Button size="sm" variant="ghost" disabled={clear.isPending} onClick={() => clear.mutate(null)}>
+          Clear
+        </Button>
+      </div>
+    </section>
+  )
+}
+
 /** The Photo view's AI Analysis tab (Phase 6c feedback): what detection found in the photo, stored per photo,
  * with its confidence; the boxes are drawn on the photo while this tab is open (Hide details, D). */
 export function AnalysisPanel({ photo, onSetSubject }: { photo: Photo; onSetSubject: () => void }) {
@@ -21,6 +42,7 @@ export function AnalysisPanel({ photo, onSetSubject }: { photo: Photo; onSetSubj
   const subject = useSubject(photo.id, Boolean(analysis.data?.detected))
   const setSubject = useSetSubject(photo.id)
   const [details, toggleDetails] = useDetails()
+  const note = usePhotoDetail(photo.id).data?.note
 
   if (analysis.isError) return <ErrorState error={analysis.error} />
   if (!analysis.data) return <Loading />
@@ -29,6 +51,7 @@ export function AnalysisPanel({ photo, onSetSubject }: { photo: Photo; onSetSubj
 
   return (
     <div className="flex flex-col gap-4 p-3 text-xs" data-testid="analysis-panel">
+      {note && <ClaudeNote photoId={photo.id} note={note} />}
       {!a.detected && a.source !== 'manual' ? (
         <div className="flex flex-col gap-2">
           <p className="text-muted">Not analysed yet. Detection looks for cars, animals, people and faces.</p>

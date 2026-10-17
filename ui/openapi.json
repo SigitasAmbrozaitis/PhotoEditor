@@ -859,6 +859,59 @@
         }
       }
     },
+    "/api/photos/{photo_id}/note": {
+      "put": {
+        "tags": [
+          "edit"
+        ],
+        "summary": "Set Note",
+        "description": "Claude's note about the photo (shown in the AI Analysis tab); null removes it. Changes no pixels.",
+        "operationId": "set_note_api_photos__photo_id__note_put",
+        "parameters": [
+          {
+            "name": "photo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Photo Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoteUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/engine": {
       "get": {
         "tags": [
@@ -5996,6 +6049,29 @@
           "color"
         ],
         "title": "NoiseReduction"
+      },
+      "NoteUpdate": {
+        "properties": {
+          "text": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text",
+            "description": "The note; null removes it."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "NoteUpdate"
       },
       "OpenFolderRequest": {
         "properties": {

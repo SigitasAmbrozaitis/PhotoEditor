@@ -124,6 +124,12 @@ class PhotoNote(BaseModel):
     written_at: datetime
 
 
+class NoteUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str | None = Field(max_length=NOTE_MAX_LENGTH, description="The note; null removes it.")
+
+
 class PhotoDetail(BaseModel):
     model_config = ConfigDict(extra="forbid", json_schema_serialization_defaults_required=True)
 
