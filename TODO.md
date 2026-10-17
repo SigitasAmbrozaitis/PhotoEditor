@@ -1984,16 +1984,29 @@ after its own mutations (plus job polling).
   when nothing answers.
 
 ### API + UI
-- [ ] **P7.15** `GET /api/events`: server-sent events from the bus (JSON per event, a heartbeat every 15 s,
+- [x] **P7.15** `GET /api/events`: server-sent events from the bus (JSON per event, a heartbeat every 15 s,
   closes cleanly at shutdown). The event model is in OpenAPI (a documented schema route) so the TS types are
   generated. Regenerate `openapi.json` + `schema.d.ts`. Tests: events arrive in order, origin and ids correct.
-- [ ] **P7.16** UI live updates (`hooks/useLiveUpdates.ts`, mounted once in the app): an `EventSource` that
+  Done 2026-10-17: `sse-starlette` (now a direct dependency) streams `change` events and pings, ends the
+  stream on disconnect and at server shutdown; `ChangeEvent` is the route's documented response model.
+  Tested over real HTTP (`tests/helpers.serve`): a UI change then an MCP change arrive in order with
+  their origins; a closed stream drops its subscription.
+- [x] **P7.16** UI live updates (`hooks/useLiveUpdates.ts`, mounted once in the app): an `EventSource` that
   reconnects with backoff; each event kind invalidates its queries (photos, photo, subject/analysis, styles,
   presets, reviews, jobs, library); the open Photo view reloads its preview when its photo changes. Events
   with origin `ai` show an activity toast with the summary and a link (photo, style, review or job). Events from
   this browser's own mutations are not toasted.
-- [ ] **P7.17** AI Analysis tab: shows **Claude's note** above the detection, with when it
+  Done 2026-10-17: `hooks/liveUpdates.ts` (pure: invalidations per kind, one refetch per burst of 150 ms,
+  the activity of a burst) + `useLiveUpdates` (reconnect 1 → 30 s after a closed stream, refetch all
+  after missed events) + `ActivityToast` (Radix Toast in the Layout: "Claude edited DSCF6283.RAF" /
+  "edited 24 photos · changed style …", Show link). Only origin `ai` is toasted, so the user's own
+  changes never are; job events aren't toasted (the Jobs indicator shows them). Found in the browser:
+  the Photo view's edit session kept stale slider values after an outside change (and could have saved
+  them back); it now takes over a new revision as an undo step unless its own change is on its way.
+- [x] **P7.17** AI Analysis tab: shows **Claude's note** above the detection, with when it
   was written; the user can clear it.
+  Done 2026-10-17: `PUT /api/photos/{id}/note` (`NoteUpdate`), `useSetNote`, the note section in
+  `AnalysisPanel`. Checked in the browser with a note written over MCP.
 
 ### Tests + docs
 - [ ] **P7.18** Cross-cutting MCP tests: every tool's structured output validates against its declared schema;
